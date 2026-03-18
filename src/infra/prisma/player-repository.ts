@@ -1,30 +1,100 @@
 import { CareerStatus, HistoryEntryType, TryoutStatus } from '../../domain/shared/enums';
 import { DomainError } from '../../shared/errors';
-import { PlayerRepository, CreatePlayerPersistenceInput } from '../../domain/player/repository';
+import { CreatePlayerPersistenceInput, PlayerRepository } from '../../domain/player/repository';
 import { PlayerProfile, TrainingResult, TryoutResult } from '../../domain/player/types';
-import { getPrismaClient, PrismaTransactionClient } from './client';
+import { getPrismaClient } from './client';
+
+interface PlayerGenerationRecord {
+  id: string;
+  userId: string;
+}
+
+interface ClubRecord {
+  name: string;
+}
+
+interface PlayerAttributeRecord {
+  key: string;
+  value: number;
+}
+
+interface WalletRecord {
+  balance: number;
+}
+
+interface PlayerWithRelationsRecord {
+  id: string;
+  generationId: string;
+  name: string;
+  nationality: string;
+  position: PlayerProfile['position'];
+  dominantFoot: PlayerProfile['dominantFoot'];
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  skinTone: string;
+  hairStyle: string;
+  careerStatus: PlayerProfile['careerStatus'];
+  currentClubId: string | null;
+  currentClub: ClubRecord | null;
+  createdAt: Date | string;
+  generation: PlayerGenerationRecord;
+  attributes: PlayerAttributeRecord[];
+  wallet: WalletRecord | null;
+  trainingSessions: unknown[];
+  tryoutAttempts: unknown[];
+}
+
+interface WalletOwnerRecord {
+  wallet: WalletRecord | null;
+}
+
+interface TrainingSessionCreateData {
+  playerId: string;
+  weekNumber: number;
+  focus: string;
+  cost: number;
+  attributeGain: number;
+}
+
+export const buildTrainingSessionCreateData = (params: {
+  playerId: string;
+  weekNumber: number;
+  focus: string;
+  cost: number;
+  attributeGain: number;
+}): TrainingSessionCreateData => ({
+  playerId: params.playerId,
+  weekNumber: params.weekNumber,
+  focus: params.focus,
+  cost: params.cost,
+  attributeGain: params.attributeGain
+});
 
 export class PrismaPlayerRepository implements PlayerRepository {
   async createPlayer(input: CreatePlayerPersistenceInput): Promise<PlayerProfile> {
     const prisma = getPrismaClient();
 
-    const player = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.upsert({
+    const player = (await prisma.$transaction(async (tx) => {
+      const user = (await tx.user.upsert({
         where: { telegramId: input.telegramId },
         update: {},
         create: { telegramId: input.telegramId }
+      })) as { id: string };
+
+      await tx.playerGeneration.updateMany({
+        where: { userId: user.id, isCurrent: true },
+        data: { isCurrent: false }
       });
 
-      await tx.playerGeneration.updateMany({ where: { userId: user.id, isCurrent: true }, data: { isCurrent: false } });
-
-      const generation = await tx.playerGeneration.create({
+      const generation = (await tx.playerGeneration.create({
         data: {
           userId: user.id,
           generationNumber: input.generationNumber,
           inheritedPoints: input.inheritedPoints,
           isCurrent: true
         }
-      });
+      })) as { id: string };
 
       return tx.player.create({
         data: {
@@ -56,14 +126,14 @@ export class PrismaPlayerRepository implements PlayerRepository {
         },
         include: this.playerInclude()
       });
-    });
+    })) as PlayerWithRelationsRecord;
 
     return this.toProfile(player);
   }
 
   async findByTelegramId(telegramId: string): Promise<PlayerProfile | null> {
     const prisma = getPrismaClient();
-    const player = await prisma.player.findFirst({
+    const player = (await prisma.player.findFirst({
       where: {
         generation: {
           isCurrent: true,
@@ -71,7 +141,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
         }
       },
       include: this.playerInclude()
-    });
+    })) as PlayerWithRelationsRecord | null;
 
     return player ? this.toProfile(player) : null;
   }
@@ -87,7 +157,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
   }): Promise<TrainingResult> {
     const prisma = getPrismaClient();
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = (await prisma.$transaction(async (tx) => {
       const existing = await tx.trainingSession.findUnique({
         where: { playerId_weekNumber: { playerId: params.playerId, weekNumber: params.weekNumber } }
       });
@@ -95,10 +165,11 @@ export class PrismaPlayerRepository implements PlayerRepository {
         throw new DomainError('O treino desta semana já foi utilizado.');
       }
 
-      const player = await tx.player.findUnique({
+      const player = (await tx.player.findUnique({
         where: { id: params.playerId },
         include: { wallet: true, attributes: true }
-      });
+      })) as ({ attributes: PlayerAttributeRecord[] } & WalletOwnerRecord) | null;
+
       if (!player?.wallet) {
         throw new DomainError('Carteira do jogador não encontrada.');
       }
@@ -106,23 +177,34 @@ export class PrismaPlayerRepository implements PlayerRepository {
         throw new DomainError('Saldo insuficiente para treino.');
       }
 
-      const targetAttribute = player.attributes.find((attribute: { key: string }) => attribute.key === params.focus);
+      const targetAttribute = player.attributes.find((attribute) => attribute.key === params.focus);
       if (!targetAttribute) {
         throw new DomainError('Atributo de treino não encontrado.');
       }
 
-      await tx.trainingSession.create({ data: { ...params } });
+      await tx.trainingSession.create({
+        data: buildTrainingSessionCreateData({
+          playerId: params.playerId,
+          weekNumber: params.weekNumber,
+          focus: params.focus,
+          cost: params.cost,
+          attributeGain: params.attributeGain
+        })
+      });
+
       await tx.playerAttribute.update({
         where: { playerId_key: { playerId: params.playerId, key: params.focus } },
         data: { value: { increment: params.attributeGain } }
       });
-      const wallet = await tx.wallet.update({
+
+      const wallet = (await tx.wallet.update({
         where: { playerId: params.playerId },
         data: {
           balance: { decrement: params.cost },
           transactions: { create: params.walletTransaction }
         }
-      });
+      })) as WalletRecord;
+
       await tx.playerHistoryEntry.create({
         data: {
           playerId: params.playerId,
@@ -136,7 +218,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
         newValue: targetAttribute.value + params.attributeGain,
         walletBalance: wallet.balance
       };
-    });
+    })) as { newValue: number; walletBalance: number };
 
     return {
       playerId: params.playerId,
@@ -162,8 +244,12 @@ export class PrismaPlayerRepository implements PlayerRepository {
     const prisma = getPrismaClient();
     const approved = Boolean(params.approvedClubId && params.approvedClubName);
 
-    const result = await prisma.$transaction(async (tx) => {
-      const player = await tx.player.findUnique({ where: { id: params.playerId }, include: { wallet: true } });
+    const result = (await prisma.$transaction(async (tx) => {
+      const player = (await tx.player.findUnique({
+        where: { id: params.playerId },
+        include: { wallet: true }
+      })) as WalletOwnerRecord | null;
+
       if (!player?.wallet) {
         throw new DomainError('Carteira do jogador não encontrada.');
       }
@@ -171,13 +257,13 @@ export class PrismaPlayerRepository implements PlayerRepository {
         throw new DomainError('Saldo insuficiente para peneira.');
       }
 
-      const wallet = await tx.wallet.update({
+      const wallet = (await tx.wallet.update({
         where: { playerId: params.playerId },
         data: {
           balance: { decrement: params.cost },
           transactions: { create: params.walletTransaction }
         }
-      });
+      })) as WalletRecord;
 
       await tx.tryoutAttempt.create({
         data: {
@@ -192,13 +278,26 @@ export class PrismaPlayerRepository implements PlayerRepository {
       });
 
       if (approved) {
-        await tx.clubMembership.updateMany({ where: { playerId: params.playerId, isActive: true }, data: { isActive: false } });
-        await tx.clubMembership.create({
-          data: { playerId: params.playerId, clubId: params.approvedClubId, role: 'PLAYER', isActive: true }
+        await tx.clubMembership.updateMany({
+          where: { playerId: params.playerId, isActive: true },
+          data: { isActive: false }
         });
+
+        await tx.clubMembership.create({
+          data: {
+            playerId: params.playerId,
+            clubId: params.approvedClubId,
+            role: 'PLAYER',
+            isActive: true
+          }
+        });
+
         await tx.player.update({
           where: { id: params.playerId },
-          data: { careerStatus: CareerStatus.Professional, currentClubId: params.approvedClubId }
+          data: {
+            careerStatus: CareerStatus.Professional,
+            currentClubId: params.approvedClubId
+          }
         });
       }
 
@@ -214,7 +313,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
       }
 
       return { walletBalance: wallet.balance };
-    });
+    })) as { walletBalance: number };
 
     return {
       playerId: params.playerId,
@@ -238,7 +337,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
     };
   }
 
-  private toProfile(player: any): PlayerProfile {
+  private toProfile(player: PlayerWithRelationsRecord): PlayerProfile {
     return {
       id: player.id,
       userId: player.generation.userId,
@@ -250,13 +349,16 @@ export class PrismaPlayerRepository implements PlayerRepository {
       age: player.age,
       heightCm: player.heightCm,
       weightKg: player.weightKg,
-      visual: { skinTone: player.skinTone, hairStyle: player.hairStyle },
+      visual: {
+        skinTone: player.skinTone,
+        hairStyle: player.hairStyle
+      },
       careerStatus: player.careerStatus,
       currentClubId: player.currentClubId ?? undefined,
       currentClubName: player.currentClub?.name ?? undefined,
       walletBalance: player.wallet?.balance ?? 0,
       createdAt: new Date(player.createdAt),
-      attributes: Object.fromEntries(player.attributes.map((attribute: { key: string; value: number }) => [attribute.key, attribute.value])) as PlayerProfile['attributes'],
+      attributes: Object.fromEntries(player.attributes.map((attribute) => [attribute.key, attribute.value])) as PlayerProfile['attributes'],
       trainingHistoryCount: player.trainingSessions.length,
       tryoutHistoryCount: player.tryoutAttempts.length
     };

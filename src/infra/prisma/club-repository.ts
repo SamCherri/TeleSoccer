@@ -24,7 +24,7 @@ export class PrismaClubRepository implements ClubRepository {
 
   async findStarterClubForTryout(score: number): Promise<ClubSummary | null> {
     const prisma = getPrismaClient();
-    const ordered = await prisma.club.findMany({ orderBy: [{ reputation: 'desc' }, { name: 'asc' }] });
+    const ordered = (await prisma.club.findMany({ orderBy: [{ reputation: 'desc' }, { name: 'asc' }] })) as ClubSummary[];
     if (ordered.length === 0) {
       return null;
     }

@@ -3,10 +3,25 @@
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/app/index.js",
-    "dev": "node --watch dist/app/index.js",
-    "test": "npm run build -- --pretty false >/dev/null && node --test tests/phase1.test.js"
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "npm run build -- --pretty false && node --test tests/phase1.test.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:migrate:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.6.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.6.0",
+    "typescript": "^5.8.2",
+    "@types/node": "^22.13.10"
   }
 }

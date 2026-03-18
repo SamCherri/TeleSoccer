@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 
 const { CreatePlayerService, GetPlayerCardService, TryoutService, WeeklyTrainingService, phase1Economy } = require('../dist/domain/player/services.js');
 const { AttributeKey, CareerStatus, DominantFoot, PlayerPosition, TryoutStatus } = require('../dist/domain/shared/enums.js');
+const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
+const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
 
 class InMemoryPlayerRepository {
   constructor() {
@@ -134,6 +136,31 @@ test('permite apenas um treino por semana e aplica ganho persistido', async () =
   );
 });
 
+test('impede treino semanal sem saldo suficiente', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+
+  await createPlayerService.execute({
+    telegramId: '104',
+    name: 'Rafael Lima',
+    nationality: 'Brasil',
+    position: PlayerPosition.Defender,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 181,
+    weightKg: 77,
+    visual: { skinTone: 'parda', hairStyle: 'cacheado' }
+  });
+
+  const player = await repo.findByTelegramId('104');
+  player.walletBalance = 0;
+
+  await assert.rejects(
+    () => trainingService.execute('104', AttributeKey.Marking, new Date('2026-01-06T00:00:00.000Z')),
+    /Saldo insuficiente/
+  );
+});
+
 test('cobra peneira, pode reprovar e promove ao profissional quando aprovado', async () => {
   const repo = new InMemoryPlayerRepository();
   const clubs = new InMemoryClubRepository();
@@ -177,4 +204,97 @@ test('cobra peneira, pode reprovar e promove ao profissional quando aprovado', a
 
   const updated = await repo.findByTelegramId('103');
   assert.equal(updated.careerStatus, CareerStatus.Professional);
+});
+
+test('o payload de persistência do treino contém apenas campos válidos da tabela', async () => {
+  assert.deepEqual(
+    buildTrainingSessionCreateData({
+      playerId: 'player-1',
+      weekNumber: 2,
+      focus: AttributeKey.Passing,
+      cost: 20,
+      attributeGain: 2
+    }),
+    {
+      playerId: 'player-1',
+      weekNumber: 2,
+      focus: AttributeKey.Passing,
+      cost: 20,
+      attributeGain: 2
+    }
+  );
+});
+
+test('o repositório Prisma não envia walletTransaction nem historyEntry ao create de TrainingSession', async () => {
+  let capturedCreateData;
+
+  const fakeTransactionClient = {
+    trainingSession: {
+      findUnique: async () => null,
+      create: async (args) => {
+        capturedCreateData = args.data;
+        return { id: 'training-1' };
+      }
+    },
+    player: {
+      findUnique: async () => ({
+        wallet: { balance: 150 },
+        attributes: [{ key: AttributeKey.Passing, value: 34 }]
+      })
+    },
+    playerAttribute: {
+      update: async () => ({})
+    },
+    wallet: {
+      update: async () => ({ balance: 130 })
+    },
+    playerHistoryEntry: {
+      create: async () => ({})
+    }
+  };
+
+  setPrismaClientForTests({
+    $transaction: async (callback) => callback(fakeTransactionClient),
+    user: {},
+    playerGeneration: {},
+    player: {},
+    club: {},
+    trainingSession: {},
+    playerAttribute: {},
+    wallet: {},
+    playerHistoryEntry: {},
+    tryoutAttempt: {},
+    clubMembership: {}
+  });
+
+  const repository = new PrismaPlayerRepository();
+  const result = await repository.applyTraining({
+    playerId: 'player-1',
+    weekNumber: 2,
+    focus: AttributeKey.Passing,
+    cost: 20,
+    attributeGain: 2,
+    walletTransaction: {
+      type: 'TRAINING_COST',
+      amount: -20,
+      description: 'Treino semanal de PASSING'
+    },
+    historyEntry: {
+      type: 'TRAINING_COMPLETED',
+      description: 'Treino semanal concluído',
+      metadata: { focus: AttributeKey.Passing }
+    }
+  });
+
+  assert.deepEqual(capturedCreateData, {
+    playerId: 'player-1',
+    weekNumber: 2,
+    focus: AttributeKey.Passing,
+    cost: 20,
+    attributeGain: 2
+  });
+  assert.equal(result.newValue, 36);
+  assert.equal(result.walletBalance, 130);
+
+  setPrismaClientForTests(null);
 });

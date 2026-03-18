@@ -1,41 +1,40 @@
 export interface PrismaTransactionClient {
   user: {
-    upsert(args: unknown): Promise<any>;
+    upsert(args: unknown): Promise<unknown>;
   };
   playerGeneration: {
     updateMany(args: unknown): Promise<unknown>;
-    create(args: unknown): Promise<any>;
+    create(args: unknown): Promise<unknown>;
   };
   player: {
-    create(args: unknown): Promise<any>;
-    findFirst(args: unknown): Promise<any>;
-    findUnique(args: unknown): Promise<any>;
-    update(args: unknown): Promise<any>;
+    create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+    findUnique(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
   };
   club: {
-    upsert(args: unknown): Promise<any>;
-    findMany(args: unknown): Promise<any[]>;
+    upsert(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown[]>;
   };
   trainingSession: {
-    findUnique(args: unknown): Promise<any>;
-    create(args: unknown): Promise<any>;
+    findUnique(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
   };
   playerAttribute: {
-    update(args: unknown): Promise<any>;
+    update(args: unknown): Promise<unknown>;
   };
   wallet: {
-    update(args: unknown): Promise<any>;
+    update(args: unknown): Promise<unknown>;
   };
   playerHistoryEntry: {
-    create(args: unknown): Promise<any>;
-    createMany(args: unknown): Promise<any>;
+    create(args: unknown): Promise<unknown>;
   };
   tryoutAttempt: {
-    create(args: unknown): Promise<any>;
+    create(args: unknown): Promise<unknown>;
   };
   clubMembership: {
-    updateMany(args: unknown): Promise<any>;
-    create(args: unknown): Promise<any>;
+    updateMany(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
   };
 }
 
@@ -61,4 +60,8 @@ let prismaInstance: PrismaClientLike | null = null;
 export const getPrismaClient = (): PrismaClientLike => {
   prismaInstance ??= loadPrismaClient();
   return prismaInstance;
+};
+
+export const setPrismaClientForTests = (client: PrismaClientLike | null): void => {
+  prismaInstance = client;
 };

@@ -26,6 +26,8 @@ CREATE TABLE "PlayerGeneration" (
   CONSTRAINT "PlayerGeneration_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "PlayerGeneration_user_generation_key" UNIQUE ("userId", "generationNumber")
 );
+CREATE INDEX "PlayerGeneration_user_current_idx" ON "PlayerGeneration"("userId", "isCurrent");
+CREATE UNIQUE INDEX "PlayerGeneration_single_current_per_user_idx" ON "PlayerGeneration"("userId") WHERE "isCurrent" = true;
 
 CREATE TABLE "Club" (
   "id" TEXT PRIMARY KEY,
@@ -57,6 +59,7 @@ CREATE TABLE "Player" (
   CONSTRAINT "Player_generationId_fkey" FOREIGN KEY ("generationId") REFERENCES "PlayerGeneration"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "Player_currentClubId_fkey" FOREIGN KEY ("currentClubId") REFERENCES "Club"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
+CREATE INDEX "Player_currentClubId_idx" ON "Player"("currentClubId");
 
 CREATE TABLE "PlayerAttribute" (
   "id" TEXT PRIMARY KEY,
@@ -87,6 +90,7 @@ CREATE TABLE "WalletTransaction" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "WalletTransaction_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "Wallet"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
+CREATE INDEX "WalletTransaction_wallet_createdAt_idx" ON "WalletTransaction"("walletId", "createdAt");
 
 CREATE TABLE "TrainingSession" (
   "id" TEXT PRIMARY KEY,
@@ -99,6 +103,7 @@ CREATE TABLE "TrainingSession" (
   CONSTRAINT "TrainingSession_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "TrainingSession_player_week_key" UNIQUE ("playerId", "weekNumber")
 );
+CREATE INDEX "TrainingSession_player_createdAt_idx" ON "TrainingSession"("playerId", "createdAt");
 
 CREATE TABLE "TryoutAttempt" (
   "id" TEXT PRIMARY KEY,
@@ -113,6 +118,8 @@ CREATE TABLE "TryoutAttempt" (
   CONSTRAINT "TryoutAttempt_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "TryoutAttempt_clubId_fkey" FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
+CREATE INDEX "TryoutAttempt_player_createdAt_idx" ON "TryoutAttempt"("playerId", "createdAt");
+CREATE INDEX "TryoutAttempt_clubId_idx" ON "TryoutAttempt"("clubId");
 
 CREATE TABLE "ClubMembership" (
   "id" TEXT PRIMARY KEY,
@@ -125,6 +132,8 @@ CREATE TABLE "ClubMembership" (
   CONSTRAINT "ClubMembership_clubId_fkey" FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 CREATE INDEX "ClubMembership_player_active_idx" ON "ClubMembership"("playerId", "isActive");
+CREATE INDEX "ClubMembership_club_active_idx" ON "ClubMembership"("clubId", "isActive");
+CREATE UNIQUE INDEX "ClubMembership_single_active_per_player_idx" ON "ClubMembership"("playerId") WHERE "isActive" = true;
 
 CREATE TABLE "PlayerHistoryEntry" (
   "id" TEXT PRIMARY KEY,
@@ -135,3 +144,4 @@ CREATE TABLE "PlayerHistoryEntry" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "PlayerHistoryEntry_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
+CREATE INDEX "PlayerHistoryEntry_player_createdAt_idx" ON "PlayerHistoryEntry"("playerId", "createdAt");
