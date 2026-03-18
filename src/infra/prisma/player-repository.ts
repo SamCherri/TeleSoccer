@@ -1,7 +1,7 @@
 import { CareerStatus, HistoryEntryType, TryoutStatus } from '../../domain/shared/enums';
 import { DomainError } from '../../shared/errors';
 import { CreatePlayerPersistenceInput, PlayerRepository } from '../../domain/player/repository';
-import { PlayerProfile, TrainingResult, TryoutResult } from '../../domain/player/types';
+import { CareerHistoryView, CareerStatusView, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from '../../domain/player/types';
 import { getPrismaClient } from './client';
 import { PHASE1_PLAYER_STARTING_AGE } from '../../domain/player/phase1-rules';
 
@@ -19,8 +19,16 @@ interface PlayerAttributeRecord {
   value: number;
 }
 
+interface WalletTransactionEntryRecord {
+  type: WalletStatementView['recentTransactions'][number]['type'];
+  amount: number;
+  description: string;
+  createdAt: Date | string;
+}
+
 interface WalletRecord {
   balance: number;
+  transactions?: WalletTransactionEntryRecord[];
 }
 
 interface PlayerWithRelationsRecord {
@@ -48,6 +56,21 @@ interface PlayerWithRelationsRecord {
 
 interface WalletOwnerRecord {
   wallet: WalletRecord | null;
+}
+
+interface PlayerHistoryEntryRecord {
+  type: CareerStatusView['recentHistory'][number]['type'];
+  description: string;
+  createdAt: Date | string;
+  metadata?: Record<string, unknown> | null;
+}
+
+interface TryoutAttemptRecord {
+  status: TryoutResult['status'];
+  score: number;
+  requiredScore: number;
+  createdAt: Date | string;
+  club: ClubRecord | null;
 }
 
 interface TrainingSessionCreateData {
@@ -145,6 +168,157 @@ export class PrismaPlayerRepository implements PlayerRepository {
     })) as PlayerWithRelationsRecord | null;
 
     return player ? this.toProfile(player) : null;
+  }
+
+  async getCareerHistoryByTelegramId(telegramId: string, limit: number): Promise<CareerHistoryView | null> {
+    const prisma = getPrismaClient();
+    const player = (await prisma.player.findFirst({
+      where: {
+        generation: {
+          isCurrent: true,
+          user: { telegramId }
+        }
+      },
+      include: {
+        currentClub: true
+      }
+    })) as ({ id: string; name: string; careerStatus: PlayerProfile['careerStatus']; currentClub: ClubRecord | null }) | null;
+
+    if (!player) {
+      return null;
+    }
+
+    const [entries, totalEntries] = (await prisma.$transaction([
+      prisma.playerHistoryEntry.findMany({
+        where: { playerId: player.id },
+        orderBy: { createdAt: 'desc' },
+        take: limit
+      }),
+      prisma.playerHistoryEntry.count({
+        where: { playerId: player.id }
+      })
+    ])) as [PlayerHistoryEntryRecord[], number];
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      currentClubName: player.currentClub?.name ?? undefined,
+      totalEntries,
+      entries: entries.map((entry) => ({
+        type: entry.type,
+        description: entry.description,
+        createdAt: new Date(entry.createdAt),
+        metadata: entry.metadata ?? undefined
+      }))
+    };
+  }
+
+  async getWalletStatementByTelegramId(telegramId: string, transactionLimit: number): Promise<WalletStatementView | null> {
+    const prisma = getPrismaClient();
+    const player = (await prisma.player.findFirst({
+      where: {
+        generation: {
+          isCurrent: true,
+          user: { telegramId }
+        }
+      },
+      include: {
+        wallet: {
+          include: {
+            transactions: {
+              orderBy: { createdAt: 'desc' },
+              take: transactionLimit
+            }
+          }
+        }
+      }
+    })) as ({ id: string; name: string; careerStatus: PlayerProfile['careerStatus']; wallet: WalletRecord | null }) | null;
+
+    if (!player?.wallet) {
+      return null;
+    }
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      walletBalance: player.wallet.balance,
+      transactionCount: player.wallet.transactions?.length ?? 0,
+      recentTransactions: (player.wallet.transactions ?? []).map((transaction) => ({
+        type: transaction.type,
+        amount: transaction.amount,
+        description: transaction.description,
+        createdAt: new Date(transaction.createdAt)
+      }))
+    };
+  }
+
+  async getCareerStatusByTelegramId(telegramId: string, currentWeekNumber: number): Promise<CareerStatusView | null> {
+    const prisma = getPrismaClient();
+    const player = (await prisma.player.findFirst({
+      where: {
+        generation: {
+          isCurrent: true,
+          user: { telegramId }
+        }
+      },
+      include: this.playerInclude()
+    })) as PlayerWithRelationsRecord | null;
+
+    if (!player) {
+      return null;
+    }
+
+    const [latestTryout, latestTraining, recentHistory] = await prisma.$transaction(async (tx) => {
+      const latestTryoutEntry = (await tx.tryoutAttempt.findFirst({
+        where: { playerId: player.id },
+        orderBy: { createdAt: 'desc' },
+        include: { club: true }
+      })) as TryoutAttemptRecord | null;
+
+      const latestTrainingEntry = (await tx.trainingSession.findFirst({
+        where: { playerId: player.id },
+        orderBy: [{ weekNumber: 'desc' }, { createdAt: 'desc' }]
+      })) as { weekNumber: number } | null;
+
+      const recentHistoryEntries = (await tx.playerHistoryEntry.findMany({
+        where: { playerId: player.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      })) as PlayerHistoryEntryRecord[];
+
+      return [latestTryoutEntry, latestTrainingEntry, recentHistoryEntries] as const;
+    });
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      age: player.age,
+      currentClubName: player.currentClub?.name ?? undefined,
+      walletBalance: player.wallet?.balance ?? 0,
+      totalTrainings: player.trainingSessions.length,
+      totalTryouts: player.tryoutAttempts.length,
+      lastTrainingWeek: latestTraining?.weekNumber,
+      trainingAvailableThisWeek: latestTraining?.weekNumber !== currentWeekNumber,
+      currentWeekNumber,
+      latestTryout: latestTryout
+        ? {
+            status: latestTryout.status,
+            score: latestTryout.score,
+            requiredScore: latestTryout.requiredScore,
+            clubName: latestTryout.club?.name ?? undefined,
+            createdAt: new Date(latestTryout.createdAt)
+          }
+        : undefined,
+      recentHistory: recentHistory.map((entry) => ({
+        type: entry.type,
+        description: entry.description,
+        createdAt: new Date(entry.createdAt),
+        metadata: entry.metadata ?? undefined
+      }))
+    };
   }
 
   async applyTraining(params: {

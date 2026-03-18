@@ -18,6 +18,7 @@ export interface PrismaTransactionClient {
   };
   trainingSession: {
     findUnique(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
     create(args: unknown): Promise<unknown>;
   };
   playerAttribute: {
@@ -28,13 +29,21 @@ export interface PrismaTransactionClient {
   };
   playerHistoryEntry: {
     create(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown[]>;
+    count(args: unknown): Promise<number>;
   };
   tryoutAttempt: {
     create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
   };
   clubMembership: {
     updateMany(args: unknown): Promise<unknown>;
     create(args: unknown): Promise<unknown>;
+  };
+  playerCreationConversation: {
+    findUnique(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
+    deleteMany(args: unknown): Promise<unknown>;
   };
 }
 

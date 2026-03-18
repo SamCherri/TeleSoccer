@@ -222,3 +222,11 @@ model PlayerHistoryEntry {
 
   @@index([playerId, createdAt])
 }
+
+model PlayerCreationConversation {
+  telegramId String   @id
+  step       String
+  draft      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
