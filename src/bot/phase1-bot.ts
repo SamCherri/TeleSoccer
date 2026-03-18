@@ -5,14 +5,34 @@ import {
   GetPlayerCardService,
   GetWalletStatementService,
   TryoutService,
-  WeeklyTrainingService
+  WeeklyTrainingService,
+  phase1Economy
 } from '../domain/player/services';
 import { CreatePlayerInput } from '../domain/player/types';
+import { DomainError } from '../shared/errors';
 
 export interface BotReply {
   text: string;
   actions: string[];
 }
+
+export const phase1BotActions = {
+  createPlayer: 'Criar jogador',
+  mainMenu: 'Menu principal',
+  playerCard: 'Ver ficha',
+  weeklyTraining: 'Treino semanal',
+  tryout: 'Tentar peneira',
+  confirmTryout: 'Confirmar peneira',
+  careerStatus: 'Status da carreira',
+  walletStatement: 'Extrato da carteira',
+  trainingPassing: 'Treinar passe',
+  trainingShooting: 'Treinar finalização',
+  trainingDribbling: 'Treinar drible',
+  trainingSpeed: 'Treinar velocidade',
+  trainingMarking: 'Treinar marcação',
+  trainingReflexes: 'Treinar reflexos',
+  cancel: 'Cancelar'
+} as const;
 
 const walletTransactionLabels: Record<WalletTransactionType, string> = {
   [WalletTransactionType.InitialGrant]: 'Crédito inicial',
@@ -30,11 +50,50 @@ export class Phase1TelegramFacade {
     private readonly tryoutService: TryoutService
   ) {}
 
+  async handleEntry(telegramId: string): Promise<BotReply> {
+    try {
+      return await this.handleMainMenu(telegramId);
+    } catch (error) {
+      if (error instanceof DomainError) {
+        return this.handleCreatePlayerPrompt();
+      }
+
+      throw error;
+    }
+  }
+
+  handleCreatePlayerPrompt(): BotReply {
+    return {
+      text: [
+        'Bem-vindo ao TeleSoccer.',
+        'Você ainda não criou seu jogador da Fase 1.',
+        'Envie os dados de criação pelo fluxo do bot e confirme para iniciar sua carreira.'
+      ].join('\n'),
+      actions: [phase1BotActions.createPlayer]
+    };
+  }
+
   async handleCreatePlayer(input: CreatePlayerInput): Promise<BotReply> {
     const player = await this.createPlayerService.execute(input);
     return {
       text: `Jogador ${player.name} criado com sucesso. Saldo inicial: ${player.walletBalance} moedas.`,
-      actions: ['Ver ficha', 'Treino semanal', 'Tentar peneira', 'Status da carreira', 'Extrato da carteira']
+      actions: this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')
+    };
+  }
+
+  async handleMainMenu(telegramId: string): Promise<BotReply> {
+    const player = await this.getPlayerCardService.execute(telegramId);
+    return {
+      text: [
+        'Painel do jogador',
+        `Nome: ${player.name}`,
+        `Idade: ${player.age}`,
+        `Posição: ${player.position}`,
+        `Clube: ${player.currentClubName ?? 'Base amadora'}`,
+        `Status: ${player.careerStatus}`,
+        `Saldo: ${player.walletBalance} moedas`
+      ].join('\n'),
+      actions: this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')
     };
   }
 
@@ -52,7 +111,7 @@ export class Phase1TelegramFacade {
           .map(([key, value]) => `${key} ${value}`)
           .join(', ')}`
       ].join('\n'),
-      actions: ['Treino semanal', 'Tentar peneira', 'Status da carreira', 'Extrato da carteira']
+      actions: [...this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')]
     };
   }
 
@@ -77,10 +136,7 @@ export class Phase1TelegramFacade {
         latestTryoutLine,
         `Histórico recente: ${status.recentHistory.length > 0 ? status.recentHistory.map((entry) => entry.description).join(' | ') : 'sem eventos ainda.'}`
       ].join('\n'),
-      actions:
-        status.careerStatus === 'PROFESSIONAL'
-          ? ['Ver ficha', 'Status da carreira', 'Extrato da carteira']
-          : ['Treino semanal', 'Tentar peneira', 'Ver ficha', 'Extrato da carteira']
+      actions: this.buildMainMenuActions(status.careerStatus === 'PROFESSIONAL')
     };
   }
 
@@ -101,7 +157,33 @@ export class Phase1TelegramFacade {
               .join('\n')
           : 'Nenhuma transação registrada ainda.'
       ].join('\n'),
-      actions: ['Ver ficha', 'Status da carreira', 'Treino semanal', 'Tentar peneira']
+      actions: this.buildMainMenuActions(false)
+    };
+  }
+
+  async handleTrainingMenu(telegramId: string): Promise<BotReply> {
+    const player = await this.getPlayerCardService.execute(telegramId);
+    return {
+      text: [
+        `Treino semanal de ${player.name}`,
+        `Cada treino custa ${phase1Economy.trainingCost} moedas e melhora apenas 1 fundamento.`,
+        `Saldo atual: ${player.walletBalance} moedas`,
+        'Escolha o fundamento para esta semana.'
+      ].join('\n'),
+      actions: this.buildTrainingActions(player.position === 'GOALKEEPER')
+    };
+  }
+
+  async handleTryoutPrompt(telegramId: string): Promise<BotReply> {
+    const player = await this.getPlayerCardService.execute(telegramId);
+    return {
+      text: [
+        `Peneira regional de ${player.name}`,
+        `Esta tentativa custa ${phase1Economy.tryoutCost} moedas.`,
+        `Saldo atual: ${player.walletBalance} moedas`,
+        'Confirme para participar da peneira.'
+      ].join('\n'),
+      actions: [phase1BotActions.confirmTryout, phase1BotActions.mainMenu, phase1BotActions.cancel]
     };
   }
 
@@ -109,7 +191,7 @@ export class Phase1TelegramFacade {
     const result = await this.weeklyTrainingService.execute(telegramId, focus);
     return {
       text: `Treino concluído em ${focus}. Novo valor: ${result.newValue}. Saldo restante: ${result.walletBalance}.`,
-      actions: ['Ver ficha', 'Tentar peneira', 'Status da carreira', 'Extrato da carteira']
+      actions: this.buildMainMenuActions(false)
     };
   }
 
@@ -120,10 +202,33 @@ export class Phase1TelegramFacade {
         result.status === TryoutStatus.Approved
           ? `Parabéns. Você foi aprovado na peneira e entrou no profissional pelo clube ${result.clubName}.`
           : `Você não foi aprovado na peneira. Pontuação ${result.score}/${result.requiredScore}.`,
-      actions:
-        result.status === TryoutStatus.Approved
-          ? ['Ver ficha', 'Status da carreira', 'Extrato da carteira']
-          : ['Treino semanal', 'Tentar peneira novamente', 'Status da carreira', 'Extrato da carteira']
+      actions: this.buildMainMenuActions(result.status === TryoutStatus.Approved)
     };
+  }
+
+  buildMainMenuActions(isProfessional: boolean): string[] {
+    return [
+      phase1BotActions.playerCard,
+      phase1BotActions.careerStatus,
+      phase1BotActions.walletStatement,
+      phase1BotActions.weeklyTraining,
+      ...(isProfessional ? [] : [phase1BotActions.tryout])
+    ];
+  }
+
+  private buildTrainingActions(isGoalkeeper: boolean): string[] {
+    if (isGoalkeeper) {
+      return [phase1BotActions.trainingReflexes, phase1BotActions.trainingSpeed, phase1BotActions.mainMenu, phase1BotActions.cancel];
+    }
+
+    return [
+      phase1BotActions.trainingPassing,
+      phase1BotActions.trainingShooting,
+      phase1BotActions.trainingDribbling,
+      phase1BotActions.trainingSpeed,
+      phase1BotActions.trainingMarking,
+      phase1BotActions.mainMenu,
+      phase1BotActions.cancel
+    ];
   }
 }

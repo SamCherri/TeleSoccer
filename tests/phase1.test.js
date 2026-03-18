@@ -10,10 +10,12 @@ const {
   WeeklyTrainingService,
   phase1Economy
 } = require('../dist/domain/player/services.js');
-const { Phase1TelegramFacade } = require('../dist/bot/phase1-bot.js');
+const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
+const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
+const { DomainError } = require('../dist/shared/errors.js');
 
 class InMemoryPlayerRepository {
   constructor() {
@@ -115,7 +117,7 @@ class InMemoryPlayerRepository {
     const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
     const weekKey = `${params.playerId}:${params.weekNumber}`;
     if (this.trainingWeeks.has(weekKey)) {
-      throw new Error('O treino desta semana já foi utilizado.');
+      throw new DomainError('O treino desta semana já foi utilizado.');
     }
     this.trainingWeeks.add(weekKey);
     player.walletBalance -= params.cost;
@@ -548,4 +550,99 @@ test('o repositório Prisma não envia walletTransaction nem historyEntry ao cre
   assert.equal(result.walletBalance, 130);
 
   setPrismaClientForTests(null);
+});
+
+
+test('dispatcher abre prompt de criação no /start quando ainda não existe jogador', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const facade = new Phase1TelegramFacade(
+    new CreatePlayerService(repo),
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade);
+
+  const reply = await dispatcher.dispatch({ telegramId: '110', text: '/start' });
+  assert.match(reply.text, /Bem-vindo ao TeleSoccer/);
+  assert.deepEqual(reply.actions, [phase1BotActions.createPlayer]);
+});
+
+test('dispatcher abre menu principal e roteia comandos reais do bot', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade);
+
+  await createPlayerService.execute({
+    telegramId: '111',
+    name: 'Nando Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 176,
+    weightKg: 70,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  const startReply = await dispatcher.dispatch({ telegramId: '111', text: '/start' });
+  assert.match(startReply.text, /Painel do jogador/);
+  assert.ok(startReply.actions.includes(phase1BotActions.weeklyTraining));
+
+  const trainingMenuReply = await dispatcher.dispatch({ telegramId: '111', text: '/treino' });
+  assert.match(trainingMenuReply.text, /Cada treino custa 20 moedas/);
+  assert.ok(trainingMenuReply.actions.includes(phase1BotActions.trainingPassing));
+
+  const trainingReply = await dispatcher.dispatch({ telegramId: '111', text: phase1BotActions.trainingPassing });
+  assert.match(trainingReply.text, /Treino concluído em PASSING/);
+
+  const walletReply = await dispatcher.dispatch({ telegramId: '111', text: '/carteira' });
+  assert.match(walletReply.text, /Extrato da carteira de Nando Luz/);
+
+  const tryoutPrompt = await dispatcher.dispatch({ telegramId: '111', text: '/peneira' });
+  assert.match(tryoutPrompt.text, /Esta tentativa custa 35 moedas/);
+  assert.ok(tryoutPrompt.actions.includes(phase1BotActions.confirmTryout));
+});
+
+test('dispatcher trata erro de domínio com retorno consistente para o bot', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade);
+
+  await createPlayerService.execute({
+    telegramId: '112',
+    name: 'Luan Costa',
+    nationality: 'Brasil',
+    position: PlayerPosition.Defender,
+    dominantFoot: DominantFoot.Left,
+    heightCm: 182,
+    weightKg: 77,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  await dispatcher.dispatch({ telegramId: '112', text: phase1BotActions.trainingMarking });
+  const errorReply = await dispatcher.dispatch({ telegramId: '112', text: phase1BotActions.trainingMarking });
+
+  assert.match(errorReply.text, /Não foi possível concluir a ação/);
+  assert.ok(errorReply.actions.includes(phase1BotActions.mainMenu));
 });
