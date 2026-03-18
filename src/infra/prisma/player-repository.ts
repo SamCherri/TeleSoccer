@@ -3,6 +3,7 @@ import { DomainError } from '../../shared/errors';
 import { CreatePlayerPersistenceInput, PlayerRepository } from '../../domain/player/repository';
 import { PlayerProfile, TrainingResult, TryoutResult } from '../../domain/player/types';
 import { getPrismaClient } from './client';
+import { PHASE1_PLAYER_STARTING_AGE } from '../../domain/player/phase1-rules';
 
 interface PlayerGenerationRecord {
   id: string;
@@ -103,7 +104,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
           nationality: input.nationality,
           position: input.position,
           dominantFoot: input.dominantFoot,
-          age: 14,
+          age: PHASE1_PLAYER_STARTING_AGE,
           heightCm: input.heightCm,
           weightKg: input.weightKg,
           skinTone: input.visual.skinTone,

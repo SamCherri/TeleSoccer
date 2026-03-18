@@ -5,13 +5,14 @@ import { ClubRepository } from '../club/repository';
 import { PlayerRepository } from './repository';
 import { CreatePlayerInput, PlayerProfile, TrainingResult, TryoutResult } from './types';
 import { getGameWeekNumber } from '../../shared/week';
-
-const STARTING_AGE = 14;
-const STARTING_WALLET_BALANCE = 150;
-const TRAINING_COST = 20;
-const TRAINING_GAIN = 2;
-const TRYOUT_COST = 35;
-const TRYOUT_REQUIRED_SCORE = 130;
+import {
+  PHASE1_PLAYER_STARTING_AGE,
+  PHASE1_STARTING_WALLET_BALANCE,
+  PHASE1_TRAINING_COST,
+  PHASE1_TRAINING_GAIN,
+  PHASE1_TRYOUT_COST,
+  PHASE1_TRYOUT_REQUIRED_SCORE
+} from './phase1-rules';
 
 export class CreatePlayerService {
   constructor(private readonly playerRepository: PlayerRepository) {}
@@ -30,12 +31,12 @@ export class CreatePlayerService {
       ...input,
       generationNumber: 1,
       inheritedPoints: 0,
-      startingWalletBalance: STARTING_WALLET_BALANCE,
+      startingWalletBalance: PHASE1_STARTING_WALLET_BALANCE,
       attributes,
       initialTransactions: [
         {
           type: WalletTransactionType.InitialGrant,
-          amount: STARTING_WALLET_BALANCE,
+          amount: PHASE1_STARTING_WALLET_BALANCE,
           description: 'Saldo inicial da carreira'
         }
       ],
@@ -98,7 +99,7 @@ export class WeeklyTrainingService {
     if (!(focus in player.attributes)) {
       throw new DomainError('Fundamento inválido para este jogador.');
     }
-    if (player.walletBalance < TRAINING_COST) {
+    if (player.walletBalance < PHASE1_TRAINING_COST) {
       throw new DomainError('Saldo insuficiente para realizar o treino semanal.');
     }
 
@@ -107,18 +108,18 @@ export class WeeklyTrainingService {
     return this.playerRepository.applyTraining({
       playerId: player.id,
       focus,
-      cost: TRAINING_COST,
+      cost: PHASE1_TRAINING_COST,
       weekNumber,
-      attributeGain: TRAINING_GAIN,
+      attributeGain: PHASE1_TRAINING_GAIN,
       walletTransaction: {
         type: WalletTransactionType.TrainingCost,
-        amount: -TRAINING_COST,
+        amount: -PHASE1_TRAINING_COST,
         description: `Treino semanal de ${focus}`
       },
       historyEntry: {
         type: HistoryEntryType.TrainingCompleted,
         description: `Treino semanal concluído com foco em ${focus}.`,
-        metadata: { focus, weekNumber, gain: TRAINING_GAIN }
+        metadata: { focus, weekNumber, gain: PHASE1_TRAINING_GAIN }
       }
     });
   }
@@ -138,7 +139,7 @@ export class TryoutService {
     if (player.careerStatus === CareerStatus.Professional) {
       throw new DomainError('Este jogador já entrou no profissional.');
     }
-    if (player.walletBalance < TRYOUT_COST) {
+    if (player.walletBalance < PHASE1_TRYOUT_COST) {
       throw new DomainError('Saldo insuficiente para pagar a peneira.');
     }
 
@@ -155,20 +156,20 @@ export class TryoutService {
     ];
 
     const score = weightedAttributes.reduce((sum, value) => sum + value, 0);
-    const approved = score >= TRYOUT_REQUIRED_SCORE;
+    const approved = score >= PHASE1_TRYOUT_REQUIRED_SCORE;
     const club = approved ? await this.clubRepository.findStarterClubForTryout(score) : null;
 
     return this.playerRepository.registerTryout({
       playerId: player.id,
       weekNumber: getGameWeekNumber(referenceDate),
-      cost: TRYOUT_COST,
+      cost: PHASE1_TRYOUT_COST,
       score,
-      requiredScore: TRYOUT_REQUIRED_SCORE,
+      requiredScore: PHASE1_TRYOUT_REQUIRED_SCORE,
       approvedClubId: club?.id,
       approvedClubName: club?.name,
       walletTransaction: {
         type: WalletTransactionType.TryoutCost,
-        amount: -TRYOUT_COST,
+        amount: -PHASE1_TRYOUT_COST,
         description: 'Taxa de inscrição em peneira regional'
       },
       historyEntries: approved
@@ -176,7 +177,7 @@ export class TryoutService {
             {
               type: HistoryEntryType.TryoutApproved,
               description: `Peneira aprovada com entrada no clube ${club?.name}.`,
-              metadata: { score, requiredScore: TRYOUT_REQUIRED_SCORE }
+              metadata: { score, requiredScore: PHASE1_TRYOUT_REQUIRED_SCORE }
             },
             {
               type: HistoryEntryType.ProfessionalContractStarted,
@@ -188,7 +189,7 @@ export class TryoutService {
             {
               type: HistoryEntryType.TryoutFailed,
               description: 'Peneira reprovada. É necessário treinar e tentar novamente.',
-              metadata: { score, requiredScore: TRYOUT_REQUIRED_SCORE }
+              metadata: { score, requiredScore: PHASE1_TRYOUT_REQUIRED_SCORE }
             }
           ]
     });
@@ -196,12 +197,12 @@ export class TryoutService {
 }
 
 export const phase1Economy = {
-  startingWalletBalance: STARTING_WALLET_BALANCE,
-  trainingCost: TRAINING_COST,
-  tryoutCost: TRYOUT_COST,
-  tryoutRequiredScore: TRYOUT_REQUIRED_SCORE,
-  trainingGain: TRAINING_GAIN,
-  startingAge: STARTING_AGE,
+  startingWalletBalance: PHASE1_STARTING_WALLET_BALANCE,
+  trainingCost: PHASE1_TRAINING_COST,
+  tryoutCost: PHASE1_TRYOUT_COST,
+  tryoutRequiredScore: PHASE1_TRYOUT_REQUIRED_SCORE,
+  trainingGain: PHASE1_TRAINING_GAIN,
+  startingAge: PHASE1_PLAYER_STARTING_AGE,
   youthCareerStatus: CareerStatus.Youth,
   professionalCareerStatus: CareerStatus.Professional,
   approvedTryoutStatus: TryoutStatus.Approved

@@ -9,9 +9,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/app/index.js",
-    "dev": "tsc -p tsconfig.json --watch",
+    "dev": "tsx watch src/app/index.ts",
     "test": "npm run build -- --pretty false && node --test tests/phase1.test.js",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:migrate:deploy": "prisma migrate deploy"
@@ -20,8 +21,9 @@
     "@prisma/client": "^6.6.0"
   },
   "devDependencies": {
+    "@types/node": "^22.13.10",
     "prisma": "^6.6.0",
-    "typescript": "^5.8.2",
-    "@types/node": "^22.13.10"
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
   }
 }
