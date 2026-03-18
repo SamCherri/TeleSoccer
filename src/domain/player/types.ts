@@ -40,10 +40,11 @@ export interface PlayerProfile {
   tryoutHistoryCount: number;
 }
 
-export interface CareerStatusHistoryItem {
+export interface CareerHistoryItem {
   type: HistoryEntryType;
   description: string;
   createdAt: Date;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CareerStatusView {
@@ -65,7 +66,16 @@ export interface CareerStatusView {
     clubName?: string;
     createdAt: Date;
   };
-  recentHistory: CareerStatusHistoryItem[];
+  recentHistory: CareerHistoryItem[];
+}
+
+export interface CareerHistoryView {
+  playerId: string;
+  playerName: string;
+  careerStatus: CareerStatus;
+  currentClubName?: string;
+  totalEntries: number;
+  entries: CareerHistoryItem[];
 }
 
 export interface WalletStatementItem {
@@ -78,6 +88,7 @@ export interface WalletStatementItem {
 export interface WalletStatementView {
   playerId: string;
   playerName: string;
+  careerStatus: CareerStatus;
   walletBalance: number;
   transactionCount: number;
   recentTransactions: WalletStatementItem[];

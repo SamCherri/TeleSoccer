@@ -1,7 +1,7 @@
 import { CareerStatus, HistoryEntryType, TryoutStatus } from '../../domain/shared/enums';
 import { DomainError } from '../../shared/errors';
 import { CreatePlayerPersistenceInput, PlayerRepository } from '../../domain/player/repository';
-import { CareerStatusView, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from '../../domain/player/types';
+import { CareerHistoryView, CareerStatusView, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from '../../domain/player/types';
 import { getPrismaClient } from './client';
 import { PHASE1_PLAYER_STARTING_AGE } from '../../domain/player/phase1-rules';
 
@@ -62,6 +62,7 @@ interface PlayerHistoryEntryRecord {
   type: CareerStatusView['recentHistory'][number]['type'];
   description: string;
   createdAt: Date | string;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface TryoutAttemptRecord {
@@ -169,6 +170,50 @@ export class PrismaPlayerRepository implements PlayerRepository {
     return player ? this.toProfile(player) : null;
   }
 
+  async getCareerHistoryByTelegramId(telegramId: string, limit: number): Promise<CareerHistoryView | null> {
+    const prisma = getPrismaClient();
+    const player = (await prisma.player.findFirst({
+      where: {
+        generation: {
+          isCurrent: true,
+          user: { telegramId }
+        }
+      },
+      include: {
+        currentClub: true
+      }
+    })) as ({ id: string; name: string; careerStatus: PlayerProfile['careerStatus']; currentClub: ClubRecord | null }) | null;
+
+    if (!player) {
+      return null;
+    }
+
+    const [entries, totalEntries] = (await prisma.$transaction([
+      prisma.playerHistoryEntry.findMany({
+        where: { playerId: player.id },
+        orderBy: { createdAt: 'desc' },
+        take: limit
+      }),
+      prisma.playerHistoryEntry.count({
+        where: { playerId: player.id }
+      })
+    ])) as [PlayerHistoryEntryRecord[], number];
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      currentClubName: player.currentClub?.name ?? undefined,
+      totalEntries,
+      entries: entries.map((entry) => ({
+        type: entry.type,
+        description: entry.description,
+        createdAt: new Date(entry.createdAt),
+        metadata: entry.metadata ?? undefined
+      }))
+    };
+  }
+
   async getWalletStatementByTelegramId(telegramId: string, transactionLimit: number): Promise<WalletStatementView | null> {
     const prisma = getPrismaClient();
     const player = (await prisma.player.findFirst({
@@ -188,7 +233,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
           }
         }
       }
-    })) as ({ id: string; name: string; wallet: WalletRecord | null }) | null;
+    })) as ({ id: string; name: string; careerStatus: PlayerProfile['careerStatus']; wallet: WalletRecord | null }) | null;
 
     if (!player?.wallet) {
       return null;
@@ -197,6 +242,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
     return {
       playerId: player.id,
       playerName: player.name,
+      careerStatus: player.careerStatus,
       walletBalance: player.wallet.balance,
       transactionCount: player.wallet.transactions?.length ?? 0,
       recentTransactions: (player.wallet.transactions ?? []).map((transaction) => ({
@@ -269,7 +315,8 @@ export class PrismaPlayerRepository implements PlayerRepository {
       recentHistory: recentHistory.map((entry) => ({
         type: entry.type,
         description: entry.description,
-        createdAt: new Date(entry.createdAt)
+        createdAt: new Date(entry.createdAt),
+        metadata: entry.metadata ?? undefined
       }))
     };
   }

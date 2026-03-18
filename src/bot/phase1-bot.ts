@@ -1,6 +1,7 @@
 import { AttributeKey, TryoutStatus, WalletTransactionType } from '../domain/shared/enums';
 import {
   CreatePlayerService,
+  GetCareerHistoryService,
   GetCareerStatusService,
   GetPlayerCardService,
   GetWalletStatementService,
@@ -24,6 +25,7 @@ export const phase1BotActions = {
   tryout: 'Tentar peneira',
   confirmTryout: 'Confirmar peneira',
   careerStatus: 'Status da carreira',
+  careerHistory: 'Histórico da carreira',
   walletStatement: 'Extrato da carteira',
   trainingPassing: 'Treinar passe',
   trainingShooting: 'Treinar finalização',
@@ -56,11 +58,14 @@ const walletTransactionLabels: Record<WalletTransactionType, string> = {
   [WalletTransactionType.TryoutCost]: 'Taxa de peneira'
 };
 
+const formatDate = (date: Date): string => date.toISOString().slice(0, 10);
+
 export class Phase1TelegramFacade {
   constructor(
     private readonly createPlayerService: CreatePlayerService,
     private readonly getPlayerCardService: GetPlayerCardService,
     private readonly getCareerStatusService: GetCareerStatusService,
+    private readonly getCareerHistoryService: GetCareerHistoryService,
     private readonly getWalletStatementService: GetWalletStatementService,
     private readonly weeklyTrainingService: WeeklyTrainingService,
     private readonly tryoutService: TryoutService
@@ -156,6 +161,23 @@ export class Phase1TelegramFacade {
     };
   }
 
+  async handleCareerHistory(telegramId: string): Promise<BotReply> {
+    const history = await this.getCareerHistoryService.execute(telegramId);
+
+    return {
+      text: [
+        `Histórico da carreira de ${history.playerName}`,
+        `Status atual: ${history.careerStatus}`,
+        `Clube atual: ${history.currentClubName ?? 'Base amadora'}`,
+        `Eventos exibidos: ${history.entries.length}/${history.totalEntries}`,
+        history.entries.length > 0
+          ? history.entries.map((entry) => `- ${formatDate(entry.createdAt)} | ${entry.description}`).join('\n')
+          : 'Nenhum evento registrado ainda.'
+      ].join('\n'),
+      actions: this.buildMainMenuActions(history.careerStatus === 'PROFESSIONAL')
+    };
+  }
+
   async handleWalletStatement(telegramId: string): Promise<BotReply> {
     const statement = await this.getWalletStatementService.execute(telegramId);
 
@@ -173,7 +195,7 @@ export class Phase1TelegramFacade {
               .join('\n')
           : 'Nenhuma transação registrada ainda.'
       ].join('\n'),
-      actions: this.buildMainMenuActions(false)
+      actions: this.buildMainMenuActions(statement.careerStatus === 'PROFESSIONAL')
     };
   }
 
@@ -205,9 +227,10 @@ export class Phase1TelegramFacade {
 
   async handleWeeklyTraining(telegramId: string, focus: AttributeKey): Promise<BotReply> {
     const result = await this.weeklyTrainingService.execute(telegramId, focus);
+    const player = await this.getPlayerCardService.execute(telegramId);
     return {
       text: `Treino concluído em ${focus}. Novo valor: ${result.newValue}. Saldo restante: ${result.walletBalance}.`,
-      actions: this.buildMainMenuActions(false)
+      actions: this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')
     };
   }
 
@@ -226,6 +249,7 @@ export class Phase1TelegramFacade {
     return [
       phase1BotActions.playerCard,
       phase1BotActions.careerStatus,
+      phase1BotActions.careerHistory,
       phase1BotActions.walletStatement,
       phase1BotActions.weeklyTraining,
       ...(isProfessional ? [] : [phase1BotActions.tryout])

@@ -15,6 +15,7 @@ const commandToAction = new Map<string, string>([
   ['/menu', phase1BotActions.mainMenu],
   ['/ficha', phase1BotActions.playerCard],
   ['/carreira', phase1BotActions.careerStatus],
+  ['/historico', phase1BotActions.careerHistory],
   ['/carteira', phase1BotActions.walletStatement],
   ['/treino', phase1BotActions.weeklyTraining],
   ['/peneira', phase1BotActions.tryout],
@@ -84,6 +85,9 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.careerStatus) {
         return await this.facade.handleCareerStatus(request.telegramId);
       }
+      if (action === phase1BotActions.careerHistory) {
+        return await this.facade.handleCareerHistory(request.telegramId);
+      }
       if (action === phase1BotActions.walletStatement) {
         return await this.facade.handleWalletStatement(request.telegramId);
       }
@@ -104,13 +108,26 @@ export class Phase1TelegramDispatcher {
 
       return {
         text: 'Comando não reconhecido nesta fase. Use o menu principal para continuar sua carreira.',
-        actions: [phase1BotActions.mainMenu, phase1BotActions.playerCard, phase1BotActions.weeklyTraining]
+        actions: [
+          phase1BotActions.mainMenu,
+          phase1BotActions.playerCard,
+          phase1BotActions.careerStatus,
+          phase1BotActions.careerHistory,
+          phase1BotActions.weeklyTraining
+        ]
       };
     } catch (error) {
       if (error instanceof DomainError) {
         return {
           text: `Não foi possível concluir a ação: ${error.message}`,
-          actions: [phase1BotActions.mainMenu, phase1BotActions.playerCard, phase1BotActions.weeklyTraining, phase1BotActions.tryout]
+          actions: [
+            phase1BotActions.mainMenu,
+            phase1BotActions.playerCard,
+            phase1BotActions.careerStatus,
+            phase1BotActions.careerHistory,
+            phase1BotActions.weeklyTraining,
+            phase1BotActions.tryout
+          ]
         };
       }
 

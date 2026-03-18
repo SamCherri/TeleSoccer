@@ -3,6 +3,7 @@ import { Phase1TelegramFacade } from '../bot/phase1-bot';
 import { Phase1PlayerCreationFlow } from '../bot/player-creation-flow';
 import {
   CreatePlayerService,
+  GetCareerHistoryService,
   GetCareerStatusService,
   GetPlayerCardService,
   GetWalletStatementService,
@@ -21,6 +22,7 @@ export const buildContainer = () => {
   const createPlayerService = new CreatePlayerService(playerRepository);
   const getPlayerCardService = new GetPlayerCardService(playerRepository);
   const getCareerStatusService = new GetCareerStatusService(playerRepository);
+  const getCareerHistoryService = new GetCareerHistoryService(playerRepository);
   const getWalletStatementService = new GetWalletStatementService(playerRepository);
   const weeklyTrainingService = new WeeklyTrainingService(playerRepository);
   const tryoutService = new TryoutService(playerRepository, clubRepository);
@@ -28,6 +30,7 @@ export const buildContainer = () => {
     createPlayerService,
     getPlayerCardService,
     getCareerStatusService,
+    getCareerHistoryService,
     getWalletStatementService,
     weeklyTrainingService,
     tryoutService
@@ -38,6 +41,7 @@ export const buildContainer = () => {
     createPlayerService,
     getPlayerCardService,
     getCareerStatusService,
+    getCareerHistoryService,
     getWalletStatementService,
     weeklyTrainingService,
     tryoutService,

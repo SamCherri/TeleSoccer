@@ -9,4 +9,5 @@ declare const module: {
 
 declare const process: {
   env: Record<string, string | undefined>;
+  exitCode?: number;
 };

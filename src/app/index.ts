@@ -1,5 +1,8 @@
 import { buildContainer } from './container';
 import { loadEnv } from '../config/env';
+import { TelegramBotApiClient } from '../infra/telegram/client';
+import { Phase1TelegramRuntime } from '../infra/telegram/runtime';
+import { createRailwayTelegramServer } from '../infra/http/railway-telegram-server';
 
 export const bootstrap = () => {
   const env = loadEnv();
@@ -11,8 +14,26 @@ export const bootstrap = () => {
   };
 };
 
+export const start = async () => {
+  const { env, container } = bootstrap();
+
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    console.log(`TeleSoccer Fase 1 carregado em modo ${env.NODE_ENV}. Runtime Telegram desabilitado: TELEGRAM_BOT_TOKEN não configurado.`);
+    return null;
+  }
+
+  const telegramClient = new TelegramBotApiClient(env.TELEGRAM_BOT_TOKEN);
+  const runtime = new Phase1TelegramRuntime(container.phase1TelegramDispatcher, telegramClient);
+  const server = createRailwayTelegramServer({ env, runtime, telegramClient });
+  await server.start();
+
+  console.log(`TeleSoccer Fase 1 ouvindo na porta ${env.PORT} com webhook ${server.webhookPath}.`);
+  return server;
+};
+
 if (require.main === module) {
-  const { env } = bootstrap();
-  // Nesta fase o bootstrap valida a configuração e deixa o app pronto para plugar um runtime Telegram.
-  console.log(`TeleSoccer Fase 1 carregado em modo ${env.NODE_ENV}.`);
+  start().catch((error) => {
+    console.error('Falha ao iniciar o TeleSoccer Fase 1.', error);
+    process.exitCode = 1;
+  });
 }

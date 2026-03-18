@@ -30,6 +30,7 @@ export interface PrismaTransactionClient {
   playerHistoryEntry: {
     create(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown[]>;
+    count(args: unknown): Promise<number>;
   };
   tryoutAttempt: {
     create(args: unknown): Promise<unknown>;

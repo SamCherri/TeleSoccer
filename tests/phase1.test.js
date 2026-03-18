@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   CreatePlayerService,
+  GetCareerHistoryService,
   GetCareerStatusService,
   GetPlayerCardService,
   GetWalletStatementService,
@@ -18,6 +19,10 @@ const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPositi
 const { PrismaPlayerCreationConversationStore } = require('../dist/infra/prisma/player-creation-conversation-store.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
+const { TelegramBotApiClient } = require('../dist/infra/telegram/client.js');
+const { botReplyToTelegramMessage } = require('../dist/infra/telegram/presenter.js');
+const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
+const { createRailwayTelegramServer } = require('../dist/infra/http/railway-telegram-server.js');
 const { DomainError } = require('../dist/shared/errors.js');
 
 class InMemoryPlayerRepository {
@@ -100,6 +105,24 @@ class InMemoryPlayerRepository {
     };
   }
 
+
+  async getCareerHistoryByTelegramId(telegramId, limit) {
+    const player = await this.findByTelegramId(telegramId);
+    if (!player) {
+      return null;
+    }
+
+    const history = (this.historyByPlayerId.get(player.id) ?? []).slice(-limit).reverse();
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      currentClubName: player.currentClubName,
+      totalEntries: this.historyByPlayerId.get(player.id)?.length ?? 0,
+      entries: history
+    };
+  }
+
   async getWalletStatementByTelegramId(telegramId, transactionLimit) {
     const player = await this.findByTelegramId(telegramId);
     if (!player) {
@@ -110,6 +133,7 @@ class InMemoryPlayerRepository {
     return {
       playerId: player.id,
       playerName: player.name,
+      careerStatus: player.careerStatus,
       walletBalance: player.walletBalance,
       transactionCount: Math.min(transactionLimit, transactions.length),
       recentTransactions: transactions.slice(-transactionLimit).reverse()
@@ -397,6 +421,7 @@ test('a facade do bot entrega texto de status de carreira coerente com o fluxo a
   const createPlayerService = new CreatePlayerService(repo);
   const getPlayerCardService = new GetPlayerCardService(repo);
   const getCareerStatusService = new GetCareerStatusService(repo);
+  const getCareerHistoryService = new GetCareerHistoryService(repo);
   const getWalletStatementService = new GetWalletStatementService(repo);
   const trainingService = new WeeklyTrainingService(repo);
   const tryoutService = new TryoutService(repo, clubs);
@@ -404,6 +429,7 @@ test('a facade do bot entrega texto de status de carreira coerente com o fluxo a
     createPlayerService,
     getPlayerCardService,
     getCareerStatusService,
+    getCareerHistoryService,
     getWalletStatementService,
     trainingService,
     tryoutService
@@ -432,6 +458,7 @@ test('a facade do bot entrega extrato da carteira com labels legíveis', async (
   const createPlayerService = new CreatePlayerService(repo);
   const getPlayerCardService = new GetPlayerCardService(repo);
   const getCareerStatusService = new GetCareerStatusService(repo);
+  const getCareerHistoryService = new GetCareerHistoryService(repo);
   const getWalletStatementService = new GetWalletStatementService(repo);
   const trainingService = new WeeklyTrainingService(repo);
   const tryoutService = new TryoutService(repo, clubs);
@@ -439,6 +466,7 @@ test('a facade do bot entrega extrato da carteira com labels legíveis', async (
     createPlayerService,
     getPlayerCardService,
     getCareerStatusService,
+    getCareerHistoryService,
     getWalletStatementService,
     trainingService,
     tryoutService
@@ -564,6 +592,7 @@ test('dispatcher abre prompt de criação no /start quando ainda não existe jog
     new CreatePlayerService(repo),
     new GetPlayerCardService(repo),
     new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
     new GetWalletStatementService(repo),
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
@@ -583,6 +612,7 @@ test('dispatcher abre menu principal e roteia comandos reais do bot', async () =
     createPlayerService,
     new GetPlayerCardService(repo),
     new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
     new GetWalletStatementService(repo),
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
@@ -627,6 +657,7 @@ test('dispatcher trata erro de domínio com retorno consistente para o bot', asy
     createPlayerService,
     new GetPlayerCardService(repo),
     new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
     new GetWalletStatementService(repo),
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
@@ -660,6 +691,7 @@ test('dispatcher conduz criação conversacional completa do jogador', async () 
     createPlayerService,
     new GetPlayerCardService(repo),
     new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
     new GetWalletStatementService(repo),
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
@@ -709,6 +741,7 @@ test('dispatcher permite cancelar criação conversacional com segurança', asyn
     new CreatePlayerService(repo),
     new GetPlayerCardService(repo),
     new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
     new GetWalletStatementService(repo),
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
@@ -821,6 +854,7 @@ test('dispatcher informa expiração e oferece reinício ao receber mensagem ap�
     new CreatePlayerService(repo),
     new GetPlayerCardService(repo),
     new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
     new GetWalletStatementService(repo),
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
@@ -851,4 +885,194 @@ test('dispatcher informa expiração e oferece reinício ao receber mensagem ap�
   assert.match(reply.text, /sessão de criação expirou/);
   assert.ok(reply.actions.includes(phase1BotActions.createPlayer));
   assert.equal(await store.get('115'), null);
+});
+
+test('serviço e facade expõem histórico detalhado da carreira', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const historyService = new GetCareerHistoryService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    historyService,
+    new GetWalletStatementService(repo),
+    trainingService,
+    tryoutService
+  );
+
+  await createPlayerService.execute({
+    telegramId: '116',
+    name: 'Sergio Vale',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 180,
+    weightKg: 73,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+  await trainingService.execute('116', AttributeKey.Shooting, new Date('2026-01-06T00:00:00.000Z'));
+  await tryoutService.execute('116', new Date('2026-01-13T00:00:00.000Z'));
+
+  const history = await historyService.execute('116');
+  assert.equal(history.totalEntries, 4);
+  assert.equal(history.entries[0].type, HistoryEntryType.ProfessionalContractStarted);
+
+  const reply = await facade.handleCareerHistory('116');
+  assert.match(reply.text, /Histórico da carreira de Sergio Vale/);
+  assert.match(reply.text, /Eventos exibidos: 4\/4/);
+  assert.ok(reply.actions.includes(phase1BotActions.careerHistory));
+});
+
+test('extrato da carteira e histórico ocultam peneira após promoção ao profissional', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+
+  await createPlayerService.execute({
+    telegramId: '117',
+    name: 'Andre Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 177,
+    weightKg: 71,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  const player = await repo.findByTelegramId('117');
+  player.attributes[AttributeKey.Passing] = 30;
+  player.attributes[AttributeKey.Shooting] = 20;
+  player.attributes[AttributeKey.Dribbling] = 20;
+  player.attributes[AttributeKey.Speed] = 20;
+  player.attributes[AttributeKey.Marking] = 20;
+  player.attributes[AttributeKey.Positioning] = 20;
+  player.attributes[AttributeKey.Reflexes] = 40;
+
+  await facade.handleTryout('117');
+
+  const walletReply = await facade.handleWalletStatement('117');
+  const historyReply = await facade.handleCareerHistory('117');
+  assert.equal(walletReply.actions.includes(phase1BotActions.tryout), false);
+  assert.equal(historyReply.actions.includes(phase1BotActions.tryout), false);
+});
+
+test('presenter converte resposta do bot em teclado do Telegram', async () => {
+  const payload = botReplyToTelegramMessage(12345, {
+    text: 'Painel',
+    actions: [phase1BotActions.playerCard, phase1BotActions.careerStatus, phase1BotActions.weeklyTraining]
+  });
+
+  assert.equal(payload.chat_id, 12345);
+  assert.equal(payload.reply_markup.keyboard.length, 2);
+  assert.deepEqual(payload.reply_markup.keyboard[0], [
+    { text: phase1BotActions.playerCard },
+    { text: phase1BotActions.careerStatus }
+  ]);
+});
+
+test('runtime do Telegram despacha update real e envia mensagem formatada', async () => {
+  const sentMessages = [];
+  const dispatcher = {
+    dispatch: async ({ telegramId, text }) => ({
+      text: `Recebido ${telegramId}:${text}`,
+      actions: [phase1BotActions.mainMenu]
+    })
+  };
+  const runtime = new Phase1TelegramRuntime(dispatcher, {
+    sendMessage: async (payload) => {
+      sentMessages.push(payload);
+    },
+    setWebhook: async () => {}
+  });
+
+  const processed = await runtime.processUpdate({
+    update_id: 1,
+    message: {
+      message_id: 99,
+      text: '/start',
+      chat: { id: 54321, type: 'private' },
+      from: { id: 777 }
+    }
+  });
+
+  assert.equal(processed, true);
+  assert.equal(sentMessages[0].chat_id, 54321);
+  assert.match(sentMessages[0].text, /Recebido 777:\/start/);
+});
+
+test('cliente Telegram usa Bot API real por HTTP', async () => {
+  const requests = [];
+  const client = new TelegramBotApiClient('token-123', async (url, init) => {
+    requests.push({ url, init });
+    return {
+      ok: true,
+      json: async () => ({ ok: true, result: true })
+    };
+  });
+
+  await client.sendMessage({ chat_id: 1, text: 'Olá' });
+  await client.setWebhook('https://tele.example/webhook', 'secret');
+
+  assert.match(String(requests[0].url), /sendMessage/);
+  assert.match(String(requests[1].url), /setWebhook/);
+  assert.match(requests[1].init.body, /secret/);
+});
+
+test('servidor Railway expõe healthcheck e processa webhook do Telegram', async () => {
+  const originalFetch = global.fetch;
+  const port = 3400 + Math.floor(Math.random() * 200);
+  const telegramFetch = async () => ({
+    ok: true,
+    json: async () => ({ ok: true, result: true })
+  });
+
+  const updates = [];
+  const runtime = {
+    processUpdate: async (update) => {
+      updates.push(update);
+      return true;
+    }
+  };
+  const telegramClient = new TelegramBotApiClient('token-railway', telegramFetch);
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgres://tele',
+      TELEGRAM_BOT_TOKEN: 'token-railway',
+      TELEGRAM_WEBHOOK_SECRET: 'railway-secret',
+      APP_BASE_URL: 'https://tele.example',
+      PORT: port,
+      NODE_ENV: 'test'
+    },
+    runtime,
+    telegramClient
+  });
+
+  await server.start();
+
+  const health = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(health.status, 200);
+
+  const webhook = await fetch(`http://127.0.0.1:${port}/telegram/webhook/railway-secret`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ update_id: 2, message: { message_id: 5, chat: { id: 1, type: 'private' }, from: { id: 2 }, text: '/start' } })
+  });
+  assert.equal(webhook.status, 200);
+  assert.equal(updates.length, 1);
+
+  await server.stop();
+  global.fetch = originalFetch;
 });

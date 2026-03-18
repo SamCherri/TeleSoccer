@@ -3,7 +3,7 @@ import { DomainError } from '../../shared/errors';
 import { calculateInitialAttributes } from './attribute-calculator';
 import { ClubRepository } from '../club/repository';
 import { PlayerRepository } from './repository';
-import { CareerStatusView, CreatePlayerInput, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from './types';
+import { CareerHistoryView, CareerStatusView, CreatePlayerInput, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from './types';
 import { getGameWeekNumber } from '../../shared/week';
 import {
   PHASE1_PLAYER_STARTING_AGE,
@@ -15,6 +15,7 @@ import {
 } from './phase1-rules';
 
 const DEFAULT_WALLET_TRANSACTION_LIMIT = 5;
+const DEFAULT_CAREER_HISTORY_LIMIT = 10;
 
 export class CreatePlayerService {
   constructor(private readonly playerRepository: PlayerRepository) {}
@@ -98,6 +99,23 @@ export class GetCareerStatusService {
     }
 
     return status;
+  }
+}
+
+export class GetCareerHistoryService {
+  constructor(private readonly playerRepository: PlayerRepository) {}
+
+  async execute(telegramId: string, limit = DEFAULT_CAREER_HISTORY_LIMIT): Promise<CareerHistoryView> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+      throw new DomainError('O limite do histórico deve ficar entre 1 e 20 eventos.');
+    }
+
+    const history = await this.playerRepository.getCareerHistoryByTelegramId(telegramId, limit);
+    if (!history) {
+      throw new DomainError('Jogador não encontrado para este usuário.');
+    }
+
+    return history;
   }
 }
 
