@@ -1,5 +1,14 @@
 import { AttributeKey } from '../shared/enums';
-import { CareerStatusView, CreatePlayerInput, HistoryEntryRecord, PlayerProfile, TrainingResult, TryoutResult, WalletTransactionRecord } from './types';
+import {
+  CareerStatusView,
+  CreatePlayerInput,
+  HistoryEntryRecord,
+  PlayerProfile,
+  TrainingResult,
+  TryoutResult,
+  WalletStatementView,
+  WalletTransactionRecord
+} from './types';
 
 export interface CreatePlayerPersistenceInput extends CreatePlayerInput {
   generationNumber: number;
@@ -14,6 +23,7 @@ export interface PlayerRepository {
   createPlayer(input: CreatePlayerPersistenceInput): Promise<PlayerProfile>;
   findByTelegramId(telegramId: string): Promise<PlayerProfile | null>;
   getCareerStatusByTelegramId(telegramId: string, currentWeekNumber: number): Promise<CareerStatusView | null>;
+  getWalletStatementByTelegramId(telegramId: string, transactionLimit: number): Promise<WalletStatementView | null>;
   applyTraining(params: {
     playerId: string;
     focus: AttributeKey;

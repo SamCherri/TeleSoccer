@@ -5,12 +5,13 @@ const {
   CreatePlayerService,
   GetCareerStatusService,
   GetPlayerCardService,
+  GetWalletStatementService,
   TryoutService,
   WeeklyTrainingService,
   phase1Economy
 } = require('../dist/domain/player/services.js');
 const { Phase1TelegramFacade } = require('../dist/bot/phase1-bot.js');
-const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus } = require('../dist/domain/shared/enums.js');
+const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
 
@@ -20,6 +21,7 @@ class InMemoryPlayerRepository {
     this.trainingWeeks = new Set();
     this.historyByPlayerId = new Map();
     this.tryoutsByPlayerId = new Map();
+    this.walletTransactionsByPlayerId = new Map();
   }
 
   async createPlayer(input) {
@@ -48,6 +50,13 @@ class InMemoryPlayerRepository {
       input.initialHistory.map((entry) => ({ ...entry, createdAt: new Date('2026-01-05T00:00:00.000Z') }))
     );
     this.tryoutsByPlayerId.set(player.id, []);
+    this.walletTransactionsByPlayerId.set(
+      player.id,
+      input.initialTransactions.map((transaction) => ({
+        ...transaction,
+        createdAt: new Date('2026-01-05T00:00:00.000Z')
+      }))
+    );
     return player;
   }
 
@@ -86,6 +95,22 @@ class InMemoryPlayerRepository {
     };
   }
 
+  async getWalletStatementByTelegramId(telegramId, transactionLimit) {
+    const player = await this.findByTelegramId(telegramId);
+    if (!player) {
+      return null;
+    }
+
+    const transactions = this.walletTransactionsByPlayerId.get(player.id) ?? [];
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      walletBalance: player.walletBalance,
+      transactionCount: Math.min(transactionLimit, transactions.length),
+      recentTransactions: transactions.slice(-transactionLimit).reverse()
+    };
+  }
+
   async applyTraining(params) {
     const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
     const weekKey = `${params.playerId}:${params.weekNumber}`;
@@ -99,6 +124,10 @@ class InMemoryPlayerRepository {
     this.historyByPlayerId.get(player.id).push({
       type: params.historyEntry.type,
       description: params.historyEntry.description,
+      createdAt: new Date(`2026-01-${String(5 + params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
+    this.walletTransactionsByPlayerId.get(player.id).push({
+      ...params.walletTransaction,
       createdAt: new Date(`2026-01-${String(5 + params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
     });
     return {
@@ -126,6 +155,10 @@ class InMemoryPlayerRepository {
       score: params.score,
       requiredScore: params.requiredScore,
       clubName: params.approvedClubName,
+      createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
+    this.walletTransactionsByPlayerId.get(player.id).push({
+      ...params.walletTransaction,
       createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
     });
     for (const entry of params.historyEntries) {
@@ -304,23 +337,15 @@ test('expõe status da carreira com disponibilidade de treino, última peneira e
   assert.equal(status.recentHistory[0].type, HistoryEntryType.ProfessionalContractStarted);
 });
 
-test('a facade do bot entrega texto de status de carreira coerente com o fluxo atual', async () => {
+test('expõe extrato da carteira com transações recentes de treino e peneira', async () => {
   const repo = new InMemoryPlayerRepository();
   const clubs = new InMemoryClubRepository();
   const createPlayerService = new CreatePlayerService(repo);
-  const getPlayerCardService = new GetPlayerCardService(repo);
-  const getCareerStatusService = new GetCareerStatusService(repo);
   const trainingService = new WeeklyTrainingService(repo);
   const tryoutService = new TryoutService(repo, clubs);
-  const facade = new Phase1TelegramFacade(
-    createPlayerService,
-    getPlayerCardService,
-    getCareerStatusService,
-    trainingService,
-    tryoutService
-  );
+  const walletStatementService = new GetWalletStatementService(repo);
 
-  await facade.handleCreatePlayer({
+  await createPlayerService.execute({
     telegramId: '106',
     name: 'Diego Luz',
     nationality: 'Brasil',
@@ -331,10 +356,105 @@ test('a facade do bot entrega texto de status de carreira coerente com o fluxo a
     visual: { skinTone: 'parda', hairStyle: 'ondulado' }
   });
 
-  const reply = await facade.handleCareerStatus('106');
-  assert.match(reply.text, /Status da carreira de Diego Luz/);
+  await trainingService.execute('106', AttributeKey.Passing, new Date('2026-01-06T00:00:00.000Z'));
+  await tryoutService.execute('106', new Date('2026-01-13T00:00:00.000Z'));
+
+  const statement = await walletStatementService.execute('106');
+  assert.equal(statement.walletBalance, 95);
+  assert.equal(statement.transactionCount, 3);
+  assert.equal(statement.recentTransactions[0].type, WalletTransactionType.TryoutCost);
+  assert.equal(statement.recentTransactions[1].type, WalletTransactionType.TrainingCost);
+  assert.equal(statement.recentTransactions[2].type, WalletTransactionType.InitialGrant);
+});
+
+test('valida limite permitido do extrato da carteira', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const walletStatementService = new GetWalletStatementService(repo);
+
+  await createPlayerService.execute({
+    telegramId: '107',
+    name: 'Marcos Vale',
+    nationality: 'Brasil',
+    position: PlayerPosition.Defender,
+    dominantFoot: DominantFoot.Left,
+    heightCm: 180,
+    weightKg: 75,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  await assert.rejects(() => walletStatementService.execute('107', 0), /limite do extrato/);
+});
+
+test('a facade do bot entrega texto de status de carreira coerente com o fluxo atual', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const getPlayerCardService = new GetPlayerCardService(repo);
+  const getCareerStatusService = new GetCareerStatusService(repo);
+  const getWalletStatementService = new GetWalletStatementService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    getPlayerCardService,
+    getCareerStatusService,
+    getWalletStatementService,
+    trainingService,
+    tryoutService
+  );
+
+  await facade.handleCreatePlayer({
+    telegramId: '108',
+    name: 'Cadu Melo',
+    nationality: 'Brasil',
+    position: PlayerPosition.Midfielder,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 174,
+    weightKg: 68,
+    visual: { skinTone: 'parda', hairStyle: 'ondulado' }
+  });
+
+  const reply = await facade.handleCareerStatus('108');
+  assert.match(reply.text, /Status da carreira de Cadu Melo/);
   assert.match(reply.text, /Treino da semana: disponível/);
-  assert.ok(reply.actions.includes('Treino semanal'));
+  assert.ok(reply.actions.includes('Extrato da carteira'));
+});
+
+test('a facade do bot entrega extrato da carteira com labels legíveis', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const getPlayerCardService = new GetPlayerCardService(repo);
+  const getCareerStatusService = new GetCareerStatusService(repo);
+  const getWalletStatementService = new GetWalletStatementService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    getPlayerCardService,
+    getCareerStatusService,
+    getWalletStatementService,
+    trainingService,
+    tryoutService
+  );
+
+  await facade.handleCreatePlayer({
+    telegramId: '109',
+    name: 'Igor Reis',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 177,
+    weightKg: 71,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+  await facade.handleWeeklyTraining('109', AttributeKey.Shooting);
+
+  const reply = await facade.handleWalletStatement('109');
+  assert.match(reply.text, /Extrato da carteira de Igor Reis/);
+  assert.match(reply.text, /Custo de treino: -20/);
+  assert.ok(reply.actions.includes('Status da carreira'));
 });
 
 test('o payload de persistência do treino contém apenas campos válidos da tabela', async () => {

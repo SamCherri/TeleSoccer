@@ -1,7 +1,7 @@
 import { CareerStatus, HistoryEntryType, TryoutStatus } from '../../domain/shared/enums';
 import { DomainError } from '../../shared/errors';
 import { CreatePlayerPersistenceInput, PlayerRepository } from '../../domain/player/repository';
-import { CareerStatusView, PlayerProfile, TrainingResult, TryoutResult } from '../../domain/player/types';
+import { CareerStatusView, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from '../../domain/player/types';
 import { getPrismaClient } from './client';
 import { PHASE1_PLAYER_STARTING_AGE } from '../../domain/player/phase1-rules';
 
@@ -19,8 +19,16 @@ interface PlayerAttributeRecord {
   value: number;
 }
 
+interface WalletTransactionEntryRecord {
+  type: WalletStatementView['recentTransactions'][number]['type'];
+  amount: number;
+  description: string;
+  createdAt: Date | string;
+}
+
 interface WalletRecord {
   balance: number;
+  transactions?: WalletTransactionEntryRecord[];
 }
 
 interface PlayerWithRelationsRecord {
@@ -159,6 +167,45 @@ export class PrismaPlayerRepository implements PlayerRepository {
     })) as PlayerWithRelationsRecord | null;
 
     return player ? this.toProfile(player) : null;
+  }
+
+  async getWalletStatementByTelegramId(telegramId: string, transactionLimit: number): Promise<WalletStatementView | null> {
+    const prisma = getPrismaClient();
+    const player = (await prisma.player.findFirst({
+      where: {
+        generation: {
+          isCurrent: true,
+          user: { telegramId }
+        }
+      },
+      include: {
+        wallet: {
+          include: {
+            transactions: {
+              orderBy: { createdAt: 'desc' },
+              take: transactionLimit
+            }
+          }
+        }
+      }
+    })) as ({ id: string; name: string; wallet: WalletRecord | null }) | null;
+
+    if (!player?.wallet) {
+      return null;
+    }
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      walletBalance: player.wallet.balance,
+      transactionCount: player.wallet.transactions?.length ?? 0,
+      recentTransactions: (player.wallet.transactions ?? []).map((transaction) => ({
+        type: transaction.type,
+        amount: transaction.amount,
+        description: transaction.description,
+        createdAt: new Date(transaction.createdAt)
+      }))
+    };
   }
 
   async getCareerStatusByTelegramId(telegramId: string, currentWeekNumber: number): Promise<CareerStatusView | null> {

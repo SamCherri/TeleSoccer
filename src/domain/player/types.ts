@@ -68,6 +68,21 @@ export interface CareerStatusView {
   recentHistory: CareerStatusHistoryItem[];
 }
 
+export interface WalletStatementItem {
+  type: WalletTransactionType;
+  amount: number;
+  description: string;
+  createdAt: Date;
+}
+
+export interface WalletStatementView {
+  playerId: string;
+  playerName: string;
+  walletBalance: number;
+  transactionCount: number;
+  recentTransactions: WalletStatementItem[];
+}
+
 export interface TrainingResult {
   playerId: string;
   focus: AttributeKey;

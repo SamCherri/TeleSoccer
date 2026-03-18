@@ -1,5 +1,12 @@
 import { Phase1TelegramFacade } from '../bot/phase1-bot';
-import { CreatePlayerService, GetCareerStatusService, GetPlayerCardService, TryoutService, WeeklyTrainingService } from '../domain/player/services';
+import {
+  CreatePlayerService,
+  GetCareerStatusService,
+  GetPlayerCardService,
+  GetWalletStatementService,
+  TryoutService,
+  WeeklyTrainingService
+} from '../domain/player/services';
 import { PrismaClubRepository } from '../infra/prisma/club-repository';
 import { PrismaPlayerRepository } from '../infra/prisma/player-repository';
 
@@ -10,6 +17,7 @@ export const buildContainer = () => {
   const createPlayerService = new CreatePlayerService(playerRepository);
   const getPlayerCardService = new GetPlayerCardService(playerRepository);
   const getCareerStatusService = new GetCareerStatusService(playerRepository);
+  const getWalletStatementService = new GetWalletStatementService(playerRepository);
   const weeklyTrainingService = new WeeklyTrainingService(playerRepository);
   const tryoutService = new TryoutService(playerRepository, clubRepository);
 
@@ -17,12 +25,14 @@ export const buildContainer = () => {
     createPlayerService,
     getPlayerCardService,
     getCareerStatusService,
+    getWalletStatementService,
     weeklyTrainingService,
     tryoutService,
     phase1TelegramFacade: new Phase1TelegramFacade(
       createPlayerService,
       getPlayerCardService,
       getCareerStatusService,
+      getWalletStatementService,
       weeklyTrainingService,
       tryoutService
     )
