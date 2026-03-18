@@ -10,8 +10,10 @@ const {
   WeeklyTrainingService,
   phase1Economy
 } = require('../dist/domain/player/services.js');
+const { InMemoryPlayerCreationConversationStore } = require('../dist/bot/conversation-store.js');
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
+const { Phase1PlayerCreationFlow } = require('../dist/bot/player-creation-flow.js');
 const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
@@ -564,7 +566,7 @@ test('dispatcher abre prompt de criação no /start quando ainda não existe jog
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
   );
-  const dispatcher = new Phase1TelegramDispatcher(facade);
+  const dispatcher = new Phase1TelegramDispatcher(facade, new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore()));
 
   const reply = await dispatcher.dispatch({ telegramId: '110', text: '/start' });
   assert.match(reply.text, /Bem-vindo ao TeleSoccer/);
@@ -583,7 +585,7 @@ test('dispatcher abre menu principal e roteia comandos reais do bot', async () =
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
   );
-  const dispatcher = new Phase1TelegramDispatcher(facade);
+  const dispatcher = new Phase1TelegramDispatcher(facade, new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore()));
 
   await createPlayerService.execute({
     telegramId: '111',
@@ -627,7 +629,7 @@ test('dispatcher trata erro de domínio com retorno consistente para o bot', asy
     new WeeklyTrainingService(repo),
     new TryoutService(repo, clubs)
   );
-  const dispatcher = new Phase1TelegramDispatcher(facade);
+  const dispatcher = new Phase1TelegramDispatcher(facade, new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore()));
 
   await createPlayerService.execute({
     telegramId: '112',
@@ -645,4 +647,76 @@ test('dispatcher trata erro de domínio com retorno consistente para o bot', asy
 
   assert.match(errorReply.text, /Não foi possível concluir a ação/);
   assert.ok(errorReply.actions.includes(phase1BotActions.mainMenu));
+});
+
+
+test('dispatcher conduz criação conversacional completa do jogador', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const creationFlow = new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore());
+  const dispatcher = new Phase1TelegramDispatcher(facade, creationFlow);
+
+  let reply = await dispatcher.dispatch({ telegramId: '113', text: phase1BotActions.createPlayer });
+  assert.match(reply.text, /Etapa 1\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: 'Caio Rocha' });
+  assert.match(reply.text, /Etapa 2\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: 'Brasil' });
+  assert.match(reply.text, /Etapa 3\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: phase1BotActions.positionForward });
+  assert.match(reply.text, /Etapa 4\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: phase1BotActions.footRight });
+  assert.match(reply.text, /Etapa 5\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: '178' });
+  assert.match(reply.text, /Etapa 6\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: '72' });
+  assert.match(reply.text, /Etapa 7\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: phase1BotActions.skinToneTan });
+  assert.match(reply.text, /Etapa 8\/9/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: phase1BotActions.hairStyleShort });
+  assert.match(reply.text, /Etapa 9\/9/);
+  assert.match(reply.text, /Caio Rocha/);
+
+  reply = await dispatcher.dispatch({ telegramId: '113', text: phase1BotActions.confirmCreatePlayer });
+  assert.match(reply.text, /criado com sucesso/);
+
+  const createdPlayer = await repo.findByTelegramId('113');
+  assert.equal(createdPlayer.name, 'Caio Rocha');
+});
+
+test('dispatcher permite cancelar criação conversacional com segurança', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const facade = new Phase1TelegramFacade(
+    new CreatePlayerService(repo),
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const creationFlow = new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore());
+  const dispatcher = new Phase1TelegramDispatcher(facade, creationFlow);
+
+  await dispatcher.dispatch({ telegramId: '114', text: phase1BotActions.createPlayer });
+  const cancelReply = await dispatcher.dispatch({ telegramId: '114', text: '/cancelar' });
+
+  assert.match(cancelReply.text, /cancelada com segurança/);
+  assert.equal(await repo.findByTelegramId('114'), null);
 });

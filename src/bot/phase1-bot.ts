@@ -31,7 +31,23 @@ export const phase1BotActions = {
   trainingSpeed: 'Treinar velocidade',
   trainingMarking: 'Treinar marcação',
   trainingReflexes: 'Treinar reflexos',
-  cancel: 'Cancelar'
+  cancel: 'Cancelar',
+  confirmCreatePlayer: 'Confirmar criação',
+  restartCreation: 'Refazer criação',
+  positionGoalkeeper: 'Goleiro',
+  positionDefender: 'Defensor',
+  positionMidfielder: 'Meio-campo',
+  positionForward: 'Atacante',
+  footRight: 'Direito',
+  footLeft: 'Esquerdo',
+  skinToneFair: 'Clara',
+  skinToneTan: 'Morena',
+  skinToneBrown: 'Parda',
+  skinToneDark: 'Negra',
+  hairStyleShort: 'Curto',
+  hairStyleCurly: 'Cacheado',
+  hairStyleWavy: 'Ondulado',
+  hairStyleShaved: 'Raspado'
 } as const;
 
 const walletTransactionLabels: Record<WalletTransactionType, string> = {
@@ -67,7 +83,7 @@ export class Phase1TelegramFacade {
       text: [
         'Bem-vindo ao TeleSoccer.',
         'Você ainda não criou seu jogador da Fase 1.',
-        'Envie os dados de criação pelo fluxo do bot e confirme para iniciar sua carreira.'
+        'Use o fluxo conversacional do bot para informar os dados e confirmar sua carreira.'
       ].join('\n'),
       actions: [phase1BotActions.createPlayer]
     };

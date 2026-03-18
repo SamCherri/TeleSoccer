@@ -2,6 +2,7 @@ import { AttributeKey } from '../domain/shared/enums';
 import { CreatePlayerInput } from '../domain/player/types';
 import { DomainError } from '../shared/errors';
 import { BotReply, phase1BotActions, Phase1TelegramFacade } from './phase1-bot';
+import { Phase1PlayerCreationFlow } from './player-creation-flow';
 
 export interface Phase1BotRequest {
   telegramId: string;
@@ -32,25 +33,45 @@ const trainingActionMap = new Map<string, AttributeKey>([
 ]);
 
 export class Phase1TelegramDispatcher {
-  constructor(private readonly facade: Phase1TelegramFacade) {}
+  constructor(
+    private readonly facade: Phase1TelegramFacade,
+    private readonly creationFlow: Phase1PlayerCreationFlow
+  ) {}
 
   async dispatch(request: Phase1BotRequest): Promise<BotReply> {
     const normalizedText = request.text?.trim() ?? '/start';
     const action = commandToAction.get(normalizedText) ?? normalizedText;
 
     try {
+      if (this.creationFlow.isActive(request.telegramId)) {
+        if (action === phase1BotActions.cancel) {
+          return this.creationFlow.cancel(request.telegramId);
+        }
+
+        if (commandToAction.has(normalizedText) && action !== phase1BotActions.createPlayer) {
+          return this.creationFlow.remindCurrentStep(request.telegramId);
+        }
+
+        const flowResult = this.creationFlow.handleInput(request.telegramId, action);
+        if (flowResult.kind === 'submit') {
+          return await this.facade.handleCreatePlayer(flowResult.input);
+        }
+
+        return flowResult.reply;
+      }
+
       if (action === phase1BotActions.mainMenu) {
         return await this.facade.handleEntry(request.telegramId);
       }
       if (action === phase1BotActions.cancel) {
-        return await this.facade.handleMainMenu(request.telegramId);
+        return await this.facade.handleEntry(request.telegramId);
       }
       if (action === phase1BotActions.createPlayer) {
-        if (!request.payload) {
-          return this.facade.handleCreatePlayerPrompt();
+        if (request.payload) {
+          return await this.facade.handleCreatePlayer(request.payload);
         }
 
-        return await this.facade.handleCreatePlayer(request.payload);
+        return this.creationFlow.start(request.telegramId);
       }
       if (action === phase1BotActions.playerCard) {
         return await this.facade.handlePlayerCard(request.telegramId);
