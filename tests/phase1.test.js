@@ -1,15 +1,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { CreatePlayerService, GetPlayerCardService, TryoutService, WeeklyTrainingService, phase1Economy } = require('../dist/domain/player/services.js');
-const { AttributeKey, CareerStatus, DominantFoot, PlayerPosition, TryoutStatus } = require('../dist/domain/shared/enums.js');
+const {
+  CreatePlayerService,
+  GetCareerStatusService,
+  GetPlayerCardService,
+  GetWalletStatementService,
+  TryoutService,
+  WeeklyTrainingService,
+  phase1Economy
+} = require('../dist/domain/player/services.js');
+const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
+const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
+const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
+const { DomainError } = require('../dist/shared/errors.js');
 
 class InMemoryPlayerRepository {
   constructor() {
     this.playersByTelegramId = new Map();
     this.trainingWeeks = new Set();
+    this.historyByPlayerId = new Map();
+    this.tryoutsByPlayerId = new Map();
+    this.walletTransactionsByPlayerId = new Map();
   }
 
   async createPlayer(input) {
@@ -33,6 +47,18 @@ class InMemoryPlayerRepository {
       tryoutHistoryCount: 0
     };
     this.playersByTelegramId.set(input.telegramId, player);
+    this.historyByPlayerId.set(
+      player.id,
+      input.initialHistory.map((entry) => ({ ...entry, createdAt: new Date('2026-01-05T00:00:00.000Z') }))
+    );
+    this.tryoutsByPlayerId.set(player.id, []);
+    this.walletTransactionsByPlayerId.set(
+      player.id,
+      input.initialTransactions.map((transaction) => ({
+        ...transaction,
+        createdAt: new Date('2026-01-05T00:00:00.000Z')
+      }))
+    );
     return player;
   }
 
@@ -40,16 +66,72 @@ class InMemoryPlayerRepository {
     return this.playersByTelegramId.get(telegramId) ?? null;
   }
 
+  async getCareerStatusByTelegramId(telegramId, currentWeekNumber) {
+    const player = await this.findByTelegramId(telegramId);
+    if (!player) {
+      return null;
+    }
+
+    const history = this.historyByPlayerId.get(player.id) ?? [];
+    const tryouts = this.tryoutsByPlayerId.get(player.id) ?? [];
+    const latestTryout = tryouts.at(-1);
+    const trainingWeeks = [...this.trainingWeeks]
+      .filter((key) => key.startsWith(`${player.id}:`))
+      .map((key) => Number(key.split(':')[1]))
+      .sort((a, b) => b - a);
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      age: player.age,
+      currentClubName: player.currentClubName,
+      walletBalance: player.walletBalance,
+      totalTrainings: player.trainingHistoryCount,
+      totalTryouts: player.tryoutHistoryCount,
+      lastTrainingWeek: trainingWeeks[0],
+      trainingAvailableThisWeek: trainingWeeks[0] !== currentWeekNumber,
+      currentWeekNumber,
+      latestTryout,
+      recentHistory: history.slice(-5).reverse()
+    };
+  }
+
+  async getWalletStatementByTelegramId(telegramId, transactionLimit) {
+    const player = await this.findByTelegramId(telegramId);
+    if (!player) {
+      return null;
+    }
+
+    const transactions = this.walletTransactionsByPlayerId.get(player.id) ?? [];
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      walletBalance: player.walletBalance,
+      transactionCount: Math.min(transactionLimit, transactions.length),
+      recentTransactions: transactions.slice(-transactionLimit).reverse()
+    };
+  }
+
   async applyTraining(params) {
     const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
     const weekKey = `${params.playerId}:${params.weekNumber}`;
     if (this.trainingWeeks.has(weekKey)) {
-      throw new Error('O treino desta semana já foi utilizado.');
+      throw new DomainError('O treino desta semana já foi utilizado.');
     }
     this.trainingWeeks.add(weekKey);
     player.walletBalance -= params.cost;
     player.attributes[params.focus] += params.attributeGain;
     player.trainingHistoryCount += 1;
+    this.historyByPlayerId.get(player.id).push({
+      type: params.historyEntry.type,
+      description: params.historyEntry.description,
+      createdAt: new Date(`2026-01-${String(5 + params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
+    this.walletTransactionsByPlayerId.get(player.id).push({
+      ...params.walletTransaction,
+      createdAt: new Date(`2026-01-${String(5 + params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
     return {
       playerId: player.id,
       focus: params.focus,
@@ -64,14 +146,33 @@ class InMemoryPlayerRepository {
     const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
     player.walletBalance -= params.cost;
     player.tryoutHistoryCount += 1;
+    const status = params.approvedClubId ? TryoutStatus.Approved : TryoutStatus.Failed;
     if (params.approvedClubId && params.approvedClubName) {
       player.careerStatus = CareerStatus.Professional;
       player.currentClubId = params.approvedClubId;
       player.currentClubName = params.approvedClubName;
     }
+    this.tryoutsByPlayerId.get(player.id).push({
+      status,
+      score: params.score,
+      requiredScore: params.requiredScore,
+      clubName: params.approvedClubName,
+      createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
+    this.walletTransactionsByPlayerId.get(player.id).push({
+      ...params.walletTransaction,
+      createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
+    for (const entry of params.historyEntries) {
+      this.historyByPlayerId.get(player.id).push({
+        type: entry.type,
+        description: entry.description,
+        createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+      });
+    }
     return {
       playerId: player.id,
-      status: params.approvedClubId ? TryoutStatus.Approved : TryoutStatus.Failed,
+      status,
       score: params.score,
       requiredScore: params.requiredScore,
       cost: params.cost,
@@ -206,6 +307,158 @@ test('cobra peneira, pode reprovar e promove ao profissional quando aprovado', a
   assert.equal(updated.careerStatus, CareerStatus.Professional);
 });
 
+test('expõe status da carreira com disponibilidade de treino, última peneira e histórico recente', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const careerStatusService = new GetCareerStatusService(repo);
+
+  await createPlayerService.execute({
+    telegramId: '105',
+    name: 'Bruno Costa',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Left,
+    heightCm: 178,
+    weightKg: 72,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  await trainingService.execute('105', AttributeKey.Shooting, new Date('2026-01-06T00:00:00.000Z'));
+  await tryoutService.execute('105', new Date('2026-01-13T00:00:00.000Z'));
+
+  const status = await careerStatusService.execute('105', new Date('2026-01-13T00:00:00.000Z'));
+  assert.equal(status.currentWeekNumber, 2);
+  assert.equal(status.totalTrainings, 1);
+  assert.equal(status.totalTryouts, 1);
+  assert.equal(status.trainingAvailableThisWeek, true);
+  assert.equal(status.latestTryout.status, TryoutStatus.Approved);
+  assert.equal(status.latestTryout.clubName, 'Porto Azul FC');
+  assert.equal(status.recentHistory[0].type, HistoryEntryType.ProfessionalContractStarted);
+});
+
+test('expõe extrato da carteira com transações recentes de treino e peneira', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const walletStatementService = new GetWalletStatementService(repo);
+
+  await createPlayerService.execute({
+    telegramId: '106',
+    name: 'Diego Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Midfielder,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 174,
+    weightKg: 68,
+    visual: { skinTone: 'parda', hairStyle: 'ondulado' }
+  });
+
+  await trainingService.execute('106', AttributeKey.Passing, new Date('2026-01-06T00:00:00.000Z'));
+  await tryoutService.execute('106', new Date('2026-01-13T00:00:00.000Z'));
+
+  const statement = await walletStatementService.execute('106');
+  assert.equal(statement.walletBalance, 95);
+  assert.equal(statement.transactionCount, 3);
+  assert.equal(statement.recentTransactions[0].type, WalletTransactionType.TryoutCost);
+  assert.equal(statement.recentTransactions[1].type, WalletTransactionType.TrainingCost);
+  assert.equal(statement.recentTransactions[2].type, WalletTransactionType.InitialGrant);
+});
+
+test('valida limite permitido do extrato da carteira', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const walletStatementService = new GetWalletStatementService(repo);
+
+  await createPlayerService.execute({
+    telegramId: '107',
+    name: 'Marcos Vale',
+    nationality: 'Brasil',
+    position: PlayerPosition.Defender,
+    dominantFoot: DominantFoot.Left,
+    heightCm: 180,
+    weightKg: 75,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  await assert.rejects(() => walletStatementService.execute('107', 0), /limite do extrato/);
+});
+
+test('a facade do bot entrega texto de status de carreira coerente com o fluxo atual', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const getPlayerCardService = new GetPlayerCardService(repo);
+  const getCareerStatusService = new GetCareerStatusService(repo);
+  const getWalletStatementService = new GetWalletStatementService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    getPlayerCardService,
+    getCareerStatusService,
+    getWalletStatementService,
+    trainingService,
+    tryoutService
+  );
+
+  await facade.handleCreatePlayer({
+    telegramId: '108',
+    name: 'Cadu Melo',
+    nationality: 'Brasil',
+    position: PlayerPosition.Midfielder,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 174,
+    weightKg: 68,
+    visual: { skinTone: 'parda', hairStyle: 'ondulado' }
+  });
+
+  const reply = await facade.handleCareerStatus('108');
+  assert.match(reply.text, /Status da carreira de Cadu Melo/);
+  assert.match(reply.text, /Treino da semana: disponível/);
+  assert.ok(reply.actions.includes('Extrato da carteira'));
+});
+
+test('a facade do bot entrega extrato da carteira com labels legíveis', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const getPlayerCardService = new GetPlayerCardService(repo);
+  const getCareerStatusService = new GetCareerStatusService(repo);
+  const getWalletStatementService = new GetWalletStatementService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    getPlayerCardService,
+    getCareerStatusService,
+    getWalletStatementService,
+    trainingService,
+    tryoutService
+  );
+
+  await facade.handleCreatePlayer({
+    telegramId: '109',
+    name: 'Igor Reis',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 177,
+    weightKg: 71,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+  await facade.handleWeeklyTraining('109', AttributeKey.Shooting);
+
+  const reply = await facade.handleWalletStatement('109');
+  assert.match(reply.text, /Extrato da carteira de Igor Reis/);
+  assert.match(reply.text, /Custo de treino: -20/);
+  assert.ok(reply.actions.includes('Status da carreira'));
+});
+
 test('o payload de persistência do treino contém apenas campos válidos da tabela', async () => {
   assert.deepEqual(
     buildTrainingSessionCreateData({
@@ -297,4 +550,99 @@ test('o repositório Prisma não envia walletTransaction nem historyEntry ao cre
   assert.equal(result.walletBalance, 130);
 
   setPrismaClientForTests(null);
+});
+
+
+test('dispatcher abre prompt de criação no /start quando ainda não existe jogador', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const facade = new Phase1TelegramFacade(
+    new CreatePlayerService(repo),
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade);
+
+  const reply = await dispatcher.dispatch({ telegramId: '110', text: '/start' });
+  assert.match(reply.text, /Bem-vindo ao TeleSoccer/);
+  assert.deepEqual(reply.actions, [phase1BotActions.createPlayer]);
+});
+
+test('dispatcher abre menu principal e roteia comandos reais do bot', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade);
+
+  await createPlayerService.execute({
+    telegramId: '111',
+    name: 'Nando Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 176,
+    weightKg: 70,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  const startReply = await dispatcher.dispatch({ telegramId: '111', text: '/start' });
+  assert.match(startReply.text, /Painel do jogador/);
+  assert.ok(startReply.actions.includes(phase1BotActions.weeklyTraining));
+
+  const trainingMenuReply = await dispatcher.dispatch({ telegramId: '111', text: '/treino' });
+  assert.match(trainingMenuReply.text, /Cada treino custa 20 moedas/);
+  assert.ok(trainingMenuReply.actions.includes(phase1BotActions.trainingPassing));
+
+  const trainingReply = await dispatcher.dispatch({ telegramId: '111', text: phase1BotActions.trainingPassing });
+  assert.match(trainingReply.text, /Treino concluído em PASSING/);
+
+  const walletReply = await dispatcher.dispatch({ telegramId: '111', text: '/carteira' });
+  assert.match(walletReply.text, /Extrato da carteira de Nando Luz/);
+
+  const tryoutPrompt = await dispatcher.dispatch({ telegramId: '111', text: '/peneira' });
+  assert.match(tryoutPrompt.text, /Esta tentativa custa 35 moedas/);
+  assert.ok(tryoutPrompt.actions.includes(phase1BotActions.confirmTryout));
+});
+
+test('dispatcher trata erro de domínio com retorno consistente para o bot', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade);
+
+  await createPlayerService.execute({
+    telegramId: '112',
+    name: 'Luan Costa',
+    nationality: 'Brasil',
+    position: PlayerPosition.Defender,
+    dominantFoot: DominantFoot.Left,
+    heightCm: 182,
+    weightKg: 77,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  await dispatcher.dispatch({ telegramId: '112', text: phase1BotActions.trainingMarking });
+  const errorReply = await dispatcher.dispatch({ telegramId: '112', text: phase1BotActions.trainingMarking });
+
+  assert.match(errorReply.text, /Não foi possível concluir a ação/);
+  assert.ok(errorReply.actions.includes(phase1BotActions.mainMenu));
 });
