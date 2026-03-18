@@ -39,6 +39,11 @@ export interface PrismaTransactionClient {
     updateMany(args: unknown): Promise<unknown>;
     create(args: unknown): Promise<unknown>;
   };
+  playerCreationConversation: {
+    findUnique(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
+    deleteMany(args: unknown): Promise<unknown>;
+  };
 }
 
 export interface PrismaClientLike extends PrismaTransactionClient {

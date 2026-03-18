@@ -1,4 +1,3 @@
-import { InMemoryPlayerCreationConversationStore } from '../bot/conversation-store';
 import { Phase1TelegramDispatcher } from '../bot/phase1-dispatcher';
 import { Phase1TelegramFacade } from '../bot/phase1-bot';
 import { Phase1PlayerCreationFlow } from '../bot/player-creation-flow';
@@ -11,12 +10,13 @@ import {
   WeeklyTrainingService
 } from '../domain/player/services';
 import { PrismaClubRepository } from '../infra/prisma/club-repository';
+import { PrismaPlayerCreationConversationStore } from '../infra/prisma/player-creation-conversation-store';
 import { PrismaPlayerRepository } from '../infra/prisma/player-repository';
 
 export const buildContainer = () => {
   const playerRepository = new PrismaPlayerRepository();
   const clubRepository = new PrismaClubRepository();
-  const playerCreationConversationStore = new InMemoryPlayerCreationConversationStore();
+  const playerCreationConversationStore = new PrismaPlayerCreationConversationStore();
 
   const createPlayerService = new CreatePlayerService(playerRepository);
   const getPlayerCardService = new GetPlayerCardService(playerRepository);

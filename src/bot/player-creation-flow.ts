@@ -30,36 +30,36 @@ const dominantFootActionMap = new Map<string, DominantFoot>([
 export class Phase1PlayerCreationFlow {
   constructor(private readonly store: PlayerCreationConversationStore) {}
 
-  isActive(telegramId: string): boolean {
-    return this.store.get(telegramId) !== null;
+  async isActive(telegramId: string): Promise<boolean> {
+    return (await this.store.get(telegramId)) !== null;
   }
 
-  start(telegramId: string): BotReply {
+  async start(telegramId: string): Promise<BotReply> {
     const session: PlayerCreationSession = {
       telegramId,
       step: 'name',
       draft: { visual: {} }
     };
 
-    this.store.save(session);
+    await this.store.save(session);
     return this.buildPrompt(session);
   }
 
-  cancel(telegramId: string): BotReply {
-    this.store.clear(telegramId);
+  async cancel(telegramId: string): Promise<BotReply> {
+    await this.store.clear(telegramId);
     return {
       text: 'Criação de jogador cancelada com segurança. Quando quiser, inicie novamente.',
       actions: [phase1BotActions.createPlayer, phase1BotActions.mainMenu]
     };
   }
 
-  restart(telegramId: string): BotReply {
-    this.store.clear(telegramId);
+  async restart(telegramId: string): Promise<BotReply> {
+    await this.store.clear(telegramId);
     return this.start(telegramId);
   }
 
-  remindCurrentStep(telegramId: string): BotReply {
-    const session = this.store.get(telegramId);
+  async remindCurrentStep(telegramId: string): Promise<BotReply> {
+    const session = await this.store.get(telegramId);
     if (!session) {
       return {
         text: 'Nenhuma criação de jogador está em andamento.',
@@ -67,14 +67,15 @@ export class Phase1PlayerCreationFlow {
       };
     }
 
+    const prompt = this.buildPrompt(session);
     return {
-      text: `A criação do jogador está em andamento. ${this.buildPrompt(session).text}`,
-      actions: this.buildPrompt(session).actions
+      text: `A criação do jogador está em andamento. ${prompt.text}`,
+      actions: prompt.actions
     };
   }
 
-  handleInput(telegramId: string, rawInput: string): PlayerCreationFlowResult {
-    const session = this.store.get(telegramId);
+  async handleInput(telegramId: string, rawInput: string): Promise<PlayerCreationFlowResult> {
+    const session = await this.store.get(telegramId);
     if (!session) {
       return {
         kind: 'reply',
@@ -151,20 +152,20 @@ export class Phase1PlayerCreationFlow {
         break;
       case 'confirmation':
         if (input === phase1BotActions.restartCreation) {
-          return { kind: 'reply', reply: this.restart(telegramId) };
+          return { kind: 'reply', reply: await this.restart(telegramId) };
         }
         if (input !== phase1BotActions.confirmCreatePlayer) {
           return { kind: 'reply', reply: this.withValidationMessage(session, 'Use Confirmar criação ou Refazer criação para concluir.') };
         }
 
-        this.store.clear(telegramId);
+        await this.store.clear(telegramId);
         return {
           kind: 'submit',
           input: this.buildCreateInput(telegramId, session)
         };
     }
 
-    this.store.save(session);
+    await this.store.save(session);
     return { kind: 'reply', reply: this.buildPrompt(session) };
   }
 

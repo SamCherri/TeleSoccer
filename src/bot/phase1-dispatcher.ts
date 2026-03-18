@@ -43,16 +43,16 @@ export class Phase1TelegramDispatcher {
     const action = commandToAction.get(normalizedText) ?? normalizedText;
 
     try {
-      if (this.creationFlow.isActive(request.telegramId)) {
+      if (await this.creationFlow.isActive(request.telegramId)) {
         if (action === phase1BotActions.cancel) {
-          return this.creationFlow.cancel(request.telegramId);
+          return await this.creationFlow.cancel(request.telegramId);
         }
 
         if (commandToAction.has(normalizedText) && action !== phase1BotActions.createPlayer) {
-          return this.creationFlow.remindCurrentStep(request.telegramId);
+          return await this.creationFlow.remindCurrentStep(request.telegramId);
         }
 
-        const flowResult = this.creationFlow.handleInput(request.telegramId, action);
+        const flowResult = await this.creationFlow.handleInput(request.telegramId, action);
         if (flowResult.kind === 'submit') {
           return await this.facade.handleCreatePlayer(flowResult.input);
         }
@@ -71,7 +71,7 @@ export class Phase1TelegramDispatcher {
           return await this.facade.handleCreatePlayer(request.payload);
         }
 
-        return this.creationFlow.start(request.telegramId);
+        return await this.creationFlow.start(request.telegramId);
       }
       if (action === phase1BotActions.playerCard) {
         return await this.facade.handlePlayerCard(request.telegramId);

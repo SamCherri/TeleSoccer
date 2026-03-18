@@ -15,6 +15,7 @@ const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js')
 const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { Phase1PlayerCreationFlow } = require('../dist/bot/player-creation-flow.js');
 const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
+const { PrismaPlayerCreationConversationStore } = require('../dist/infra/prisma/player-creation-conversation-store.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
 const { DomainError } = require('../dist/shared/errors.js');
@@ -519,7 +520,8 @@ test('o repositório Prisma não envia walletTransaction nem historyEntry ao cre
     wallet: {},
     playerHistoryEntry: {},
     tryoutAttempt: {},
-    clubMembership: {}
+    clubMembership: {},
+    playerCreationConversation: {}
   });
 
   const repository = new PrismaPlayerRepository();
@@ -719,4 +721,58 @@ test('dispatcher permite cancelar criação conversacional com segurança', asyn
 
   assert.match(cancelReply.text, /cancelada com segurança/);
   assert.equal(await repo.findByTelegramId('114'), null);
+});
+
+
+test('store Prisma persiste e remove sessão de criação conversacional', async () => {
+  let persistedSession = null;
+
+  setPrismaClientForTests({
+    $transaction: async () => {
+      throw new Error('não deveria usar transação neste teste');
+    },
+    user: {},
+    playerGeneration: {},
+    player: {},
+    club: {},
+    trainingSession: {},
+    playerAttribute: {},
+    wallet: {},
+    playerHistoryEntry: {},
+    tryoutAttempt: {},
+    clubMembership: {},
+    playerCreationConversation: {
+      findUnique: async ({ where }) => (persistedSession && persistedSession.telegramId === where.telegramId ? persistedSession : null),
+      upsert: async ({ create, update, where }) => {
+        persistedSession = { telegramId: where.telegramId, ...create, ...update };
+        return persistedSession;
+      },
+      deleteMany: async ({ where }) => {
+        if (persistedSession && persistedSession.telegramId === where.telegramId) {
+          persistedSession = null;
+        }
+        return { count: 1 };
+      }
+    }
+  });
+
+  const store = new PrismaPlayerCreationConversationStore();
+  await store.save({
+    telegramId: 'session-1',
+    step: 'position',
+    draft: {
+      name: 'Ruan',
+      nationality: 'Brasil',
+      visual: {}
+    }
+  });
+
+  const loaded = await store.get('session-1');
+  assert.equal(loaded.step, 'position');
+  assert.equal(loaded.draft.name, 'Ruan');
+
+  await store.clear('session-1');
+  assert.equal(await store.get('session-1'), null);
+
+  setPrismaClientForTests(null);
 });

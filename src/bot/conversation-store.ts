@@ -28,23 +28,23 @@ export interface PlayerCreationSession {
 }
 
 export interface PlayerCreationConversationStore {
-  get(telegramId: string): PlayerCreationSession | null;
-  save(session: PlayerCreationSession): void;
-  clear(telegramId: string): void;
+  get(telegramId: string): Promise<PlayerCreationSession | null>;
+  save(session: PlayerCreationSession): Promise<void>;
+  clear(telegramId: string): Promise<void>;
 }
 
 export class InMemoryPlayerCreationConversationStore implements PlayerCreationConversationStore {
   private readonly sessions = new Map<string, PlayerCreationSession>();
 
-  get(telegramId: string): PlayerCreationSession | null {
+  async get(telegramId: string): Promise<PlayerCreationSession | null> {
     return this.sessions.get(telegramId) ?? null;
   }
 
-  save(session: PlayerCreationSession): void {
+  async save(session: PlayerCreationSession): Promise<void> {
     this.sessions.set(session.telegramId, session);
   }
 
-  clear(telegramId: string): void {
+  async clear(telegramId: string): Promise<void> {
     this.sessions.delete(telegramId);
   }
 }
