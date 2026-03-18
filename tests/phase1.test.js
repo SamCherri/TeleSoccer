@@ -1,8 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { CreatePlayerService, GetPlayerCardService, TryoutService, WeeklyTrainingService, phase1Economy } = require('../dist/domain/player/services.js');
-const { AttributeKey, CareerStatus, DominantFoot, PlayerPosition, TryoutStatus } = require('../dist/domain/shared/enums.js');
+const {
+  CreatePlayerService,
+  GetCareerStatusService,
+  GetPlayerCardService,
+  TryoutService,
+  WeeklyTrainingService,
+  phase1Economy
+} = require('../dist/domain/player/services.js');
+const { Phase1TelegramFacade } = require('../dist/bot/phase1-bot.js');
+const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus } = require('../dist/domain/shared/enums.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
 
@@ -10,6 +18,8 @@ class InMemoryPlayerRepository {
   constructor() {
     this.playersByTelegramId = new Map();
     this.trainingWeeks = new Set();
+    this.historyByPlayerId = new Map();
+    this.tryoutsByPlayerId = new Map();
   }
 
   async createPlayer(input) {
@@ -33,11 +43,47 @@ class InMemoryPlayerRepository {
       tryoutHistoryCount: 0
     };
     this.playersByTelegramId.set(input.telegramId, player);
+    this.historyByPlayerId.set(
+      player.id,
+      input.initialHistory.map((entry) => ({ ...entry, createdAt: new Date('2026-01-05T00:00:00.000Z') }))
+    );
+    this.tryoutsByPlayerId.set(player.id, []);
     return player;
   }
 
   async findByTelegramId(telegramId) {
     return this.playersByTelegramId.get(telegramId) ?? null;
+  }
+
+  async getCareerStatusByTelegramId(telegramId, currentWeekNumber) {
+    const player = await this.findByTelegramId(telegramId);
+    if (!player) {
+      return null;
+    }
+
+    const history = this.historyByPlayerId.get(player.id) ?? [];
+    const tryouts = this.tryoutsByPlayerId.get(player.id) ?? [];
+    const latestTryout = tryouts.at(-1);
+    const trainingWeeks = [...this.trainingWeeks]
+      .filter((key) => key.startsWith(`${player.id}:`))
+      .map((key) => Number(key.split(':')[1]))
+      .sort((a, b) => b - a);
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      careerStatus: player.careerStatus,
+      age: player.age,
+      currentClubName: player.currentClubName,
+      walletBalance: player.walletBalance,
+      totalTrainings: player.trainingHistoryCount,
+      totalTryouts: player.tryoutHistoryCount,
+      lastTrainingWeek: trainingWeeks[0],
+      trainingAvailableThisWeek: trainingWeeks[0] !== currentWeekNumber,
+      currentWeekNumber,
+      latestTryout,
+      recentHistory: history.slice(-5).reverse()
+    };
   }
 
   async applyTraining(params) {
@@ -50,6 +96,11 @@ class InMemoryPlayerRepository {
     player.walletBalance -= params.cost;
     player.attributes[params.focus] += params.attributeGain;
     player.trainingHistoryCount += 1;
+    this.historyByPlayerId.get(player.id).push({
+      type: params.historyEntry.type,
+      description: params.historyEntry.description,
+      createdAt: new Date(`2026-01-${String(5 + params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
     return {
       playerId: player.id,
       focus: params.focus,
@@ -64,14 +115,29 @@ class InMemoryPlayerRepository {
     const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
     player.walletBalance -= params.cost;
     player.tryoutHistoryCount += 1;
+    const status = params.approvedClubId ? TryoutStatus.Approved : TryoutStatus.Failed;
     if (params.approvedClubId && params.approvedClubName) {
       player.careerStatus = CareerStatus.Professional;
       player.currentClubId = params.approvedClubId;
       player.currentClubName = params.approvedClubName;
     }
+    this.tryoutsByPlayerId.get(player.id).push({
+      status,
+      score: params.score,
+      requiredScore: params.requiredScore,
+      clubName: params.approvedClubName,
+      createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+    });
+    for (const entry of params.historyEntries) {
+      this.historyByPlayerId.get(player.id).push({
+        type: entry.type,
+        description: entry.description,
+        createdAt: new Date(`2026-02-${String(params.weekNumber).padStart(2, '0')}T00:00:00.000Z`)
+      });
+    }
     return {
       playerId: player.id,
-      status: params.approvedClubId ? TryoutStatus.Approved : TryoutStatus.Failed,
+      status,
       score: params.score,
       requiredScore: params.requiredScore,
       cost: params.cost,
@@ -204,6 +270,71 @@ test('cobra peneira, pode reprovar e promove ao profissional quando aprovado', a
 
   const updated = await repo.findByTelegramId('103');
   assert.equal(updated.careerStatus, CareerStatus.Professional);
+});
+
+test('expõe status da carreira com disponibilidade de treino, última peneira e histórico recente', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const careerStatusService = new GetCareerStatusService(repo);
+
+  await createPlayerService.execute({
+    telegramId: '105',
+    name: 'Bruno Costa',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Left,
+    heightCm: 178,
+    weightKg: 72,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  await trainingService.execute('105', AttributeKey.Shooting, new Date('2026-01-06T00:00:00.000Z'));
+  await tryoutService.execute('105', new Date('2026-01-13T00:00:00.000Z'));
+
+  const status = await careerStatusService.execute('105', new Date('2026-01-13T00:00:00.000Z'));
+  assert.equal(status.currentWeekNumber, 2);
+  assert.equal(status.totalTrainings, 1);
+  assert.equal(status.totalTryouts, 1);
+  assert.equal(status.trainingAvailableThisWeek, true);
+  assert.equal(status.latestTryout.status, TryoutStatus.Approved);
+  assert.equal(status.latestTryout.clubName, 'Porto Azul FC');
+  assert.equal(status.recentHistory[0].type, HistoryEntryType.ProfessionalContractStarted);
+});
+
+test('a facade do bot entrega texto de status de carreira coerente com o fluxo atual', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const getPlayerCardService = new GetPlayerCardService(repo);
+  const getCareerStatusService = new GetCareerStatusService(repo);
+  const trainingService = new WeeklyTrainingService(repo);
+  const tryoutService = new TryoutService(repo, clubs);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    getPlayerCardService,
+    getCareerStatusService,
+    trainingService,
+    tryoutService
+  );
+
+  await facade.handleCreatePlayer({
+    telegramId: '106',
+    name: 'Diego Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Midfielder,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 174,
+    weightKg: 68,
+    visual: { skinTone: 'parda', hairStyle: 'ondulado' }
+  });
+
+  const reply = await facade.handleCareerStatus('106');
+  assert.match(reply.text, /Status da carreira de Diego Luz/);
+  assert.match(reply.text, /Treino da semana: disponível/);
+  assert.ok(reply.actions.includes('Treino semanal'));
 });
 
 test('o payload de persistência do treino contém apenas campos válidos da tabela', async () => {
