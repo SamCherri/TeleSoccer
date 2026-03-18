@@ -1,9 +1,9 @@
-import { AttributeKey, CareerStatus, HistoryEntryType, TryoutStatus, WalletTransactionType } from '../shared/enums';
+import { AttributeKey, CareerStatus, TryoutStatus, HistoryEntryType, WalletTransactionType } from '../shared/enums';
 import { DomainError } from '../../shared/errors';
 import { calculateInitialAttributes } from './attribute-calculator';
 import { ClubRepository } from '../club/repository';
 import { PlayerRepository } from './repository';
-import { CreatePlayerInput, PlayerProfile, TrainingResult, TryoutResult } from './types';
+import { CareerStatusView, CreatePlayerInput, PlayerProfile, TrainingResult, TryoutResult, WalletStatementView } from './types';
 import { getGameWeekNumber } from '../../shared/week';
 import {
   PHASE1_PLAYER_STARTING_AGE,
@@ -13,6 +13,8 @@ import {
   PHASE1_TRYOUT_COST,
   PHASE1_TRYOUT_REQUIRED_SCORE
 } from './phase1-rules';
+
+const DEFAULT_WALLET_TRANSACTION_LIMIT = 5;
 
 export class CreatePlayerService {
   constructor(private readonly playerRepository: PlayerRepository) {}
@@ -82,6 +84,37 @@ export class GetPlayerCardService {
     }
 
     return player;
+  }
+}
+
+export class GetCareerStatusService {
+  constructor(private readonly playerRepository: PlayerRepository) {}
+
+  async execute(telegramId: string, referenceDate = new Date()): Promise<CareerStatusView> {
+    const currentWeekNumber = getGameWeekNumber(referenceDate);
+    const status = await this.playerRepository.getCareerStatusByTelegramId(telegramId, currentWeekNumber);
+    if (!status) {
+      throw new DomainError('Jogador não encontrado para este usuário.');
+    }
+
+    return status;
+  }
+}
+
+export class GetWalletStatementService {
+  constructor(private readonly playerRepository: PlayerRepository) {}
+
+  async execute(telegramId: string, transactionLimit = DEFAULT_WALLET_TRANSACTION_LIMIT): Promise<WalletStatementView> {
+    if (!Number.isInteger(transactionLimit) || transactionLimit < 1 || transactionLimit > 20) {
+      throw new DomainError('O limite do extrato deve ficar entre 1 e 20 transações.');
+    }
+
+    const statement = await this.playerRepository.getWalletStatementByTelegramId(telegramId, transactionLimit);
+    if (!statement) {
+      throw new DomainError('Jogador não encontrado para este usuário.');
+    }
+
+    return statement;
   }
 }
 
