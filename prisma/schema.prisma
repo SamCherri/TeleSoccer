@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlayerPosition {
+  GOALKEEPER
+  DEFENDER
+  MIDFIELDER
+  FORWARD
+}
+
+enum DominantFoot {
+  RIGHT
+  LEFT
+}
+
+enum CareerStatus {
+  YOUTH
+  PROFESSIONAL
+}
+
+enum AttributeKey {
+  REFLEXES
+  HANDLING
+  KICKING
+  POSITIONING
+  PASSING
+  SHOOTING
+  DRIBBLING
+  SPEED
+  MARKING
+}
+
+enum TrainingFocus {
+  REFLEXES
+  HANDLING
+  KICKING
+  POSITIONING
+  PASSING
+  SHOOTING
+  DRIBBLING
+  SPEED
+  MARKING
+}
+
+enum WalletTransactionType {
+  INITIAL_GRANT
+  TRAINING_COST
+  TRYOUT_COST
+}
+
+enum TryoutStatus {
+  FAILED
+  APPROVED
+}
+
+enum HistoryEntryType {
+  PLAYER_CREATED
+  TRAINING_COMPLETED
+  TRYOUT_FAILED
+  TRYOUT_APPROVED
+  PROFESSIONAL_CONTRACT_STARTED
+}
+
+model User {
+  id          String             @id @default(cuid())
+  telegramId  String             @unique
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  generations PlayerGeneration[]
+}
+
+model PlayerGeneration {
+  id               String    @id @default(cuid())
+  userId           String
+  generationNumber Int
+  inheritedPoints  Int       @default(0)
+  isCurrent        Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id])
+  player           Player?
+
+  @@unique([userId, generationNumber])
+  @@index([userId, isCurrent])
+}
+
+model Player {
+  id               String             @id @default(cuid())
+  generationId     String             @unique
+  name             String
+  nationality      String
+  position         PlayerPosition
+  dominantFoot     DominantFoot
+  age              Int
+  heightCm         Int
+  weightKg         Int
+  skinTone         String
+  hairStyle        String
+  careerStatus     CareerStatus       @default(YOUTH)
+  currentClubId    String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  generation       PlayerGeneration   @relation(fields: [generationId], references: [id])
+  currentClub      Club?              @relation(fields: [currentClubId], references: [id])
+  attributes       PlayerAttribute[]
+  wallet           Wallet?
+  trainingSessions TrainingSession[]
+  tryoutAttempts   TryoutAttempt[]
+  clubMemberships  ClubMembership[]
+  historyEntries   PlayerHistoryEntry[]
+
+  @@index([currentClubId])
+}
+
+model PlayerAttribute {
+  id        String       @id @default(cuid())
+  playerId   String
+  key       AttributeKey
+  value     Int
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  player    Player       @relation(fields: [playerId], references: [id])
+
+  @@unique([playerId, key])
+}
+
+model Wallet {
+  id           String              @id @default(cuid())
+  playerId      String              @unique
+  balance       Int
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  player        Player              @relation(fields: [playerId], references: [id])
+  transactions  WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String                @id @default(cuid())
+  walletId     String
+  type        WalletTransactionType
+  amount      Int
+  description String
+  createdAt   DateTime              @default(now())
+  wallet      Wallet                @relation(fields: [walletId], references: [id])
+
+  @@index([walletId, createdAt])
+}
+
+model TrainingSession {
+  id            String         @id @default(cuid())
+  playerId      String
+  weekNumber    Int
+  focus         TrainingFocus
+  cost          Int
+  attributeGain Int
+  createdAt     DateTime       @default(now())
+  player        Player         @relation(fields: [playerId], references: [id])
+
+  @@unique([playerId, weekNumber])
+  @@index([playerId, createdAt])
+}
+
+model TryoutAttempt {
+  id            String       @id @default(cuid())
+  playerId       String
+  cost          Int
+  weekNumber    Int
+  score         Int
+  requiredScore Int
+  status        TryoutStatus
+  clubId        String?
+  createdAt     DateTime     @default(now())
+  player        Player       @relation(fields: [playerId], references: [id])
+  club          Club?        @relation(fields: [clubId], references: [id])
+
+  @@index([playerId, createdAt])
+  @@index([clubId])
+}
+
+model Club {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  country     String
+  city        String
+  division    String
+  reputation  Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  players     Player[]
+  memberships ClubMembership[]
+  tryouts     TryoutAttempt[]
+}
+
+model ClubMembership {
+  id         String   @id @default(cuid())
+  playerId    String
+  clubId      String
+  joinedAt   DateTime @default(now())
+  role       String
+  isActive   Boolean  @default(true)
+  player     Player   @relation(fields: [playerId], references: [id])
+  club       Club     @relation(fields: [clubId], references: [id])
+
+  @@index([playerId, isActive])
+  @@index([clubId, isActive])
+}
+
+model PlayerHistoryEntry {
+  id          String           @id @default(cuid())
+  playerId     String
+  type        HistoryEntryType
+  description String
+  metadata    Json?
+  createdAt   DateTime         @default(now())
+  player      Player           @relation(fields: [playerId], references: [id])
+
+  @@index([playerId, createdAt])
+}
