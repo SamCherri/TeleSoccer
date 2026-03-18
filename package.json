@@ -1,0 +1,12 @@
+{
+  "name": "telesoccer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app/index.js",
+    "dev": "node --watch dist/app/index.js",
+    "test": "npm run build -- --pretty false >/dev/null && node --test tests/phase1.test.js"
+  }
+}
