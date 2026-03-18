@@ -5,6 +5,7 @@ interface PlayerCreationConversationRecord {
   telegramId: string;
   step: string;
   draft: PlayerCreationDraft;
+  updatedAt: Date | string;
 }
 
 export class PrismaPlayerCreationConversationStore implements PlayerCreationConversationStore {
@@ -21,11 +22,12 @@ export class PrismaPlayerCreationConversationStore implements PlayerCreationConv
     return {
       telegramId: session.telegramId,
       step: session.step as PlayerCreationStep,
-      draft: session.draft
+      draft: session.draft,
+      updatedAt: new Date(session.updatedAt)
     };
   }
 
-  async save(session: PlayerCreationSession): Promise<void> {
+  async save(session: Omit<PlayerCreationSession, 'updatedAt'> | PlayerCreationSession): Promise<void> {
     const prisma = getPrismaClient();
     await prisma.playerCreationConversation.upsert({
       where: { telegramId: session.telegramId },

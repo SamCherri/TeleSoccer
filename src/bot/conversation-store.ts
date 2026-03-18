@@ -25,11 +25,12 @@ export interface PlayerCreationSession {
   telegramId: string;
   step: PlayerCreationStep;
   draft: PlayerCreationDraft;
+  updatedAt: Date;
 }
 
 export interface PlayerCreationConversationStore {
   get(telegramId: string): Promise<PlayerCreationSession | null>;
-  save(session: PlayerCreationSession): Promise<void>;
+  save(session: Omit<PlayerCreationSession, 'updatedAt'> | PlayerCreationSession): Promise<void>;
   clear(telegramId: string): Promise<void>;
 }
 
@@ -40,8 +41,11 @@ export class InMemoryPlayerCreationConversationStore implements PlayerCreationCo
     return this.sessions.get(telegramId) ?? null;
   }
 
-  async save(session: PlayerCreationSession): Promise<void> {
-    this.sessions.set(session.telegramId, session);
+  async save(session: Omit<PlayerCreationSession, 'updatedAt'> | PlayerCreationSession): Promise<void> {
+    this.sessions.set(session.telegramId, {
+      ...session,
+      updatedAt: 'updatedAt' in session ? session.updatedAt : new Date()
+    });
   }
 
   async clear(telegramId: string): Promise<void> {

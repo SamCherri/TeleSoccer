@@ -43,6 +43,11 @@ export class Phase1TelegramDispatcher {
     const action = commandToAction.get(normalizedText) ?? normalizedText;
 
     try {
+      const expirationReply = await this.creationFlow.expireIfNeeded(request.telegramId);
+      if (expirationReply) {
+        return expirationReply;
+      }
+
       if (await this.creationFlow.isActive(request.telegramId)) {
         if (action === phase1BotActions.cancel) {
           return await this.creationFlow.cancel(request.telegramId);

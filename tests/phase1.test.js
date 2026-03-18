@@ -776,3 +776,79 @@ test('store Prisma persiste e remove sessão de criação conversacional', async
 
   setPrismaClientForTests(null);
 });
+
+
+test('fluxo de criação continua normalmente quando a sessão ainda está válida', async () => {
+  const store = new InMemoryPlayerCreationConversationStore();
+  const flow = new Phase1PlayerCreationFlow(store);
+
+  await store.save({
+    telegramId: 'active-session',
+    step: 'nationality',
+    draft: { name: 'Rafael' },
+    updatedAt: new Date()
+  });
+
+  const expirationReply = await flow.expireIfNeeded('active-session', new Date());
+  assert.equal(expirationReply, null);
+
+  const reply = await flow.remindCurrentStep('active-session');
+  assert.match(reply.text, /Etapa 2\/9/);
+});
+
+test('fluxo de criação expira sessão antiga, limpa e orienta reinício', async () => {
+  const store = new InMemoryPlayerCreationConversationStore();
+  const flow = new Phase1PlayerCreationFlow(store);
+
+  await store.save({
+    telegramId: 'expired-session',
+    step: 'position',
+    draft: { name: 'Vitor', nationality: 'Brasil' },
+    updatedAt: new Date('2026-01-01T00:00:00.000Z')
+  });
+
+  const expirationReply = await flow.expireIfNeeded('expired-session', new Date('2026-01-01T01:00:00.000Z'));
+  assert.match(expirationReply.text, /sessão de criação expirou/);
+  assert.equal(await store.get('expired-session'), null);
+});
+
+test('dispatcher informa expiração e oferece reinício ao receber mensagem após timeout', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const store = new InMemoryPlayerCreationConversationStore();
+  const flow = new Phase1PlayerCreationFlow(store);
+  const facade = new Phase1TelegramFacade(
+    new CreatePlayerService(repo),
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade, flow);
+
+  await store.save({
+    telegramId: '115',
+    step: 'weightKg',
+    draft: {
+      name: 'Leo',
+      nationality: 'Brasil',
+      position: PlayerPosition.Forward,
+      dominantFoot: DominantFoot.Right,
+      heightCm: 176,
+      visual: {}
+    },
+    updatedAt: new Date('2026-01-01T00:00:00.000Z')
+  });
+
+  const originalDateNow = Date.now;
+  Date.now = () => new Date('2026-01-01T01:00:00.000Z').getTime();
+
+  const reply = await dispatcher.dispatch({ telegramId: '115', text: '72' });
+
+  Date.now = originalDateNow;
+
+  assert.match(reply.text, /sessão de criação expirou/);
+  assert.ok(reply.actions.includes(phase1BotActions.createPlayer));
+  assert.equal(await store.get('115'), null);
+});

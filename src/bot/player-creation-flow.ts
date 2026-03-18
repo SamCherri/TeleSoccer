@@ -14,6 +14,7 @@ interface CreationSubmitResult {
 }
 
 export type PlayerCreationFlowResult = CreationReplyResult | CreationSubmitResult;
+export const PHASE1_PLAYER_CREATION_SESSION_TTL_MINUTES = 30;
 
 const positionActionMap = new Map<string, PlayerPosition>([
   [phase1BotActions.positionGoalkeeper, PlayerPosition.Goalkeeper],
@@ -35,14 +36,14 @@ export class Phase1PlayerCreationFlow {
   }
 
   async start(telegramId: string): Promise<BotReply> {
-    const session: PlayerCreationSession = {
+    const session = {
       telegramId,
-      step: 'name',
+      step: 'name' as const,
       draft: { visual: {} }
     };
 
     await this.store.save(session);
-    return this.buildPrompt(session);
+    return this.buildPrompt({ ...session, updatedAt: new Date() });
   }
 
   async cancel(telegramId: string): Promise<BotReply> {
@@ -71,6 +72,23 @@ export class Phase1PlayerCreationFlow {
     return {
       text: `A criação do jogador está em andamento. ${prompt.text}`,
       actions: prompt.actions
+    };
+  }
+
+  async expireIfNeeded(telegramId: string, referenceDate = new Date()): Promise<BotReply | null> {
+    const session = await this.store.get(telegramId);
+    if (!session) {
+      return null;
+    }
+
+    if (!this.isExpired(session, referenceDate)) {
+      return null;
+    }
+
+    await this.store.clear(telegramId);
+    return {
+      text: 'Sua sessão de criação expirou por inatividade. Reinicie o fluxo para continuar criando seu jogador.',
+      actions: [phase1BotActions.createPlayer, phase1BotActions.mainMenu]
     };
   }
 
@@ -165,8 +183,17 @@ export class Phase1PlayerCreationFlow {
         };
     }
 
-    await this.store.save(session);
-    return { kind: 'reply', reply: this.buildPrompt(session) };
+    await this.store.save({
+      telegramId: session.telegramId,
+      step: session.step,
+      draft: session.draft
+    });
+    return { kind: 'reply', reply: this.buildPrompt({ ...session, updatedAt: new Date() }) };
+  }
+
+  private isExpired(session: PlayerCreationSession, referenceDate: Date): boolean {
+    const elapsedMs = referenceDate.getTime() - session.updatedAt.getTime();
+    return elapsedMs > PHASE1_PLAYER_CREATION_SESSION_TTL_MINUTES * 60 * 1000;
   }
 
   private buildCreateInput(telegramId: string, session: PlayerCreationSession): CreatePlayerInput {
