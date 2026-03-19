@@ -1,7 +1,7 @@
 import { DominantFoot, PlayerCreationStep, PlayerPosition } from '../domain/shared/enums';
 import { BotReply, phase1BotActions } from './phase1-bot';
 import { PlayerCreationConversationStore, PlayerCreationSession } from './conversation-store';
-import { CreatePlayerInput } from '../domain/player/types';
+import { CreatePlayerInput, PlayerVisual } from '../domain/player/types';
 
 interface CreationReplyResult {
   kind: 'reply';
@@ -176,11 +176,22 @@ export class Phase1PlayerCreationFlow {
           return { kind: 'reply', reply: this.withValidationMessage(session, 'Use Confirmar criação ou Refazer criação para concluir.') };
         }
 
-        await this.store.clear(telegramId);
-        return {
-          kind: 'submit',
-          input: this.buildCreateInput(telegramId, session)
-        };
+        try {
+          const createInput = this.buildCreateInput(telegramId, session);
+          await this.store.clear(telegramId);
+          return {
+            kind: 'submit',
+            input: createInput
+          };
+        } catch (error) {
+          return {
+            kind: 'reply',
+            reply: this.withValidationMessage(
+              session,
+              error instanceof Error ? error.message : 'Os dados obrigatórios da criação ficaram inconsistentes. Revise e confirme novamente.'
+            )
+          };
+        }
     }
 
     await this.store.save({
@@ -199,16 +210,59 @@ export class Phase1PlayerCreationFlow {
   private buildCreateInput(telegramId: string, session: PlayerCreationSession): CreatePlayerInput {
     return {
       telegramId,
-      name: session.draft.name ?? '',
-      nationality: session.draft.nationality ?? '',
-      position: session.draft.position ?? PlayerPosition.Forward,
-      dominantFoot: session.draft.dominantFoot ?? DominantFoot.Right,
-      heightCm: session.draft.heightCm ?? 0,
-      weightKg: session.draft.weightKg ?? 0,
-      visual: {
-        skinTone: session.draft.visual?.skinTone ?? '',
-        hairStyle: session.draft.visual?.hairStyle ?? ''
-      }
+      name: this.requireTrimmedString(session, 'name', 'O nome do jogador não foi informado corretamente.'),
+      nationality: this.requireTrimmedString(session, 'nationality', 'A nacionalidade do jogador não foi informada corretamente.'),
+      position: this.requireEnumValue(session.draft.position, 'A posição principal é obrigatória antes da confirmação.'),
+      dominantFoot: this.requireEnumValue(session.draft.dominantFoot, 'O pé dominante é obrigatório antes da confirmação.'),
+      heightCm: this.requireIntegerValue(session.draft.heightCm, 'A altura do jogador é obrigatória antes da confirmação.'),
+      weightKg: this.requireIntegerValue(session.draft.weightKg, 'O peso do jogador é obrigatório antes da confirmação.'),
+      visual: this.buildRequiredVisual(session)
+    };
+  }
+
+  private requireTrimmedString(
+    session: PlayerCreationSession,
+    key: 'name' | 'nationality',
+    errorMessage: string
+  ): string {
+    const value = session.draft[key];
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new Error(errorMessage);
+    }
+
+    return value.trim();
+  }
+
+  private requireEnumValue<T>(value: T | undefined, errorMessage: string): T {
+    if (value === undefined) {
+      throw new Error(errorMessage);
+    }
+
+    return value;
+  }
+
+  private requireIntegerValue(value: number | undefined, errorMessage: string): number {
+    if (!Number.isInteger(value)) {
+      throw new Error(errorMessage);
+    }
+
+    return value as number;
+  }
+
+  private buildRequiredVisual(session: PlayerCreationSession): PlayerVisual {
+    const skinTone = session.draft.visual?.skinTone?.trim();
+    const hairStyle = session.draft.visual?.hairStyle?.trim();
+
+    if (!skinTone) {
+      throw new Error('O tom de pele é obrigatório antes da confirmação.');
+    }
+    if (!hairStyle) {
+      throw new Error('O estilo de cabelo é obrigatório antes da confirmação.');
+    }
+
+    return {
+      skinTone,
+      hairStyle
     };
   }
 
@@ -260,7 +314,7 @@ export class Phase1PlayerCreationFlow {
         };
       case PlayerCreationStep.SkinTone:
         return {
-          text: 'Criação do jogador - Etapa 7/9\nDefina o tom de pele do jogador.',
+          text: 'Criação do jogador - Etapa 7/9\nInforme o tom de pele do jogador.',
           actions: [
             phase1BotActions.skinToneFair,
             phase1BotActions.skinToneTan,
@@ -271,7 +325,7 @@ export class Phase1PlayerCreationFlow {
         };
       case PlayerCreationStep.HairStyle:
         return {
-          text: 'Criação do jogador - Etapa 8/9\nDefina o estilo de cabelo do jogador.',
+          text: 'Criação do jogador - Etapa 8/9\nInforme o estilo de cabelo do jogador.',
           actions: [
             phase1BotActions.hairStyleShort,
             phase1BotActions.hairStyleCurly,

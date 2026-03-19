@@ -771,6 +771,31 @@ test('flow de criação persiste etapa usando enum forte do domínio', async () 
   assert.equal(progressedSession.step, PlayerCreationStep.Nationality);
 });
 
+test('flow de criação não mascara campos obrigatórios ausentes na confirmação final', async () => {
+  const store = new InMemoryPlayerCreationConversationStore();
+  const flow = new Phase1PlayerCreationFlow(store);
+
+  await store.save({
+    telegramId: 'broken-confirmation',
+    step: PlayerCreationStep.Confirmation,
+    draft: {
+      name: 'Danilo',
+      nationality: 'Brasil',
+      dominantFoot: DominantFoot.Right,
+      heightCm: 181,
+      weightKg: 74,
+      visual: { skinTone: 'morena', hairStyle: 'curto' }
+    },
+    updatedAt: new Date()
+  });
+
+  const result = await flow.handleInput('broken-confirmation', phase1BotActions.confirmCreatePlayer);
+
+  assert.equal(result.kind, 'reply');
+  assert.match(result.reply.text, /posição principal é obrigatória/);
+  assert.notEqual(await store.get('broken-confirmation'), null);
+});
+
 test('store Prisma persiste e remove sessão de criação conversacional', async () => {
   let persistedSession = null;
 
@@ -1137,7 +1162,59 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
     body: '{invalid'
   });
   assert.equal(invalidJsonResponse.status, 400);
+
+  const invalidPayloadResponse = await fetch('http://127.0.0.1:3311/telegram/webhook/secret-phase1', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-telegram-bot-api-secret-token': 'secret-phase1'
+    },
+    body: JSON.stringify({ update_id: 'wrong-type' })
+  });
+  assert.equal(invalidPayloadResponse.status, 400);
   assert.equal(processedUpdates.length, 0);
+
+  await server.stop();
+});
+
+test('servidor Railway ignora update estruturalmente válido sem mensagem processável', async () => {
+  const processedUpdates = [];
+  const runtime = {
+    async processUpdate(update) {
+      processedUpdates.push(update);
+      return false;
+    }
+  };
+  const telegramClient = {
+    async sendMessage() {},
+    async setWebhook() {}
+  };
+
+  const port = 3322;
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgresql://tele',
+      PORT: port,
+      NODE_ENV: 'test',
+      TELEGRAM_WEBHOOK_SECRET: 'ignored-secret'
+    },
+    runtime,
+    telegramClient
+  });
+
+  await server.start();
+
+  const ignoredResponse = await fetch(`http://127.0.0.1:${port}/telegram/webhook/ignored-secret`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-telegram-bot-api-secret-token': 'ignored-secret'
+    },
+    body: JSON.stringify({ update_id: 99 })
+  });
+
+  assert.equal(ignoredResponse.status, 202);
+  assert.equal(processedUpdates.length, 1);
 
   await server.stop();
 });

@@ -11,6 +11,12 @@ export interface TelegramHttpClient {
   setWebhook(webhookUrl: string, secretToken?: string): Promise<void>;
 }
 
+const toRecord = (payload: TelegramSendMessagePayload): Record<string, unknown> => ({
+  chat_id: payload.chat_id,
+  text: payload.text,
+  reply_markup: payload.reply_markup
+});
+
 export class TelegramBotApiClient implements TelegramHttpClient {
   constructor(
     private readonly token: string,
@@ -18,7 +24,7 @@ export class TelegramBotApiClient implements TelegramHttpClient {
   ) {}
 
   async sendMessage(payload: TelegramSendMessagePayload): Promise<void> {
-    await this.callApi('sendMessage', payload as unknown as Record<string, unknown>);
+    await this.callApi('sendMessage', toRecord(payload));
   }
 
   async setWebhook(webhookUrl: string, secretToken?: string): Promise<void> {
