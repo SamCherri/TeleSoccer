@@ -11,6 +11,8 @@ import {
 } from '../domain/player/services';
 import { CreatePlayerInput } from '../domain/player/types';
 import { DomainError } from '../shared/errors';
+import { GetActiveMatchService, ResolveMatchTurnService, StartMatchService } from '../domain/match/services';
+import { MatchActionKey, MatchStatus } from '../domain/match/types';
 
 export interface BotReply {
   text: string;
@@ -27,6 +29,9 @@ export const phase1BotActions = {
   careerStatus: 'Status da carreira',
   careerHistory: 'Histórico da carreira',
   walletStatement: 'Extrato da carteira',
+  startMatch: 'Entrar em partida',
+  currentMatch: 'Ver partida atual',
+  resolveTimeout: 'Forçar perda do lance',
   trainingPassing: 'Treinar passe',
   trainingShooting: 'Treinar finalização',
   trainingDribbling: 'Treinar drible',
@@ -49,7 +54,25 @@ export const phase1BotActions = {
   hairStyleShort: 'Curto',
   hairStyleCurly: 'Cacheado',
   hairStyleWavy: 'Ondulado',
-  hairStyleShaved: 'Raspado'
+  hairStyleShaved: 'Raspado',
+  matchPass: 'Passar na partida',
+  matchDribble: 'Driblar na partida',
+  matchShoot: 'Finalizar na partida',
+  matchControl: 'Dominar na partida',
+  matchProtect: 'Proteger bola na partida',
+  matchTackle: 'Dar bote na partida',
+  matchClear: 'Afastar na partida',
+  matchSave: 'Defender na partida',
+  matchPunch: 'Espalmar na partida',
+  matchCatch: 'Segurar na partida',
+  matchRushOut: 'Sair do gol na partida',
+  matchRebound: 'Rebater na partida',
+  matchHand: 'Reposição com a mão',
+  matchFoot: 'Reposição com o pé',
+  matchLowLeft: 'Cobrar baixo esquerdo',
+  matchLowRight: 'Cobrar baixo direito',
+  matchHighLeft: 'Cobrar alto esquerdo',
+  matchHighRight: 'Cobrar alto direito'
 } as const;
 
 const walletTransactionLabels: Record<WalletTransactionType, string> = {
@@ -60,7 +83,32 @@ const walletTransactionLabels: Record<WalletTransactionType, string> = {
 
 const formatDate = (date: Date): string => date.toISOString().slice(0, 10);
 
+const matchActionLabels: Record<MatchActionKey, string> = {
+  [MatchActionKey.Pass]: phase1BotActions.matchPass,
+  [MatchActionKey.Dribble]: phase1BotActions.matchDribble,
+  [MatchActionKey.Shoot]: phase1BotActions.matchShoot,
+  [MatchActionKey.Control]: phase1BotActions.matchControl,
+  [MatchActionKey.Protect]: phase1BotActions.matchProtect,
+  [MatchActionKey.Tackle]: phase1BotActions.matchTackle,
+  [MatchActionKey.Clear]: phase1BotActions.matchClear,
+  [MatchActionKey.Save]: phase1BotActions.matchSave,
+  [MatchActionKey.Punch]: phase1BotActions.matchPunch,
+  [MatchActionKey.Catch]: phase1BotActions.matchCatch,
+  [MatchActionKey.RushOut]: phase1BotActions.matchRushOut,
+  [MatchActionKey.Rebound]: phase1BotActions.matchRebound,
+  [MatchActionKey.DistributeHand]: phase1BotActions.matchHand,
+  [MatchActionKey.DistributeFoot]: phase1BotActions.matchFoot,
+  [MatchActionKey.AimLowLeft]: phase1BotActions.matchLowLeft,
+  [MatchActionKey.AimLowRight]: phase1BotActions.matchLowRight,
+  [MatchActionKey.AimHighLeft]: phase1BotActions.matchHighLeft,
+  [MatchActionKey.AimHighRight]: phase1BotActions.matchHighRight
+};
+
 export class Phase1TelegramFacade {
+  private readonly startMatchService: StartMatchService;
+  private readonly getActiveMatchService: GetActiveMatchService;
+  private readonly resolveMatchTurnService: ResolveMatchTurnService;
+
   constructor(
     private readonly createPlayerService: CreatePlayerService,
     private readonly getPlayerCardService: GetPlayerCardService,
@@ -68,8 +116,21 @@ export class Phase1TelegramFacade {
     private readonly getCareerHistoryService: GetCareerHistoryService,
     private readonly getWalletStatementService: GetWalletStatementService,
     private readonly weeklyTrainingService: WeeklyTrainingService,
-    private readonly tryoutService: TryoutService
-  ) {}
+    private readonly tryoutService: TryoutService,
+    startMatchService?: StartMatchService,
+    getActiveMatchService?: GetActiveMatchService,
+    resolveMatchTurnService?: ResolveMatchTurnService
+  ) {
+    this.startMatchService =
+      startMatchService ??
+      ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as StartMatchService);
+    this.getActiveMatchService =
+      getActiveMatchService ??
+      ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as GetActiveMatchService);
+    this.resolveMatchTurnService =
+      resolveMatchTurnService ??
+      ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as ResolveMatchTurnService);
+  }
 
   async handleEntry(telegramId: string): Promise<BotReply> {
     try {
@@ -245,6 +306,21 @@ export class Phase1TelegramFacade {
     };
   }
 
+  async handleStartMatch(telegramId: string): Promise<BotReply> {
+    const result = await this.startMatchService.execute(telegramId);
+    return this.toMatchReply(result.match, 'Partida iniciada com sucesso.');
+  }
+
+  async handleCurrentMatch(telegramId: string): Promise<BotReply> {
+    const match = await this.getActiveMatchService.execute(telegramId);
+    return this.toMatchReply(match, 'Status atual da partida.');
+  }
+
+  async handleMatchAction(telegramId: string, action?: MatchActionKey): Promise<BotReply> {
+    const result = await this.resolveMatchTurnService.execute(telegramId, action);
+    return this.toMatchReply(result.match, result.resolutionText);
+  }
+
   buildMainMenuActions(isProfessional: boolean): string[] {
     return [
       phase1BotActions.playerCard,
@@ -252,13 +328,13 @@ export class Phase1TelegramFacade {
       phase1BotActions.careerHistory,
       phase1BotActions.walletStatement,
       phase1BotActions.weeklyTraining,
-      ...(isProfessional ? [] : [phase1BotActions.tryout])
+      ...(isProfessional ? [phase1BotActions.startMatch, phase1BotActions.currentMatch] : [phase1BotActions.tryout])
     ];
   }
 
   private buildTrainingActions(isGoalkeeper: boolean): string[] {
     if (isGoalkeeper) {
-      return [phase1BotActions.trainingReflexes, phase1BotActions.trainingSpeed, phase1BotActions.mainMenu, phase1BotActions.cancel];
+      return [phase1BotActions.trainingReflexes, phase1BotActions.trainingPassing, phase1BotActions.mainMenu];
     }
 
     return [
@@ -267,8 +343,41 @@ export class Phase1TelegramFacade {
       phase1BotActions.trainingDribbling,
       phase1BotActions.trainingSpeed,
       phase1BotActions.trainingMarking,
-      phase1BotActions.mainMenu,
-      phase1BotActions.cancel
+      phase1BotActions.mainMenu
     ];
+  }
+
+  private toMatchReply(match: Awaited<ReturnType<GetActiveMatchService['execute']>>, leadText: string): BotReply {
+    const turn = match.activeTurn;
+    const eventLines = match.recentEvents.slice(0, 4).map((event) => `- ${event.minute}' ${event.description}`);
+    const injuryLine = match.injury
+      ? `Lesão ativa: ${match.injury.description} (${match.injury.matchesRemaining} partida(s) restantes).`
+      : 'Lesão ativa: nenhuma.';
+    const text = [
+      leadText,
+      `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
+      `Minuto: ${match.scoreboard.minute}' | Tempo: ${match.scoreboard.half} | Energia: ${match.energy}`,
+      `Cartões: ${match.yellowCards} amarelo(s), ${match.redCards} vermelho(s).`,
+      `Suspensão acumulada: ${match.suspensionMatchesRemaining} partida(s).`,
+      injuryLine,
+      turn
+        ? [
+            `Lance ${turn.sequence}: ${turn.contextText}`,
+            turn.previousOutcome ? `Resultado anterior: ${turn.previousOutcome}` : undefined,
+            `Prazo do turno: ${turn.deadlineAt.toISOString()}`
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : 'Não há lance pendente no momento.',
+      eventLines.length > 0 ? `Eventos recentes:\n${eventLines.join('\n')}` : 'Eventos recentes: sem registros.'
+    ].join('\n');
+
+    return {
+      text,
+      actions:
+        match.status === MatchStatus.Finished || !turn
+          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch]
+          : [...turn.availableActions.map((action) => matchActionLabels[action.key]), phase1BotActions.resolveTimeout, phase1BotActions.currentMatch, phase1BotActions.mainMenu]
+    };
   }
 }
