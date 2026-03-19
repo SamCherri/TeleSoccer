@@ -1,9 +1,10 @@
-import { PlayerCreationConversationStore, PlayerCreationDraft, PlayerCreationSession, PlayerCreationStep } from '../../bot/conversation-store';
+import { PlayerCreationConversationStore, PlayerCreationDraft, PlayerCreationSession } from '../../bot/conversation-store';
+import { PlayerCreationStep } from '../../domain/shared/enums';
 import { getPrismaClient } from './client';
 
 interface PlayerCreationConversationRecord {
   telegramId: string;
-  step: string;
+  step: PlayerCreationStep;
   draft: PlayerCreationDraft;
   updatedAt: Date | string;
 }
@@ -21,7 +22,7 @@ export class PrismaPlayerCreationConversationStore implements PlayerCreationConv
 
     return {
       telegramId: session.telegramId,
-      step: session.step as PlayerCreationStep,
+      step: session.step,
       draft: session.draft,
       updatedAt: new Date(session.updatedAt)
     };

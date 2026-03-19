@@ -14,7 +14,7 @@ A base atual cobre:
 - status da carreira
 - dispatcher central do bot
 - persistência da conversa de criação com expiração por inatividade
-- runtime real do Telegram via webhook HTTP para Railway
+- runtime real do Telegram via webhook HTTP para Railway com validação do secret token do Telegram
 
 ## Stack
 
@@ -41,7 +41,7 @@ Configure diretamente no painel do Railway:
 - `DATABASE_URL`: conexão PostgreSQL usada pelo Prisma
 - `TELEGRAM_BOT_TOKEN`: token do BotFather
 - `APP_BASE_URL`: URL pública HTTPS da aplicação no Railway
-- `TELEGRAM_WEBHOOK_SECRET`: segredo usado no path do webhook
+- `TELEGRAM_WEBHOOK_SECRET`: segredo usado no path do webhook e na validação do header `X-Telegram-Bot-Api-Secret-Token`
 - `PORT`: porta HTTP exposta pelo Railway
 - `NODE_ENV`: `production`
 
@@ -52,7 +52,7 @@ Configure diretamente no painel do Railway:
 3. Garanta que o deploy execute `npm install` para acionar `prisma generate`.
 4. Rode `npm run prisma:migrate:deploy` no release/deploy command.
 5. Inicie a aplicação com `npm start`.
-6. Na inicialização, o TeleSoccer registra automaticamente o webhook em `APP_BASE_URL/telegram/webhook/TELEGRAM_WEBHOOK_SECRET`.
+6. Na inicialização, o TeleSoccer registra automaticamente o webhook em `APP_BASE_URL/telegram/webhook/TELEGRAM_WEBHOOK_SECRET` e envia o mesmo valor como secret token do webhook.
 7. Use `GET /health` para healthcheck do Railway.
 
 ## Runtime do bot
