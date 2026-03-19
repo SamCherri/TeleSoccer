@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/app/index.js",
     "dev": "tsx watch src/app/index.ts",
-    "test": "npm run build -- --pretty false && node --test tests/phase1.test.js tests/phase2.test.js",
+    "test": "npm run build -- --pretty false && node --test tests/phase1.test.js tests/phase2.test.js tests/phase3-mvp.test.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",

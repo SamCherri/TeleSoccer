@@ -23,6 +23,21 @@ export interface PrismaTransactionClient {
     create(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
   };
+  multiplayerSession: {
+    findUnique(args: unknown): Promise<unknown>;
+    findUniqueOrThrow(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  multiplayerSessionSlot: {
+    create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+  };
+  multiplayerSessionParticipant: {
+    create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+  };
   matchTurn: {
     update(args: unknown): Promise<unknown>;
     create(args: unknown): Promise<unknown>;
