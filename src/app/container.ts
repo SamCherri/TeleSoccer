@@ -16,12 +16,15 @@ import { PrismaPlayerRepository } from '../infra/prisma/player-repository';
 import { MatchEngine } from '../domain/match/engine';
 import { GetActiveMatchService, ResolveMatchTurnService, StartMatchService } from '../domain/match/services';
 import { PrismaMatchRepository } from '../infra/prisma/match-repository';
+import { CreateLobbyService, GetLobbyStatusService, JoinLobbyService } from '../domain/multiplayer/services';
+import { PrismaMultiplayerLobbyRepository } from '../infra/prisma/multiplayer-repository';
 
 export const buildContainer = () => {
   const playerRepository = new PrismaPlayerRepository();
   const clubRepository = new PrismaClubRepository();
   const playerCreationConversationStore = new PrismaPlayerCreationConversationStore();
   const matchRepository = new PrismaMatchRepository();
+  const multiplayerLobbyRepository = new PrismaMultiplayerLobbyRepository();
   const matchEngine = new MatchEngine();
 
   const createPlayerService = new CreatePlayerService(playerRepository);
@@ -34,6 +37,10 @@ export const buildContainer = () => {
   const startMatchService = new StartMatchService(matchRepository, matchEngine);
   const getActiveMatchService = new GetActiveMatchService(matchRepository, matchEngine);
   const resolveMatchTurnService = new ResolveMatchTurnService(matchRepository, matchEngine);
+  const createLobbyService = new CreateLobbyService(multiplayerLobbyRepository);
+  const joinLobbyService = new JoinLobbyService(multiplayerLobbyRepository);
+  const getLobbyStatusService = new GetLobbyStatusService(multiplayerLobbyRepository);
+
   const phase1TelegramFacade = new Phase1TelegramFacade(
     createPlayerService,
     getPlayerCardService,
@@ -44,7 +51,10 @@ export const buildContainer = () => {
     tryoutService,
     startMatchService,
     getActiveMatchService,
-    resolveMatchTurnService
+    resolveMatchTurnService,
+    createLobbyService,
+    joinLobbyService,
+    getLobbyStatusService
   );
   const phase1PlayerCreationFlow = new Phase1PlayerCreationFlow(playerCreationConversationStore);
 
@@ -59,6 +69,9 @@ export const buildContainer = () => {
     startMatchService,
     getActiveMatchService,
     resolveMatchTurnService,
+    createLobbyService,
+    joinLobbyService,
+    getLobbyStatusService,
     phase1TelegramFacade,
     phase1PlayerCreationFlow,
     phase1TelegramDispatcher: new Phase1TelegramDispatcher(phase1TelegramFacade, phase1PlayerCreationFlow)

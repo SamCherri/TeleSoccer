@@ -42,6 +42,15 @@ export interface PrismaTransactionClient {
     create(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
   };
+  multiplayerLobby: {
+    findUnique(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  multiplayerLobbyParticipant: {
+    create(args: unknown): Promise<unknown>;
+  };
   trainingSession: {
     findUnique(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;

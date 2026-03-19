@@ -1,208 +1,135 @@
 # TeleSoccer - Fase Atual
 
 ## Fase atual
-**Fase 2 - Núcleo da partida por turnos**
+**MVP completo pré-Fase 3 - carreira base + partida jogável + multiplayer MVP + visual MVP**
 
 ---
 
 ## 1. Objetivo
 
-Implementar a base funcional das partidas jogáveis no Telegram.
+Transformar o TeleSoccer no começo real do produto online via Telegram.
 
-Esta fase deve permitir que um usuário profissional:
+A base já estabilizada de Fase 1 e Fase 2 continua válida, mas agora o projeto passa a operar com quatro pilares oficiais do MVP completo pré-Fase 3:
 
-- entre em uma partida
-- receba o contexto do lance
-- escolha ações válidas por botões simples
-- perca o turno se não responder em 30 segundos
-- acompanhe placar, tempo e eventos recentes
-- registre faltas, pênaltis, escanteios, cartões, suspensão, energia e lesões
-- conclua a partida de ponta a ponta com persistência
+1. carreira base persistida
+2. partida jogável por turnos
+3. multiplayer MVP simples e persistido
+4. visual MVP mínimo para apresentar o jogo com mais clareza
 
 ---
 
-## 2. Escopo fechado da fase
+## 2. Escopo fechado desta etapa
 
-### 2.1 Estrutura da partida
-Implementar:
+### 2.1 Carreira base preservada
+- criação de jogador
+- atributos iniciais
+- treino semanal
+- peneira
+- entrada no profissional
+- histórico e carteira
 
-- criação da partida
-- clube mandante e adversário
-- placar persistido
-- tempo da partida
-- 2 tempos de jogo
-- acréscimos simples por evento
-- encerramento da partida
+### 2.2 Partida jogável preservada
+- partida persistida por turnos
+- contexto de lance
+- ações válidas por botão
+- timeout de 30 segundos
+- eventos, disciplina, energia e lesão
 
-### 2.2 Turnos de 30 segundos
-Implementar:
+### 2.3 Multiplayer MVP obrigatório
+- criação de sala multiplayer persistida
+- entrada do segundo usuário humano na mesma sessão
+- consulta do estado da sala
+- preparação da sessão para futura partida multiplayer compartilhada
+- integração mínima no bot com comandos e ações coerentes
 
-- um turno ativo por vez
-- deadline persistido por lance
-- resolução por ação do usuário
-- resolução por timeout quando o prazo expira
-
-### 2.3 Contexto de lance
-Implementar contextos curtos e coerentes, incluindo:
-
-- recebeu livre
-- recebeu pressionado
-- recebeu de costas para o gol
-- recebeu na área
-- duelo defensivo
-- contexto de goleiro
-- bola parada simples
-
-### 2.4 Ações simples por botão
-Implementar ações contextuais, incluindo exemplos como:
-
-- passar
-- driblar
-- finalizar
-- dominar
-- proteger bola
-- dar bote
-- afastar
-- defender
-- espalmar
-- segurar
-- sair do gol
-- cobranças simples por lado e altura
-
-### 2.5 Eventos obrigatórios
-Implementar persistência e exibição de:
-
-- gols
-- faltas
-- pênaltis
-- escanteios
-- tiros de meta
-- cartões amarelos
-- cartões vermelhos
-- suspensões automáticas
-- lesões
-- energia física
+### 2.4 Visual MVP mínimo
+- renderização textual consistente para cards de partida
+- renderização textual consistente para cards de lobby multiplayer
+- base de apresentação pronta para próxima camada visual sem mover regra de negócio para o bot
 
 ---
 
-## 3. Fora de escopo nesta fase
+## 3. Fora de escopo nesta etapa
 
-Não implementar agora:
+Não entram agora:
 
-- contrato completo
-- mercado de transferências
-- técnico usuário
-- escalação completa manual
+- matchmaking público complexo
+- ranking competitivo
+- liga completa
 - temporada completa
-- tabela de liga
-- promoção e rebaixamento
-- seleções
-- prorrogação completa e disputa por pênaltis de mata-mata
+- torneios
+- técnico usuário completo
+- mercado completo
+- contratos completos
+- partida multiplayer completa até o apito final com todos os turnos compartilhados
+- interface web pesada
 
 ---
 
-## 4. Entidades mínimas esperadas
+## 4. Regras de negócio obrigatórias
 
-- Match
-- MatchLineup
-- MatchTurn
-- MatchEvent
-- MatchDisciplinaryEvent
-- InjuryRecord
-- SuspensionRecord
+### Carreira e partida
+- preservar os fluxos da Fase 1 e da Fase 2 sem regressão
+- manter a lógica principal no domínio
+- manter Telegram como interface fina
 
----
+### Multiplayer MVP
+- apenas jogadores profissionais participam das salas multiplayer
+- a sessão deve ser persistida no PostgreSQL via Prisma
+- dois usuários humanos devem poder ficar vinculados à mesma sessão persistida
+- a sala deve ter estado legível: aberta, pronta ou encerrada
+- a sala pronta representa preparação oficial para a futura partida multiplayer
 
-## 5. Regras de negócio obrigatórias
-
-### Partida
-- só jogador profissional entra em partida
-- a partida precisa ser persistida até o encerramento
-- o jogador controla apenas o próprio personagem
-
-### Turno
-- cada lance tem 30 segundos
-- sem resposta no prazo, o lance é perdido
-- o sistema só oferece ações válidas para o contexto atual
-
-### Disciplina
-- cartão vermelho gera suspensão automática da próxima partida
-- eventos disciplinares devem ficar persistidos
-
-### Lesão e energia
-- a energia cai ao longo da partida
-- lesão pode ser registrada durante a partida
-- a lesão deve guardar gravidade e partidas restantes
+### Visual MVP
+- apresentação deve ser compatível com Telegram
+- o formato visual não pode acoplar a lógica de jogo ao dispatcher
+- o formato deve ser reaproveitável para próximos cards do jogo
 
 ---
 
-## 6. Fluxos do usuário que precisam existir
+## 5. Fluxos do usuário que precisam existir agora
 
-### Fluxo 1 - Entrar em partida
-Usuário profissional inicia uma nova partida pelo bot.
-
-### Fluxo 2 - Ver lance atual
-Usuário vê placar, minuto, contexto e ações disponíveis.
-
-### Fluxo 3 - Resolver lance
-Usuário escolhe uma ação e recebe o resultado imediato.
-
-### Fluxo 4 - Perder lance por tempo
-Se o usuário não responder em 30 segundos, o lance é perdido e isso fica registrado.
-
-### Fluxo 5 - Acompanhar partida
-Usuário consulta a partida atual e acompanha eventos recentes, energia, cartões e possível lesão.
-
-### Fluxo 6 - Encerrar partida
-Usuário vê o placar final e o fim da partida registrado.
+1. usuário cria jogador e evolui normalmente
+2. jogador profissional entra em partida solo normalmente
+3. usuário profissional abre uma sala multiplayer
+4. segundo usuário entra na sala com um código persistido
+5. ambos consultam o estado da sessão
+6. o lobby pronto indica preparação liberada para evolução da partida multiplayer
 
 ---
 
-## 7. Impacto esperado no banco
+## 6. Impacto esperado no banco
 
-Esta fase deve deixar o banco pronto para:
+Esta etapa deve deixar o banco pronto para:
 
-- partidas persistidas por jogador
-- histórico de turnos e eventos
-- expansão futura para lineups mais completas
-- disciplina e suspensão por partida
-- lesões vinculadas à partida
+- sessões multiplayer persistidas
+- participantes humanos vinculados à mesma sessão
+- futura ligação da sessão a uma partida multiplayer compartilhada
+- manutenção da base já existente de carreira e partidas
 
 ---
 
-## 8. Impacto esperado no bot Telegram
+## 7. Impacto esperado no bot Telegram
 
 O bot deve conseguir, no mínimo:
 
-- iniciar partida
-- mostrar o lance atual
-- receber a ação do usuário
-- processar timeout
-- exibir placar, tempo e eventos recentes
-- encerrar a partida com feedback final
+- continuar operando carreira e partida solo
+- abrir o menu do multiplayer MVP
+- criar sala multiplayer
+- entrar em sala por código
+- consultar estado da sala
+- exibir cards textuais mais consistentes para partida e lobby
 
 ---
 
-## 9. Critérios de aceite
+## 8. Critérios de aceite
 
-A fase só deve ser considerada pronta quando:
+A etapa só deve ser considerada pronta quando:
 
-1. o jogador profissional conseguir iniciar partida sem inconsistência
-2. o bot mostrar contexto do lance com ações válidas
-3. o turno de 30 segundos for respeitado
-4. timeout produzir perda de posse e registro do evento
-5. faltas, pênaltis, cartões, suspensão, energia e lesão forem persistidos
-6. a partida chegar ao fim com placar final coerente
-7. os fluxos do bot estiverem funcionais
-8. a implementação respeitar a arquitetura existente
-
----
-
-## 10. Diretriz de implementação
-
-Ao implementar esta fase:
-
-- manter a lógica da partida no domínio
-- manter a camada Telegram como interface fina
-- preservar a Fase 1 sem regressões
-- preparar o terreno para contrato, técnico e temporada em fases futuras
+1. a documentação refletir oficialmente o MVP completo pré-Fase 3
+2. Fase 1 e Fase 2 continuarem funcionais
+3. a sala multiplayer puder ser criada com persistência
+4. um segundo usuário puder entrar na mesma sala persistida
+5. o estado da sessão puder ser consultado de forma coerente
+6. o bot tiver fluxo mínimo funcional para multiplayer MVP
+7. a base visual mínima estiver aplicada sem exagero arquitetural

@@ -1,3 +1,4 @@
+import { renderMatchCard, renderMultiplayerLobbyCard } from './game-card-renderer';
 import { AttributeKey, CareerStatus, PlayerPosition, TryoutStatus, WalletTransactionType } from '../domain/shared/enums';
 import {
   CreatePlayerService,
@@ -13,6 +14,7 @@ import { CreatePlayerInput } from '../domain/player/types';
 import { DomainError } from '../shared/errors';
 import { GetActiveMatchService, ResolveMatchTurnService, StartMatchService } from '../domain/match/services';
 import { MatchActionKey, MatchStatus } from '../domain/match/types';
+import { CreateLobbyService, GetLobbyStatusService, JoinLobbyService } from '../domain/multiplayer/services';
 
 export interface BotReply {
   text: string;
@@ -32,6 +34,9 @@ export const phase1BotActions = {
   startMatch: 'Entrar em partida',
   currentMatch: 'Ver partida atual',
   resolveTimeout: 'Forçar perda do lance',
+  multiplayerMenu: 'Multiplayer MVP',
+  multiplayerCreateLobby: 'Criar sala multiplayer',
+  multiplayerLobbyStatus: 'Ver sala multiplayer',
   trainingPassing: 'Treinar passe',
   trainingShooting: 'Treinar finalização',
   trainingDribbling: 'Treinar drible',
@@ -108,6 +113,9 @@ export class Phase1TelegramFacade {
   private readonly startMatchService: StartMatchService;
   private readonly getActiveMatchService: GetActiveMatchService;
   private readonly resolveMatchTurnService: ResolveMatchTurnService;
+  private readonly createLobbyService: CreateLobbyService;
+  private readonly joinLobbyService: JoinLobbyService;
+  private readonly getLobbyStatusService: GetLobbyStatusService;
 
   constructor(
     private readonly createPlayerService: CreatePlayerService,
@@ -119,7 +127,10 @@ export class Phase1TelegramFacade {
     private readonly tryoutService: TryoutService,
     startMatchService?: StartMatchService,
     getActiveMatchService?: GetActiveMatchService,
-    resolveMatchTurnService?: ResolveMatchTurnService
+    resolveMatchTurnService?: ResolveMatchTurnService,
+    createLobbyService?: CreateLobbyService,
+    joinLobbyService?: JoinLobbyService,
+    getLobbyStatusService?: GetLobbyStatusService
   ) {
     this.startMatchService =
       startMatchService ??
@@ -130,6 +141,15 @@ export class Phase1TelegramFacade {
     this.resolveMatchTurnService =
       resolveMatchTurnService ??
       ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as ResolveMatchTurnService);
+    this.createLobbyService =
+      createLobbyService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer MVP não configurado neste ambiente de teste.'); } } as unknown as CreateLobbyService);
+    this.joinLobbyService =
+      joinLobbyService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer MVP não configurado neste ambiente de teste.'); } } as unknown as JoinLobbyService);
+    this.getLobbyStatusService =
+      getLobbyStatusService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer MVP não configurado neste ambiente de teste.'); } } as unknown as GetLobbyStatusService);
   }
 
   async handleEntry(telegramId: string): Promise<BotReply> {
@@ -321,6 +341,43 @@ export class Phase1TelegramFacade {
     return this.toMatchReply(result.match, result.resolutionText);
   }
 
+  handleMultiplayerMenu(): BotReply {
+    return {
+      text: [
+        'Multiplayer MVP do TeleSoccer.',
+        '1. O anfitrião cria uma sala persistida.',
+        '2. O segundo usuário entra com /entrar-sala CODIGO.',
+        '3. A sala fica pronta para a próxima evolução da partida compartilhada.',
+        'Comandos úteis: /criar-sala, /sala e /entrar-sala CODIGO.'
+      ].join('\n'),
+      actions: [phase1BotActions.multiplayerCreateLobby, phase1BotActions.multiplayerLobbyStatus, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handleCreateLobby(telegramId: string): Promise<BotReply> {
+    const lobby = await this.createLobbyService.execute(telegramId);
+    return {
+      text: renderMultiplayerLobbyCard(lobby, 'Sala multiplayer criada com sucesso.'),
+      actions: [phase1BotActions.multiplayerLobbyStatus, phase1BotActions.multiplayerMenu, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handleJoinLobby(telegramId: string, lobbyCode: string): Promise<BotReply> {
+    const lobby = await this.joinLobbyService.execute(telegramId, lobbyCode);
+    return {
+      text: renderMultiplayerLobbyCard(lobby, 'Você entrou na sala multiplayer.'),
+      actions: [phase1BotActions.multiplayerLobbyStatus, phase1BotActions.multiplayerMenu, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handleLobbyStatus(telegramId: string): Promise<BotReply> {
+    const lobby = await this.getLobbyStatusService.execute(telegramId);
+    return {
+      text: renderMultiplayerLobbyCard(lobby, 'Estado atual da sua sessão multiplayer persistida.'),
+      actions: [phase1BotActions.multiplayerCreateLobby, phase1BotActions.multiplayerMenu, phase1BotActions.mainMenu]
+    };
+  }
+
   buildMainMenuActions(isProfessional: boolean): string[] {
     return [
       phase1BotActions.playerCard,
@@ -328,7 +385,15 @@ export class Phase1TelegramFacade {
       phase1BotActions.careerHistory,
       phase1BotActions.walletStatement,
       phase1BotActions.weeklyTraining,
-      ...(isProfessional ? [phase1BotActions.startMatch, phase1BotActions.currentMatch] : [phase1BotActions.tryout])
+      ...(isProfessional
+        ? [
+            phase1BotActions.startMatch,
+            phase1BotActions.currentMatch,
+            phase1BotActions.multiplayerMenu,
+            phase1BotActions.multiplayerCreateLobby,
+            phase1BotActions.multiplayerLobbyStatus
+          ]
+        : [phase1BotActions.tryout])
     ];
   }
 
@@ -350,34 +415,11 @@ export class Phase1TelegramFacade {
 
   private toMatchReply(match: Awaited<ReturnType<GetActiveMatchService['execute']>>, leadText: string): BotReply {
     const turn = match.activeTurn;
-    const eventLines = match.recentEvents.slice(0, 4).map((event) => `- ${event.minute}' ${event.description}`);
-    const injuryLine = match.injury
-      ? `Lesão ativa: ${match.injury.description} (${match.injury.matchesRemaining} partida(s) restantes).`
-      : 'Lesão ativa: nenhuma.';
-    const text = [
-      leadText,
-      `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
-      `Minuto: ${match.scoreboard.minute}' | Tempo: ${match.scoreboard.half} | Energia: ${match.energy}`,
-      `Cartões: ${match.yellowCards} amarelo(s), ${match.redCards} vermelho(s).`,
-      `Suspensão acumulada: ${match.suspensionMatchesRemaining} partida(s).`,
-      injuryLine,
-      turn
-        ? [
-            `Lance ${turn.sequence}: ${turn.contextText}`,
-            turn.previousOutcome ? `Resultado anterior: ${turn.previousOutcome}` : undefined,
-            `Prazo do turno: ${turn.deadlineAt.toISOString()}`
-          ]
-            .filter(Boolean)
-            .join('\n')
-        : 'Não há lance pendente no momento.',
-      eventLines.length > 0 ? `Eventos recentes:\n${eventLines.join('\n')}` : 'Eventos recentes: sem registros.'
-    ].join('\n');
-
     return {
-      text,
+      text: renderMatchCard(match, leadText),
       actions:
         match.status === MatchStatus.Finished || !turn
-          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch]
+          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch, phase1BotActions.multiplayerMenu]
           : [...turn.availableActions.map((action) => matchActionLabels[action.key]), phase1BotActions.resolveTimeout, phase1BotActions.currentMatch, phase1BotActions.mainMenu]
     };
   }
