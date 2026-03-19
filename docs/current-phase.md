@@ -1,86 +1,87 @@
 # TeleSoccer - Fase Atual
 
 ## Fase atual
-**Fase 1 - Fundação jogável do jogador**
+**Fase 2 - Núcleo da partida por turnos**
 
 ---
 
 ## 1. Objetivo
 
-Implementar a base funcional da carreira do jogador no TeleSoccer.
+Implementar a base funcional das partidas jogáveis no Telegram.
 
-Esta fase deve permitir que um usuário:
+Esta fase deve permitir que um usuário profissional:
 
-- crie seu jogador
-- defina a base do personagem
-- tenha atributos iniciais corretos
-- realize treino individual semanal
-- tente peneiras
-- possa falhar e tentar novamente
-- consiga entrar no profissional
-- tenha histórico inicial persistido
+- entre em uma partida
+- receba o contexto do lance
+- escolha ações válidas por botões simples
+- perca o turno se não responder em 30 segundos
+- acompanhe placar, tempo e eventos recentes
+- registre faltas, pênaltis, escanteios, cartões, suspensão, energia e lesões
+- conclua a partida de ponta a ponta com persistência
 
 ---
 
 ## 2. Escopo fechado da fase
 
-### 2.1 Criação do jogador
-Implementar criação de jogador com:
-
-- nome
-- nacionalidade
-- posição principal
-- pé dominante
-- altura
-- peso
-- visual
-- idade inicial de 14 anos
-
-### 2.2 Regras iniciais de atributos
-Os atributos devem:
-
-- começar baixos
-- ser influenciados pela posição
-- ser influenciados por altura
-- ser influenciados por peso
-
-### 2.3 Dinheiro pessoal
-Implementar carteira pessoal do jogador.
-
-Uso inicial do dinheiro:
-- treino individual
-- nova tentativa de peneira
-
-### 2.4 Treino individual semanal
+### 2.1 Estrutura da partida
 Implementar:
 
-- 1 treino por semana do jogo
-- melhora de 1 fundamento por vez
-- custo em dinheiro
-- perda do ciclo se não treinar
+- criação da partida
+- clube mandante e adversário
+- placar persistido
+- tempo da partida
+- 2 tempos de jogo
+- acréscimos simples por evento
+- encerramento da partida
 
-### 2.5 Peneiras
+### 2.2 Turnos de 30 segundos
 Implementar:
 
-- tentativa de peneira
-- custo fixo
-- possibilidade de falha
-- necessidade de treinar e tentar novamente
-- aprovação para entrada no profissional
+- um turno ativo por vez
+- deadline persistido por lance
+- resolução por ação do usuário
+- resolução por timeout quando o prazo expira
 
-### 2.6 Entrada no profissional
-Ao passar na peneira:
+### 2.3 Contexto de lance
+Implementar contextos curtos e coerentes, incluindo:
 
-- vincular o jogador a um clube profissional
-- registrar início da carreira profissional
+- recebeu livre
+- recebeu pressionado
+- recebeu de costas para o gol
+- recebeu na área
+- duelo defensivo
+- contexto de goleiro
+- bola parada simples
 
-### 2.7 Histórico básico
-Registrar no histórico:
-- criação do personagem
-- treinos realizados
-- tentativas de peneira
-- aprovações e reprovações
-- entrada no profissional
+### 2.4 Ações simples por botão
+Implementar ações contextuais, incluindo exemplos como:
+
+- passar
+- driblar
+- finalizar
+- dominar
+- proteger bola
+- dar bote
+- afastar
+- defender
+- espalmar
+- segurar
+- sair do gol
+- cobranças simples por lado e altura
+
+### 2.5 Eventos obrigatórios
+Implementar persistência e exibição de:
+
+- gols
+- faltas
+- pênaltis
+- escanteios
+- tiros de meta
+- cartões amarelos
+- cartões vermelhos
+- suspensões automáticas
+- lesões
+- energia física
 
 ---
 
@@ -88,95 +89,72 @@ Registrar no histórico:
 
 Não implementar agora:
 
-- partidas completas por turnos
-- técnico
-- dono de clube
-- criação de clube por usuário
 - contrato completo
-- transferências
-- empréstimos
-- ligas completas
-- temporadas completas
+- mercado de transferências
+- técnico usuário
+- escalação completa manual
+- temporada completa
+- tabela de liga
+- promoção e rebaixamento
 - seleções
-- lesões em partida
-- sistema completo de energia em partida
-- copas internacionais
-- formação tática
-- entrosamento coletivo
-
-Esses itens pertencem a fases posteriores.
+- prorrogação completa e disputa por pênaltis de mata-mata
 
 ---
 
 ## 4. Entidades mínimas esperadas
 
-Sugestão mínima de entidades para esta fase:
-
-- User
-- Player
-- PlayerCareer
-- PlayerAttribute
-- PlayerGeneration
-- Wallet
-- TrainingSession
-- TryoutAttempt
-- Club
-- ClubMembership
-
-A estrutura exata deve respeitar a arquitetura atual do repositório.
+- Match
+- MatchLineup
+- MatchTurn
+- MatchEvent
+- MatchDisciplinaryEvent
+- InjuryRecord
+- SuspensionRecord
 
 ---
 
 ## 5. Regras de negócio obrigatórias
 
-### Jogador
-- começa com 14 anos
-- começa com atributos baixos
-- escolhe posição principal
-- escolhe pé dominante entre direito e esquerdo
-- escolhe nacionalidade
-- escolhe altura e peso
+### Partida
+- só jogador profissional entra em partida
+- a partida precisa ser persistida até o encerramento
+- o jogador controla apenas o próprio personagem
 
-### Treino
-- 1 treino individual por semana
-- custo em dinheiro
-- melhora 1 fundamento
-- não melhora múltiplos fundamentos no mesmo treino
-- se perder a semana, não recupera
+### Turno
+- cada lance tem 30 segundos
+- sem resposta no prazo, o lance é perdido
+- o sistema só oferece ações válidas para o contexto atual
 
-### Peneira
-- custo fixo
-- pode falhar
-- se falhar, precisa treinar e tentar novamente
-- se passar, entra no profissional
+### Disciplina
+- cartão vermelho gera suspensão automática da próxima partida
+- eventos disciplinares devem ficar persistidos
 
-### Renascimento
-Ainda não precisa implementar o fluxo completo nesta fase, mas a modelagem deve ser pensada para suportar:
-- múltiplas vidas
-- pontos herdados
-- nova geração do jogador
+### Lesão e energia
+- a energia cai ao longo da partida
+- lesão pode ser registrada durante a partida
+- a lesão deve guardar gravidade e partidas restantes
 
 ---
 
 ## 6. Fluxos do usuário que precisam existir
 
-### Fluxo 1 - Criar jogador
-Usuário entra no fluxo de criação e conclui o cadastro do atleta.
+### Fluxo 1 - Entrar em partida
+Usuário profissional inicia uma nova partida pelo bot.
 
-### Fluxo 2 - Ver ficha
-Usuário vê os dados principais do jogador.
+### Fluxo 2 - Ver lance atual
+Usuário vê placar, minuto, contexto e ações disponíveis.
 
-### Fluxo 3 - Treinar
-Usuário escolhe um fundamento, paga e executa o treino da semana.
+### Fluxo 3 - Resolver lance
+Usuário escolhe uma ação e recebe o resultado imediato.
 
-### Fluxo 4 - Tentar peneira
-Usuário paga a taxa e tenta uma peneira.
+### Fluxo 4 - Perder lance por tempo
+Se o usuário não responder em 30 segundos, o lance é perdido e isso fica registrado.
 
-### Fluxo 5 - Ver resultado da peneira
-Usuário vê se foi reprovado ou aprovado.
+### Fluxo 5 - Acompanhar partida
+Usuário consulta a partida atual e acompanha eventos recentes, energia, cartões e possível lesão.
 
-### Fluxo 6 - Entrar no profissional
-Usuário aprovado passa a integrar um clube profissional.
+### Fluxo 6 - Encerrar partida
+Usuário vê o placar final e o fim da partida registrado.
 
 ---
 
@@ -184,12 +162,11 @@ Usuário aprovado passa a integrar um clube profissional.
 
 Esta fase deve deixar o banco pronto para:
 
-- múltiplos jogadores por gerações futuras
-- evolução por fundamentos
-- histórico de treino
-- histórico de peneiras
-- vínculo com clube
-- expansão posterior para contratos e partidas
+- partidas persistidas por jogador
+- histórico de turnos e eventos
+- expansão futura para lineups mais completas
+- disciplina e suspensão por partida
+- lesões vinculadas à partida
 
 ---
 
@@ -197,13 +174,12 @@ Esta fase deve deixar o banco pronto para:
 
 O bot deve conseguir, no mínimo:
 
-- iniciar criação do jogador
-- salvar criação
-- mostrar ficha do jogador
-- oferecer treino semanal
-- oferecer tentativa de peneira
-- mostrar resultado
-- mostrar status de carreira
+- iniciar partida
+- mostrar o lance atual
+- receber a ação do usuário
+- processar timeout
+- exibir placar, tempo e eventos recentes
+- encerrar a partida com feedback final
 
 ---
 
@@ -211,15 +187,14 @@ O bot deve conseguir, no mínimo:
 
 A fase só deve ser considerada pronta quando:
 
-1. o usuário conseguir criar um jogador sem inconsistência
-2. os atributos iniciais forem aplicados corretamente
-3. o treino semanal respeitar custo e limite
-4. a peneira tiver custo e resultado persistido
-5. o jogador puder falhar e tentar de novo
-6. o jogador puder passar e ser vinculado ao profissional
-7. tudo estiver persistido corretamente no banco
-8. os fluxos do bot estiverem funcionais
-9. a implementação respeitar a arquitetura existente
+1. o jogador profissional conseguir iniciar partida sem inconsistência
+2. o bot mostrar contexto do lance com ações válidas
+3. o turno de 30 segundos for respeitado
+4. timeout produzir perda de posse e registro do evento
+5. faltas, pênaltis, cartões, suspensão, energia e lesão forem persistidos
+6. a partida chegar ao fim com placar final coerente
+7. os fluxos do bot estiverem funcionais
+8. a implementação respeitar a arquitetura existente
 
 ---
 
@@ -227,21 +202,7 @@ A fase só deve ser considerada pronta quando:
 
 Ao implementar esta fase:
 
-- não inventar sistemas de fases futuras
-- não misturar partidas completas nesta etapa
-- não acoplar regras de domínio ao Telegram desnecessariamente
-- não remover nada existente sem avisar
-- manter a solução simples, robusta e expansível
-
----
-
-## 11. Tarefa padrão para Codex/GPT
-
-Ao receber uma tarefa relacionada a esta fase, trabalhar nesta ordem:
-
-1. modelagem de dados
-2. serviços de domínio
-3. persistência
-4. integração com bot
-5. validação mínima
-6. atualização da documentação se necessário
+- manter a lógica da partida no domínio
+- manter a camada Telegram como interface fina
+- preservar a Fase 1 sem regressões
+- preparar o terreno para contrato, técnico e temporada em fases futuras

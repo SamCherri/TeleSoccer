@@ -3,6 +3,7 @@ import { CreatePlayerInput } from '../domain/player/types';
 import { DomainError } from '../shared/errors';
 import { BotReply, phase1BotActions, Phase1TelegramFacade } from './phase1-bot';
 import { Phase1PlayerCreationFlow } from './player-creation-flow';
+import { MatchActionKey } from '../domain/match/types';
 
 export interface Phase1BotRequest {
   telegramId: string;
@@ -20,6 +21,9 @@ const commandToAction = new Map<string, string>([
   ['/treino', phase1BotActions.weeklyTraining],
   ['/peneira', phase1BotActions.tryout],
   ['/confirmar-peneira', phase1BotActions.confirmTryout],
+  ['/partida', phase1BotActions.startMatch],
+  ['/lance', phase1BotActions.currentMatch],
+  ['/perder-lance', phase1BotActions.resolveTimeout],
   ['/cancelar', phase1BotActions.cancel],
   ['/criar-jogador', phase1BotActions.createPlayer]
 ]);
@@ -31,6 +35,27 @@ const trainingActionMap = new Map<string, AttributeKey>([
   [phase1BotActions.trainingSpeed, AttributeKey.Speed],
   [phase1BotActions.trainingMarking, AttributeKey.Marking],
   [phase1BotActions.trainingReflexes, AttributeKey.Reflexes]
+]);
+
+const matchActionMap = new Map<string, MatchActionKey>([
+  [phase1BotActions.matchPass, MatchActionKey.Pass],
+  [phase1BotActions.matchDribble, MatchActionKey.Dribble],
+  [phase1BotActions.matchShoot, MatchActionKey.Shoot],
+  [phase1BotActions.matchControl, MatchActionKey.Control],
+  [phase1BotActions.matchProtect, MatchActionKey.Protect],
+  [phase1BotActions.matchTackle, MatchActionKey.Tackle],
+  [phase1BotActions.matchClear, MatchActionKey.Clear],
+  [phase1BotActions.matchSave, MatchActionKey.Save],
+  [phase1BotActions.matchPunch, MatchActionKey.Punch],
+  [phase1BotActions.matchCatch, MatchActionKey.Catch],
+  [phase1BotActions.matchRushOut, MatchActionKey.RushOut],
+  [phase1BotActions.matchRebound, MatchActionKey.Rebound],
+  [phase1BotActions.matchHand, MatchActionKey.DistributeHand],
+  [phase1BotActions.matchFoot, MatchActionKey.DistributeFoot],
+  [phase1BotActions.matchLowLeft, MatchActionKey.AimLowLeft],
+  [phase1BotActions.matchLowRight, MatchActionKey.AimLowRight],
+  [phase1BotActions.matchHighLeft, MatchActionKey.AimHighLeft],
+  [phase1BotActions.matchHighRight, MatchActionKey.AimHighRight]
 ]);
 
 export class Phase1TelegramDispatcher {
@@ -66,10 +91,7 @@ export class Phase1TelegramDispatcher {
         return flowResult.reply;
       }
 
-      if (action === phase1BotActions.mainMenu) {
-        return await this.facade.handleEntry(request.telegramId);
-      }
-      if (action === phase1BotActions.cancel) {
+      if (action === phase1BotActions.mainMenu || action === phase1BotActions.cancel) {
         return await this.facade.handleEntry(request.telegramId);
       }
       if (action === phase1BotActions.createPlayer) {
@@ -100,10 +122,24 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.confirmTryout) {
         return await this.facade.handleTryout(request.telegramId);
       }
+      if (action === phase1BotActions.startMatch) {
+        return await this.facade.handleStartMatch(request.telegramId);
+      }
+      if (action === phase1BotActions.currentMatch) {
+        return await this.facade.handleCurrentMatch(request.telegramId);
+      }
+      if (action === phase1BotActions.resolveTimeout) {
+        return await this.facade.handleMatchAction(request.telegramId);
+      }
 
       const trainingFocus = trainingActionMap.get(action);
       if (trainingFocus) {
         return await this.facade.handleWeeklyTraining(request.telegramId, trainingFocus);
+      }
+
+      const matchAction = matchActionMap.get(action);
+      if (matchAction) {
+        return await this.facade.handleMatchAction(request.telegramId, matchAction);
       }
 
       return {
@@ -113,7 +149,8 @@ export class Phase1TelegramDispatcher {
           phase1BotActions.playerCard,
           phase1BotActions.careerStatus,
           phase1BotActions.careerHistory,
-          phase1BotActions.weeklyTraining
+          phase1BotActions.weeklyTraining,
+          phase1BotActions.startMatch
         ]
       };
     } catch (error) {
@@ -126,7 +163,8 @@ export class Phase1TelegramDispatcher {
             phase1BotActions.careerStatus,
             phase1BotActions.careerHistory,
             phase1BotActions.weeklyTraining,
-            phase1BotActions.tryout
+            phase1BotActions.tryout,
+            phase1BotActions.startMatch
           ]
         };
       }

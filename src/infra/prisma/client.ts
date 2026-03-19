@@ -15,6 +15,32 @@ export interface PrismaTransactionClient {
   club: {
     upsert(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown[]>;
+    findUnique(args: unknown): Promise<unknown>;
+  };
+  match: {
+    findFirst(args: unknown): Promise<unknown>;
+    findUnique(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  matchTurn: {
+    update(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+  };
+  matchEvent: {
+    create(args: unknown): Promise<unknown>;
+  };
+  matchDisciplinaryEvent: {
+    create(args: unknown): Promise<unknown>;
+  };
+  injuryRecord: {
+    updateMany(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+  };
+  suspensionRecord: {
+    findFirst(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
   };
   trainingSession: {
     findUnique(args: unknown): Promise<unknown>;
