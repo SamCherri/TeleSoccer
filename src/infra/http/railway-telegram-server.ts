@@ -1,17 +1,13 @@
 import { AppEnv } from '../../config/env';
 import { Phase1TelegramRuntime } from '../telegram/runtime';
 import { TelegramBotApiClient } from '../telegram/client';
-import { TelegramUpdate } from '../telegram/types';
-
-const { createServer } = require('http') as {
-  createServer: (handler: (request: HttpRequest, response: HttpResponse) => void | Promise<void>) => HttpServer;
-};
+import { isTelegramUpdate } from '../telegram/types';
 
 interface HttpRequest {
   method?: string;
   url?: string;
-  headers?: Record<string, string | string[] | undefined>;
-  [Symbol.asyncIterator](): AsyncIterableIterator<string>;
+  headers: Record<string, string | string[] | undefined>;
+  [Symbol.asyncIterator](): AsyncIterableIterator<string | Uint8Array>;
 }
 
 interface HttpResponse {
@@ -25,13 +21,22 @@ interface HttpServer {
   close(callback: (error?: Error | null) => void): void;
 }
 
-const readJsonBody = async <T>(request: HttpRequest): Promise<T> => {
+const { createServer } = require('http') as {
+  createServer: (handler: (request: HttpRequest, response: HttpResponse) => void | Promise<void>) => HttpServer;
+};
+
+const textDecoder = new TextDecoder();
+
+const readJsonBody = async (request: HttpRequest): Promise<unknown> => {
   let raw = '';
+
   for await (const chunk of request) {
-    raw += chunk;
+    raw += typeof chunk === 'string' ? chunk : textDecoder.decode(chunk, { stream: true });
   }
 
-  return (raw ? JSON.parse(raw) : {}) as T;
+  raw += textDecoder.decode();
+  const normalized = raw.trim();
+  return normalized ? JSON.parse(normalized) : {};
 };
 
 const respond = (response: HttpResponse, statusCode: number, body: string): void => {
@@ -53,7 +58,7 @@ const hasValidWebhookSecret = (request: HttpRequest, webhookSecret?: string): bo
     return true;
   }
 
-  const headerValue = normalizeHeaderValue(request.headers?.['x-telegram-bot-api-secret-token']);
+  const headerValue = normalizeHeaderValue(request.headers['x-telegram-bot-api-secret-token']);
   return headerValue === webhookSecret;
 };
 
@@ -75,7 +80,7 @@ export const createRailwayTelegramServer = (params: {
   return {
     webhookPath,
     async start(): Promise<void> {
-      server = createServer(async (request, response) => {
+      server = createServer(async (request: HttpRequest, response: HttpResponse) => {
         if (!request.url) {
           respond(response, 404, 'not-found');
           return;
@@ -93,9 +98,14 @@ export const createRailwayTelegramServer = (params: {
           }
 
           try {
-            const update = await readJsonBody<TelegramUpdate>(request);
-            await params.runtime.processUpdate(update);
-            respond(response, 200, 'accepted');
+            const payload = await readJsonBody(request);
+            if (!isTelegramUpdate(payload)) {
+              respond(response, 400, 'invalid-payload');
+              return;
+            }
+
+            const processed = await params.runtime.processUpdate(payload);
+            respond(response, processed ? 200 : 202, processed ? 'accepted' : 'ignored');
           } catch {
             respond(response, 400, 'invalid-json');
           }

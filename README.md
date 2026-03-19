@@ -15,6 +15,7 @@ A base atual cobre:
 - dispatcher central do bot
 - persistência da conversa de criação com expiração por inatividade
 - runtime real do Telegram via webhook HTTP para Railway com validação do secret token do Telegram
+- rejeição de payload inválido e tratamento explícito de updates ignorados pelo runtime
 
 ## Stack
 
@@ -41,7 +42,7 @@ Configure diretamente no painel do Railway:
 - `DATABASE_URL`: conexão PostgreSQL usada pelo Prisma
 - `TELEGRAM_BOT_TOKEN`: token do BotFather
 - `APP_BASE_URL`: URL pública HTTPS da aplicação no Railway
-- `TELEGRAM_WEBHOOK_SECRET`: segredo usado no path do webhook e na validação do header `X-Telegram-Bot-Api-Secret-Token`
+- `TELEGRAM_WEBHOOK_SECRET`: segredo usado no path do webhook e na validação do header `X-Telegram-Bot-Api-Secret-Token` (se omitido fora do Railway, o servidor usa `telesoccer-phase1` como fallback local)
 - `PORT`: porta HTTP exposta pelo Railway
 - `NODE_ENV`: `production`
 
@@ -53,7 +54,8 @@ Configure diretamente no painel do Railway:
 4. Rode `npm run prisma:migrate:deploy` no release/deploy command.
 5. Inicie a aplicação com `npm start`.
 6. Na inicialização, o TeleSoccer registra automaticamente o webhook em `APP_BASE_URL/telegram/webhook/TELEGRAM_WEBHOOK_SECRET` e envia o mesmo valor como secret token do webhook.
-7. Use `GET /health` para healthcheck do Railway.
+7. `POST /telegram/webhook/:secret` responde `200 accepted` para updates processados, `202 ignored` quando o payload é válido mas não gera ação de bot, `400 invalid-json` para JSON inválido, `400 invalid-payload` para JSON estruturalmente incompatível e `401 unauthorized` para secret token incorreto.
+8. Use `GET /health` para healthcheck do Railway.
 
 ## Runtime do bot
 
