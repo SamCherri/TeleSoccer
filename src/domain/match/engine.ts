@@ -107,7 +107,20 @@ export class MatchEngine {
   resolve(params: {
     matchId: string;
     player: MatchPlayerProfile;
-    turn: { id: string; sequence: number; minute: number; half: MatchHalf; possessionSide: MatchPossessionSide; contextType: MatchContextType; deadlineAt: Date; homeScore: number; awayScore: number; energy: number; stoppageMinutes: number };
+    turn: {
+      id: string;
+      sequence: number;
+      minute: number;
+      half: MatchHalf;
+      possessionSide: MatchPossessionSide;
+      contextType: MatchContextType;
+      deadlineAt: Date;
+      homeScore: number;
+      awayScore: number;
+      energy: number;
+      stoppageMinutes: number;
+      currentYellowCards: number;
+    };
     action?: MatchActionKey;
     now?: Date;
   }): MatchResolutionInput {
@@ -137,18 +150,26 @@ export class MatchEngine {
       outcomeText = success
         ? `Você executou ${labelMap[params.action!].toLowerCase()} com sucesso.`
         : `A tentativa de ${labelMap[params.action!].toLowerCase()} não saiu como esperado.`;
-      events.push({ type: MatchEventType.ActionResolved, minute: params.turn.minute, description: outcomeText, metadata: { action: params.action, roll, skill } });
+      events.push({
+        type: MatchEventType.ActionResolved,
+        minute: params.turn.minute,
+        description: outcomeText,
+        metadata: { action: params.action, roll, skill }
+      });
 
-      if (this.shouldTriggerFoul(params.turn.sequence, roll, params.turn.contextType)) {
+      const foulTriggered = this.shouldTriggerFoul(params.turn.sequence, roll, params.turn.contextType);
+      if (foulTriggered) {
         const isPenalty = params.turn.contextType === MatchContextType.InBox || params.turn.contextType === MatchContextType.PenaltyKick;
         const foulDescription = isPenalty ? 'Falta do adversário dentro da área. Pênalti marcado.' : 'Falta sofrida em zona perigosa.';
         events.push({ type: MatchEventType.Foul, minute: params.turn.minute, description: foulDescription });
-        events.push({ type: isPenalty ? MatchEventType.PenaltyAwarded : MatchEventType.Foul, minute: params.turn.minute, description: foulDescription });
-        stoppageMinutes += isPenalty ? 2 : 1;
         if (isPenalty) {
+          events.push({ type: MatchEventType.PenaltyAwarded, minute: params.turn.minute, description: 'Pênalti confirmado após a falta na área.' });
           homeScore += 1;
           outcomeText += ' A cobrança foi convertida.';
           events.push({ type: MatchEventType.Goal, minute: params.turn.minute, description: 'Gol de pênalti para o seu time.' });
+          stoppageMinutes += 2;
+        } else {
+          stoppageMinutes += 1;
         }
       } else if (success && this.shouldScore(params.turn.contextType, params.action!, roll, skill)) {
         if (params.turn.possessionSide === MatchPossessionSide.Home) {
@@ -157,7 +178,11 @@ export class MatchEngine {
           awayScore += 1;
         }
         outcomeText += ' A jogada terminou em gol.';
-        events.push({ type: MatchEventType.Goal, minute: params.turn.minute, description: `Gol para ${params.turn.possessionSide === MatchPossessionSide.Home ? 'o seu time' : 'o adversário'}.` });
+        events.push({
+          type: MatchEventType.Goal,
+          minute: params.turn.minute,
+          description: `Gol para ${params.turn.possessionSide === MatchPossessionSide.Home ? 'o seu time' : 'o adversário'}.`
+        });
         stoppageMinutes += 1;
       } else if (!success && this.shouldConcedeCorner(roll)) {
         outcomeText += ' A defesa desviou para escanteio.';
@@ -167,23 +192,25 @@ export class MatchEngine {
         events.push({ type: MatchEventType.GoalKickAwarded, minute: params.turn.minute, description: 'Tiro de meta para reorganizar a defesa.' });
       }
 
-      if (this.shouldGiveCard(params.turn.sequence, roll, params.turn.contextType)) {
-        const red = roll % 11 === 0 || params.turn.contextType === MatchContextType.DefensiveDuel;
-        if (red) {
-          redCardIssued = true;
+      const cardResult = this.getCardOutcome(params.turn.sequence, roll, params.turn.contextType);
+      if (cardResult === 'YELLOW') {
+        yellowCardsDelta = 1;
+        outcomeText += ' Você recebeu cartão amarelo.';
+        events.push({ type: MatchEventType.YellowCard, minute: params.turn.minute, description: 'Cartão amarelo por chegada atrasada.' });
+        if (params.turn.currentYellowCards + yellowCardsDelta >= 3) {
           suspensionMatchesToAdd = 1;
-          outcomeText += ' O árbitro mostrou cartão vermelho.';
-          events.push({ type: MatchEventType.RedCard, minute: params.turn.minute, description: 'Cartão vermelho recebido. Suspensão automática para a próxima partida.' });
-          events.push({ type: MatchEventType.Suspension, minute: params.turn.minute, description: 'Suspensão de 1 partida registrada.' });
-        } else {
-          yellowCardsDelta = 1;
-          outcomeText += ' Você recebeu cartão amarelo.';
-          events.push({ type: MatchEventType.YellowCard, minute: params.turn.minute, description: 'Cartão amarelo por chegada atrasada.' });
-          if ((hashFrom(`${params.matchId}:yellow:${sequence}`) % 3) === 0) {
-            suspensionMatchesToAdd = 1;
-            events.push({ type: MatchEventType.Suspension, minute: params.turn.minute, description: 'Acúmulo disciplinar gerou suspensão automática da próxima partida.' });
-          }
+          events.push({
+            type: MatchEventType.Suspension,
+            minute: params.turn.minute,
+            description: 'Acúmulo de três amarelos gerou suspensão automática da próxima partida.'
+          });
         }
+      } else if (cardResult === 'RED') {
+        redCardIssued = true;
+        suspensionMatchesToAdd = 1;
+        outcomeText += ' O árbitro mostrou cartão vermelho.';
+        events.push({ type: MatchEventType.RedCard, minute: params.turn.minute, description: 'Cartão vermelho recebido. Suspensão automática para a próxima partida.' });
+        events.push({ type: MatchEventType.Suspension, minute: params.turn.minute, description: 'Suspensão de 1 partida registrada.' });
       }
 
       if (this.shouldInjure(sequence, roll, energy)) {
@@ -205,13 +232,14 @@ export class MatchEngine {
       stoppageMinutes += 1;
     }
 
-    const finished = nextSequence > MATCH_TOTAL_TURNS || redCardIssued || Boolean(injury?.matchesRemaining && injury.matchesRemaining > 1 && sequence >= MATCH_TOTAL_TURNS - 1);
-    const finalMinute = finished ? 90 + stoppageMinutes : TURN_MINUTES[Math.min(sequence - 1, TURN_MINUTES.length - 1)];
+    const finished = nextSequence > MATCH_TOTAL_TURNS;
+    const nextTurn = finished ? undefined : this.createTurn(params.player, nextSequence, outcomeText, now);
+    const currentMinute = nextTurn?.minute ?? 90 + stoppageMinutes;
 
     if (finished) {
       events.push({
         type: MatchEventType.MatchFinished,
-        minute: finalMinute,
+        minute: currentMinute,
         description: `Partida encerrada: ${homeScore} x ${awayScore}.`
       });
     }
@@ -223,9 +251,9 @@ export class MatchEngine {
       outcomeText,
       homeScore,
       awayScore,
-      minute: finalMinute,
-      half: finished ? MatchHalf.Second : nextSequence <= FIRST_HALF_TURNS ? MatchHalf.First : MatchHalf.Second,
-      possessionSide,
+      minute: currentMinute,
+      half: nextTurn?.half ?? MatchHalf.Second,
+      possessionSide: nextTurn?.possessionSide ?? possessionSide,
       status: finished ? MatchStatus.Finished : MatchStatus.InProgress,
       energy,
       stoppageMinutes,
@@ -234,7 +262,7 @@ export class MatchEngine {
       suspensionMatchesToAdd,
       injury,
       events,
-      nextTurn: finished ? undefined : this.createTurn(params.player, nextSequence, outcomeText, now)
+      nextTurn
     };
   }
 
@@ -286,7 +314,33 @@ export class MatchEngine {
   }
 
   private shouldTriggerFoul(sequence: number, roll: number, context: MatchContextType): boolean {
-    return (sequence % 5 === 0 && roll % 3 === 0) || context === MatchContextType.DefensiveDuel;
+    if (context === MatchContextType.PenaltyKick) {
+      return roll % 8 === 0;
+    }
+    if (context === MatchContextType.DefensiveDuel) {
+      return roll < 26 || sequence % 5 === 0;
+    }
+    return sequence % 5 === 0 && roll % 3 === 0;
+  }
+
+  private getCardOutcome(sequence: number, roll: number, context: MatchContextType): 'NONE' | 'YELLOW' | 'RED' {
+    if (context === MatchContextType.DefensiveDuel) {
+      if (roll < 8 && sequence >= 8) {
+        return 'RED';
+      }
+      if (roll < 34) {
+        return 'YELLOW';
+      }
+      return 'NONE';
+    }
+
+    if (sequence % 6 === 0 && roll < 18) {
+      return 'YELLOW';
+    }
+    if (sequence % 11 === 0 && roll < 4) {
+      return 'RED';
+    }
+    return 'NONE';
   }
 
   private shouldConcedeCorner(roll: number): boolean {
@@ -295,10 +349,6 @@ export class MatchEngine {
 
   private shouldConcedeGoalKick(roll: number): boolean {
     return roll % 5 === 0;
-  }
-
-  private shouldGiveCard(sequence: number, roll: number, context: MatchContextType): boolean {
-    return context === MatchContextType.DefensiveDuel || (sequence % 6 === 0 && roll % 2 === 0);
   }
 
   private shouldInjure(sequence: number, roll: number, energy: number): boolean {

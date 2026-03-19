@@ -313,7 +313,7 @@ export class Phase1TelegramFacade {
 
   async handleCurrentMatch(telegramId: string): Promise<BotReply> {
     const match = await this.getActiveMatchService.execute(telegramId);
-    return this.toMatchReply(match, 'Status atual da partida.');
+    return this.toMatchReply(match, match.status === MatchStatus.Finished ? 'Última partida encerrada.' : 'Status atual da partida.');
   }
 
   async handleMatchAction(telegramId: string, action?: MatchActionKey): Promise<BotReply> {

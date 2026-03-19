@@ -54,7 +54,7 @@ interface MatchRecord {
   }>;
   events: Array<{ type: MatchEventView['type']; minute: number; description: string; createdAt: Date }>;
   injuries: Array<{ description: string; severity: number; matchesRemaining: number; isActive: boolean; createdAt: Date }>;
-  disciplinary: Array<{ type: MatchEventView['type']; suspensionMatches: number }>;
+  suspensions: Array<{ matchesRemaining: number; isActive: boolean }>;
 }
 
 const ensureCpuClub = async (name: string, city: string) => {
@@ -65,6 +65,15 @@ const ensureCpuClub = async (name: string, city: string) => {
     create: { name, city, country: 'Brasil', division: 'Série Profissional', reputation: 62 }
   });
 };
+
+const matchInclude = (pendingOnly: boolean) => ({
+  homeClub: true,
+  awayClub: true,
+  turns: pendingOnly ? { where: { state: MatchTurnState.Pending }, orderBy: { sequence: 'desc' }, take: 1 } : { orderBy: { sequence: 'desc' }, take: 1 },
+  events: { orderBy: { createdAt: 'desc' }, take: 8 },
+  injuries: { where: { isActive: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+  suspensions: { where: { isActive: true }, orderBy: { createdAt: 'desc' } }
+});
 
 export class PrismaMatchRepository implements MatchRepository {
   async findPlayerByTelegramId(telegramId: string): Promise<MatchPlayerProfile | null> {
@@ -95,14 +104,18 @@ export class PrismaMatchRepository implements MatchRepository {
     const match = (await prisma.match.findFirst({
       where: { status: MatchStatus.InProgress, player: { generation: { isCurrent: true, user: { telegramId } } } },
       orderBy: { createdAt: 'desc' },
-      include: {
-        homeClub: true,
-        awayClub: true,
-        turns: { orderBy: { sequence: 'desc' }, take: 1 },
-        events: { orderBy: { createdAt: 'desc' }, take: 8 },
-        injuries: { where: { isActive: true }, orderBy: { createdAt: 'desc' }, take: 1 },
-        disciplinary: { orderBy: { createdAt: 'desc' }, take: 5 }
-      }
+      include: matchInclude(true)
+    })) as MatchRecord | null;
+
+    return match ? this.toSummary(match) : null;
+  }
+
+  async getLatestMatchByTelegramId(telegramId: string): Promise<MatchSummary | null> {
+    const prisma = getPrismaClient();
+    const match = (await prisma.match.findFirst({
+      where: { player: { generation: { isCurrent: true, user: { telegramId } } } },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      include: matchInclude(false)
     })) as MatchRecord | null;
 
     return match ? this.toSummary(match) : null;
@@ -178,14 +191,7 @@ export class PrismaMatchRepository implements MatchRepository {
           }
         }
       },
-      include: {
-        homeClub: true,
-        awayClub: true,
-        turns: { orderBy: { sequence: 'desc' }, take: 1 },
-        events: { orderBy: { createdAt: 'desc' }, take: 8 },
-        injuries: { where: { isActive: true }, orderBy: { createdAt: 'desc' }, take: 1 },
-        disciplinary: { orderBy: { createdAt: 'desc' }, take: 5 }
-      }
+      include: matchInclude(true)
     })) as MatchRecord;
 
     return this.toSummary(match);
@@ -194,7 +200,7 @@ export class PrismaMatchRepository implements MatchRepository {
   async resolveTurn(matchId: string, resolution: MatchResolutionInput): Promise<ResolveTurnResult> {
     const prisma = getPrismaClient();
     const match = (await prisma.$transaction(async (tx) => {
-      const currentMatch = (await tx.match.findUnique({ where: { id: matchId }, include: { player: true } })) as { playerId: string } | null;
+      const currentMatch = (await tx.match.findUnique({ where: { id: matchId } })) as { playerId: string } | null;
       if (!currentMatch) {
         throw new Error('Partida não encontrada.');
       }
@@ -245,7 +251,7 @@ export class PrismaMatchRepository implements MatchRepository {
               type: event.type,
               minute: event.minute,
               description: event.description,
-              suspensionMatches: resolution.suspensionMatchesToAdd ?? 0
+              suspensionMatches: event.type === 'SUSPENSION' ? resolution.suspensionMatchesToAdd ?? 0 : 0
             }
           });
         }
@@ -302,14 +308,7 @@ export class PrismaMatchRepository implements MatchRepository {
 
       return tx.match.findUnique({
         where: { id: matchId },
-        include: {
-          homeClub: true,
-          awayClub: true,
-          turns: { where: { state: MatchTurnState.Pending }, orderBy: { sequence: 'desc' }, take: 1 },
-          events: { orderBy: { createdAt: 'desc' }, take: 8 },
-          injuries: { where: { isActive: true }, orderBy: { createdAt: 'desc' }, take: 1 },
-          disciplinary: { orderBy: { createdAt: 'desc' }, take: 5 }
-        }
+        include: matchInclude(true)
       });
     })) as MatchRecord;
 
@@ -321,7 +320,10 @@ export class PrismaMatchRepository implements MatchRepository {
 
   async consumePendingSuspension(playerId: string): Promise<boolean> {
     const prisma = getPrismaClient();
-    const suspension = (await prisma.suspensionRecord.findFirst({ where: { playerId, isActive: true, matchesRemaining: { gt: 0 } }, orderBy: { createdAt: 'asc' } })) as { id: string; matchesRemaining: number } | null;
+    const suspension = (await prisma.suspensionRecord.findFirst({
+      where: { playerId, isActive: true, matchesRemaining: { gt: 0 } },
+      orderBy: { createdAt: 'asc' }
+    })) as { id: string; matchesRemaining: number } | null;
     if (!suspension) {
       return false;
     }
@@ -345,8 +347,8 @@ export class PrismaMatchRepository implements MatchRepository {
         awayClubName: match.awayClub.name,
         homeScore: match.homeScore,
         awayScore: match.awayScore,
-        minute: match.currentMinute,
-        half: match.currentHalf,
+        minute: activeTurnRecord?.minute ?? match.currentMinute,
+        half: activeTurnRecord?.half ?? match.currentHalf,
         status: match.status,
         stoppageMinutes: match.stoppageMinutes
       },
@@ -375,7 +377,7 @@ export class PrismaMatchRepository implements MatchRepository {
       })),
       yellowCards: match.yellowCards,
       redCards: match.redCards,
-      suspensionMatchesRemaining: match.disciplinary.reduce((sum, item) => sum + (item.suspensionMatches ?? 0), 0),
+      suspensionMatchesRemaining: match.suspensions.reduce((sum, item) => sum + (item.isActive ? item.matchesRemaining : 0), 0),
       energy: match.userEnergy,
       injury: match.injuries[0]
         ? {

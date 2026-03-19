@@ -56,11 +56,17 @@ export class GetActiveMatchService {
   constructor(private readonly matchRepository: MatchRepository) {}
 
   async execute(telegramId: string) {
-    const match = await this.matchRepository.getActiveMatchByTelegramId(telegramId);
-    if (!match) {
-      throw new DomainError('Nenhuma partida ativa encontrada para este jogador.');
+    const activeMatch = await this.matchRepository.getActiveMatchByTelegramId(telegramId);
+    if (activeMatch) {
+      return activeMatch;
     }
-    return match;
+
+    const latestMatch = await this.matchRepository.getLatestMatchByTelegramId(telegramId);
+    if (latestMatch) {
+      return latestMatch;
+    }
+
+    throw new DomainError('Nenhuma partida ativa ou finalizada encontrada para este jogador.');
   }
 }
 
@@ -99,7 +105,8 @@ export class ResolveMatchTurnService {
         homeScore: activeMatch.scoreboard.homeScore,
         awayScore: activeMatch.scoreboard.awayScore,
         energy: activeMatch.energy,
-        stoppageMinutes: activeMatch.scoreboard.stoppageMinutes
+        stoppageMinutes: activeMatch.scoreboard.stoppageMinutes,
+        currentYellowCards: activeMatch.yellowCards
       },
       action,
       now

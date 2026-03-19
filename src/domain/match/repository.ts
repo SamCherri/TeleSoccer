@@ -53,6 +53,7 @@ export interface MatchResolutionInput {
 export interface MatchRepository {
   findPlayerByTelegramId(telegramId: string): Promise<MatchPlayerProfile | null>;
   getActiveMatchByTelegramId(telegramId: string): Promise<MatchSummary | null>;
+  getLatestMatchByTelegramId(telegramId: string): Promise<MatchSummary | null>;
   createMatchForPlayer(params: {
     telegramId: string;
     homeClubId: string;

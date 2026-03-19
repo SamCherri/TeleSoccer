@@ -138,3 +138,5 @@ ALTER TABLE "MatchDisciplinaryEvent" ADD CONSTRAINT "MatchDisciplinaryEvent_play
 ALTER TABLE "InjuryRecord" ADD CONSTRAINT "InjuryRecord_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "InjuryRecord" ADD CONSTRAINT "InjuryRecord_matchId_fkey" FOREIGN KEY ("matchId") REFERENCES "Match"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "SuspensionRecord" ADD CONSTRAINT "SuspensionRecord_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "SuspensionRecord" ADD CONSTRAINT "SuspensionRecord_matchId_fkey" FOREIGN KEY ("matchId") REFERENCES "Match"("id") ON DELETE SET NULL ON UPDATE CASCADE;

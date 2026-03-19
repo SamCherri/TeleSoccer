@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const { CreatePlayerService, TryoutService } = require('../dist/domain/player/services.js');
 const { StartMatchService, GetActiveMatchService, ResolveMatchTurnService } = require('../dist/domain/match/services.js');
 const { MatchEngine } = require('../dist/domain/match/engine.js');
-const { DominantFoot, PlayerPosition, CareerStatus, AttributeKey } = require('../dist/domain/shared/enums.js');
-const { MatchStatus, MatchRole } = require('../dist/domain/match/types.js');
+const { DominantFoot, PlayerPosition, CareerStatus } = require('../dist/domain/shared/enums.js');
+const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchActionKey } = require('../dist/domain/match/types.js');
 const { DomainError } = require('../dist/shared/errors.js');
 
 class InMemoryPlayerRepository {
@@ -41,10 +41,18 @@ class InMemoryPlayerRepository {
     return this.playersByTelegramId.get(telegramId) ?? null;
   }
 
-  async applyTraining() { throw new Error('not used'); }
-  async getCareerStatusByTelegramId() { throw new Error('not used'); }
-  async getCareerHistoryByTelegramId() { throw new Error('not used'); }
-  async getWalletStatementByTelegramId() { throw new Error('not used'); }
+  async applyTraining() {
+    throw new Error('not used');
+  }
+  async getCareerStatusByTelegramId() {
+    throw new Error('not used');
+  }
+  async getCareerHistoryByTelegramId() {
+    throw new Error('not used');
+  }
+  async getWalletStatementByTelegramId() {
+    throw new Error('not used');
+  }
 
   async registerTryout(params) {
     const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
@@ -101,6 +109,11 @@ class InMemoryMatchRepository {
     return match && match.status === MatchStatus.InProgress ? structuredClone(match) : null;
   }
 
+  async getLatestMatchByTelegramId(telegramId) {
+    const match = this.matchesByTelegramId.get(telegramId);
+    return match ? structuredClone(match) : null;
+  }
+
   async createMatchForPlayer(params) {
     const match = {
       id: `match-${params.playerId}`,
@@ -154,16 +167,16 @@ class InMemoryMatchRepository {
     match.yellowCards += resolution.yellowCardsDelta || 0;
     match.redCards += resolution.redCardIssued ? 1 : 0;
     if (resolution.suspensionMatchesToAdd) {
-      match.suspensionMatchesRemaining += resolution.suspensionMatchesToAdd;
-      this.suspensions.set(match.playerId, (this.suspensions.get(match.playerId) || 0) + resolution.suspensionMatchesToAdd);
+      const pending = (this.suspensions.get(match.playerId) || 0) + resolution.suspensionMatchesToAdd;
+      this.suspensions.set(match.playerId, pending);
+      match.suspensionMatchesRemaining = pending;
+    } else {
+      match.suspensionMatchesRemaining = this.suspensions.get(match.playerId) || 0;
     }
     if (resolution.injury) {
       match.injury = { ...resolution.injury };
     }
-    match.recentEvents = [
-      ...resolution.events.map((event) => ({ ...event, createdAt: new Date() })),
-      ...match.recentEvents
-    ].slice(0, 8);
+    match.recentEvents = [...resolution.events.map((event) => ({ ...event, createdAt: new Date() })), ...match.recentEvents].slice(0, 8);
     match.activeTurn = resolution.nextTurn
       ? {
           id: `turn-${resolution.nextTurn.sequence}`,
@@ -194,6 +207,47 @@ class InMemoryMatchRepository {
   }
 }
 
+function findMatchIdFor({ sequence, contextType, action, predicate }) {
+  for (let index = 1; index < 5000; index += 1) {
+    const matchId = `match-search-${index}`;
+    const resolution = new MatchEngine().resolve({
+      matchId,
+      player: {
+        playerId: 'player-search',
+        telegramId: 'search',
+        playerName: 'Tester',
+        clubId: 'club-1',
+        clubName: 'Porto Azul FC',
+        position: PlayerPosition.Defender,
+        careerStatus: CareerStatus.Professional,
+        attributes: { PASSING: 50, SHOOTING: 50, DRIBBLING: 50, SPEED: 50, MARKING: 45, POSITIONING: 48, REFLEXES: 46, HANDLING: 46, KICKING: 46 }
+      },
+      turn: {
+        id: 'turn-search',
+        sequence,
+        minute: 60,
+        half: MatchHalf.Second,
+        possessionSide: MatchPossessionSide.Home,
+        contextType,
+        deadlineAt: new Date('2026-03-03T12:00:30.000Z'),
+        homeScore: 0,
+        awayScore: 0,
+        energy: 70,
+        stoppageMinutes: 0,
+        currentYellowCards: 0
+      },
+      action,
+      now: new Date('2026-03-03T12:00:00.000Z')
+    });
+
+    if (predicate(resolution)) {
+      return { matchId, resolution };
+    }
+  }
+
+  throw new Error('unable to find deterministic match id for requested predicate');
+}
+
 async function createProfessionalPlayer(telegramId, position = PlayerPosition.Forward) {
   const playerRepo = new InMemoryPlayerRepository();
   const createPlayerService = new CreatePlayerService(playerRepo);
@@ -222,6 +276,7 @@ test('inicia partida profissional e devolve o primeiro lance pendente', async ()
   assert.equal(result.match.status, MatchStatus.InProgress);
   assert.equal(result.match.scoreboard.homeScore, 0);
   assert.ok(result.match.activeTurn);
+  assert.equal(result.match.scoreboard.minute, result.match.activeTurn.minute);
   assert.ok(result.match.activeTurn.availableActions.length >= 3);
 });
 
@@ -264,14 +319,91 @@ test('aplica timeout ao perder o prazo do turno', async () => {
   assert.ok(resolved.match.recentEvents.some((event) => event.type === 'TIMEOUT'));
 });
 
+test('duelo defensivo não gera falta automaticamente e evita duplicidade de FOUL', () => {
+  const semFalta = findMatchIdFor({
+    sequence: 8,
+    contextType: MatchContextType.DefensiveDuel,
+    action: MatchActionKey.Tackle,
+    predicate: (resolution) => resolution.events.filter((event) => event.type === 'FOUL').length === 0
+  }).resolution;
+
+  const comFalta = findMatchIdFor({
+    sequence: 8,
+    contextType: MatchContextType.DefensiveDuel,
+    action: MatchActionKey.Tackle,
+    predicate: (resolution) => resolution.events.filter((event) => event.type === 'FOUL').length === 1
+  }).resolution;
+
+  assert.equal(semFalta.events.filter((event) => event.type === 'FOUL').length, 0);
+  assert.equal(comFalta.events.filter((event) => event.type === 'FOUL').length, 1);
+});
+
+test('cartão vermelho é raro e não encerra a partida automaticamente', () => {
+  const { resolution } = findMatchIdFor({
+    sequence: 8,
+    contextType: MatchContextType.DefensiveDuel,
+    action: MatchActionKey.Tackle,
+    predicate: (candidate) => candidate.redCardIssued === true
+  });
+
+  assert.equal(resolution.redCardIssued, true);
+  assert.equal(resolution.status, MatchStatus.InProgress);
+  assert.ok(resolution.nextTurn);
+  assert.ok(resolution.events.some((event) => event.type === 'RED_CARD'));
+  assert.ok(resolution.events.some((event) => event.type === 'SUSPENSION'));
+});
+
+test('cartão amarelo é mais comum que vermelho no duelo defensivo', () => {
+  const amarelo = findMatchIdFor({
+    sequence: 8,
+    contextType: MatchContextType.DefensiveDuel,
+    action: MatchActionKey.Tackle,
+    predicate: (candidate) => candidate.yellowCardsDelta === 1
+  }).resolution;
+
+  const vermelho = findMatchIdFor({
+    sequence: 8,
+    contextType: MatchContextType.DefensiveDuel,
+    action: MatchActionKey.Tackle,
+    predicate: (candidate) => candidate.redCardIssued === true
+  }).resolution;
+
+  assert.equal(amarelo.yellowCardsDelta, 1);
+  assert.equal(vermelho.redCardIssued, true);
+  assert.ok(amarelo.events.some((event) => event.type === 'YELLOW_CARD'));
+});
+
+test('consulta partida finalizada quando não há mais partida em andamento', async () => {
+  const playerRepo = await createProfessionalPlayer('304');
+  const matchRepo = new InMemoryMatchRepository(playerRepo);
+  const engine = new MatchEngine();
+  const startMatchService = new StartMatchService(matchRepo, engine);
+  const getActiveMatchService = new GetActiveMatchService(matchRepo);
+  const resolveMatchTurnService = new ResolveMatchTurnService(matchRepo, engine);
+
+  await startMatchService.execute('304', new Date('2026-03-03T12:00:00.000Z'));
+
+  let match = await getActiveMatchService.execute('304');
+  let safety = 0;
+  while (match.status === MatchStatus.InProgress && safety < 20) {
+    const action = match.activeTurn.availableActions[0].key;
+    match = (await resolveMatchTurnService.execute('304', action, new Date(match.activeTurn.deadlineAt.getTime() - 1000))).match;
+    safety += 1;
+  }
+
+  const lastMatch = await getActiveMatchService.execute('304');
+  assert.equal(lastMatch.status, MatchStatus.Finished);
+  assert.equal(lastMatch.activeTurn, undefined);
+});
+
 test('bloqueia nova partida quando há suspensão pendente a cumprir', async () => {
-  const playerRepo = await createProfessionalPlayer('304', PlayerPosition.Defender);
+  const playerRepo = await createProfessionalPlayer('305', PlayerPosition.Defender);
   const matchRepo = new InMemoryMatchRepository(playerRepo);
   const startMatchService = new StartMatchService(matchRepo, new MatchEngine());
 
-  matchRepo.suspensions.set('player-304', 1);
+  matchRepo.suspensions.set('player-305', 1);
 
-  await assert.rejects(() => startMatchService.execute('304'), (error) => {
+  await assert.rejects(() => startMatchService.execute('305'), (error) => {
     assert.ok(error instanceof DomainError);
     assert.ok(error.message.includes('suspenso'));
     return true;
