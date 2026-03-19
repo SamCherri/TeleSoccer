@@ -344,10 +344,11 @@ export class Phase1TelegramFacade {
   handleMultiplayerMenu(): BotReply {
     return {
       text: [
-        'Multiplayer MVP do TeleSoccer.',
-        '1. O anfitrião cria uma sala persistida.',
-        '2. O segundo usuário entra com /entrar-sala CODIGO.',
+        'Multiplayer MVP do TeleSoccer centrado em jogadores humanos reais.',
+        '1. O anfitrião cria uma sala persistida para humanos.',
+        '2. O segundo jogador humano entra com /entrar-sala CODIGO.',
         '3. A sala fica pronta para a próxima evolução da partida compartilhada.',
+        '4. Bots não são padrão: só entram como fallback quando houver contingência futura.',
         'Comandos úteis: /criar-sala, /sala e /entrar-sala CODIGO.'
       ].join('\n'),
       actions: [phase1BotActions.multiplayerCreateLobby, phase1BotActions.multiplayerLobbyStatus, phase1BotActions.mainMenu]

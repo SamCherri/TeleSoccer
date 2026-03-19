@@ -1,5 +1,5 @@
 import { MatchStatus, MatchSummary } from '../domain/match/types';
-import { MultiplayerLobbyStatusView } from '../domain/multiplayer/types';
+import { MultiplayerParticipantKind, MultiplayerLobbyStatusView } from '../domain/multiplayer/types';
 
 const statusLabels: Record<MatchStatus, string> = {
   [MatchStatus.Pending]: 'Pendente',
@@ -8,9 +8,14 @@ const statusLabels: Record<MatchStatus, string> = {
 };
 
 const lobbyStatusLabels: Record<MultiplayerLobbyStatusView['status'], string> = {
-  OPEN: 'Aguardando adversário',
-  READY: 'Pronta para preparar a partida',
+  OPEN: 'Aguardando jogadores humanos',
+  READY: 'Pronta para preparar a partida humana compartilhada',
   CLOSED: 'Encerrada'
+};
+
+const participantKindLabels: Record<MultiplayerParticipantKind, string> = {
+  [MultiplayerParticipantKind.Human]: 'humano',
+  [MultiplayerParticipantKind.Bot]: 'bot de fallback'
 };
 
 export const renderMatchCard = (match: MatchSummary, leadText: string): string => {
@@ -44,7 +49,7 @@ export const renderMatchCard = (match: MatchSummary, leadText: string): string =
 export const renderMultiplayerLobbyCard = (lobby: MultiplayerLobbyStatusView, leadText: string): string => {
   const participantLines = lobby.participants.map(
     (participant) =>
-      `• Slot ${participant.slotNumber}: ${participant.playerName}${participant.isHost ? ' (anfitrião)' : ''}`
+      `• Slot ${participant.slotNumber}: ${participant.playerName}${participant.isHost ? ' (anfitrião)' : ''} [${participantKindLabels[participant.kind]}]`
   );
 
   return [
@@ -52,12 +57,15 @@ export const renderMultiplayerLobbyCard = (lobby: MultiplayerLobbyStatusView, le
     leadText,
     `Sala: ${lobby.lobbyCode}`,
     `Estado: ${lobbyStatusLabels[lobby.status]}`,
-    `Participantes: ${lobby.participants.length}/2`,
+    `Política de preenchimento: ${lobby.fillPolicy === 'HUMAN_PRIORITY_WITH_BOT_FALLBACK' ? 'humanos primeiro, bot só como fallback' : 'somente humanos'}`,
+    `Participantes humanos: ${lobby.humanParticipantCount}/${lobby.maxParticipants}`,
+    `Participantes bot: ${lobby.botParticipantCount}`,
     participantLines.join('\n'),
-    `Vagas em aberto: ${lobby.openSlotCount}`,
-    lobby.readyForMatchAt ? `Pronta desde: ${lobby.readyForMatchAt.toISOString()}` : 'Preparação de partida: aguardando segundo usuário.',
+    `Vagas humanas em aberto: ${lobby.openHumanSlotCount}`,
+    `Vagas elegíveis para fallback com bot: ${lobby.botFallbackEligibleSlots}`,
+    lobby.readyForMatchAt ? `Pronta desde: ${lobby.readyForMatchAt.toISOString()}` : 'Preparação de partida: aguardando jogadores humanos reais.',
     lobby.canStartMatchPreparation
-      ? 'Preparação multiplayer liberada para a próxima evolução da partida compartilhada.'
-      : 'Use /entrar-sala CODIGO no segundo usuário para completar a sessão persistida.'
+      ? 'Preparação multiplayer liberada para a futura partida compartilhada entre humanos.'
+      : 'Enquanto houver vaga humana aberta, o sistema prioriza jogadores reais. Bot só entra por contingência futura.'
   ].join('\n');
 };

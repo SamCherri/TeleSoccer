@@ -12,13 +12,21 @@ Ordem de prioridade:
 5. integração Telegram
 6. apresentação
 
-## 2. Camadas atuais
+## 2. Diretriz estrutural do produto
+
+O produto agora assume explicitamente:
+- jogo online centrado em humanos
+- bots apenas como fallback controlado
+- necessidade de distinguir humano e bot no domínio e na persistência
+
+## 3. Camadas atuais
 
 ### `src/domain/`
 Contém regras de negócio, tipos e serviços de:
 - carreira do jogador
 - partida por turnos
 - multiplayer MVP
+- política humano-primeiro e fallback com bot
 
 ### `src/infra/prisma/`
 Contém a persistência principal em Prisma/PostgreSQL para:
@@ -26,6 +34,7 @@ Contém a persistência principal em Prisma/PostgreSQL para:
 - clube
 - partida
 - lobby multiplayer
+- tipos de participante e política de preenchimento
 
 ### `src/bot/`
 Contém:
@@ -37,28 +46,32 @@ Contém:
 ### `src/infra/telegram/`
 Contém a infraestrutura HTTP/Telegram para entregar as mensagens.
 
-## 3. Entrada do multiplayer MVP
+## 4. Multiplayer MVP na arquitetura
 
-A nova capacidade multiplayer respeita a mesma arquitetura:
-
+A capacidade multiplayer respeita a mesma arquitetura:
 - domínio controla criação, entrada e leitura de estado do lobby
+- domínio define se participante é humano ou bot
+- domínio define política de fallback
 - Prisma persiste sessão e participantes
 - facade do bot expõe casos de uso
 - dispatcher apenas roteia comandos e payloads
 
-## 4. Relação entre partida solo e multiplayer MVP
+## 5. Relação entre partida solo e evolução multiplayer
 
 A partida da Fase 2 continua separada e operacional.
 
-O multiplayer MVP não substitui a partida solo nesta entrega.
-Ele adiciona a preparação persistida para a futura partida compartilhada, com vínculo pronto para expansão por `Match`.
+Porém, a base estrutural deixa de assumir que tudo fora do usuário local é CPU inevitável.
+A estrutura de partida e lobby passa a suportar explicitamente origem do participante, permitindo evolução futura para:
+- humano vs humano
+- humano + bot
+- composição híbrida
 
-## 5. Base visual MVP
+## 6. Base visual MVP
 
 A apresentação usa renderers dedicados que recebem dados já resolvidos por serviços.
-Isso evita espalhar regra de negócio nas mensagens do Telegram.
+Isso evita espalhar regra de negócio nas mensagens do Telegram e mantém coerência com a diretriz humano-first.
 
-## 6. Persistência principal
+## 7. Persistência principal
 
 Railway continua sendo o ambiente principal.
 PostgreSQL continua sendo o banco principal.

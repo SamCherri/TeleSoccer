@@ -1,17 +1,31 @@
 import { DomainError } from '../../shared/errors';
 import { CareerStatus } from '../shared/enums';
 import { CreateMultiplayerLobbyInput, MultiplayerLobbyRepository, MultiplayerPlayerProfile } from './repository';
-import { MultiplayerLobbyStatus, MultiplayerLobbyStatusView, MultiplayerLobbyView } from './types';
+import {
+  MultiplayerLobbyFillPolicy,
+  MultiplayerParticipantKind,
+  MultiplayerLobbyStatus,
+  MultiplayerLobbyStatusView,
+  MultiplayerLobbyView
+} from './types';
 
 const LOBBY_CODE_LENGTH = 6;
 const LOBBY_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const MAX_LOBBY_PARTICIPANTS = 2;
+const DEFAULT_MAX_LOBBY_PARTICIPANTS = 2;
 
-const buildLobbyStatusView = (lobby: MultiplayerLobbyView): MultiplayerLobbyStatusView => ({
-  ...lobby,
-  canStartMatchPreparation: lobby.status === MultiplayerLobbyStatus.Ready && lobby.participants.length === MAX_LOBBY_PARTICIPANTS,
-  openSlotCount: Math.max(0, MAX_LOBBY_PARTICIPANTS - lobby.participants.length)
-});
+const buildLobbyStatusView = (lobby: MultiplayerLobbyView): MultiplayerLobbyStatusView => {
+  const humanParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
+  const botParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Bot).length;
+  const openHumanSlotCount = Math.max(0, lobby.maxParticipants - humanParticipantCount);
+
+  return {
+    ...lobby,
+    canStartMatchPreparation: humanParticipantCount >= 2 && lobby.status === MultiplayerLobbyStatus.Ready,
+    openHumanSlotCount,
+    humanParticipantCount,
+    botParticipantCount
+  };
+};
 
 export class CreateLobbyService {
   constructor(
@@ -25,6 +39,8 @@ export class CreateLobbyService {
 
     const lobby = await this.multiplayerRepository.createLobby({
       ...(await this.buildUniqueLobbyInput(player)),
+      fillPolicy: MultiplayerLobbyFillPolicy.HumanPriorityWithBotFallback,
+      maxParticipants: DEFAULT_MAX_LOBBY_PARTICIPANTS,
       hostUserId: player.userId,
       hostPlayerId: player.playerId,
       hostPlayerName: player.playerName,
@@ -50,6 +66,8 @@ export class CreateLobbyService {
       if (!existing) {
         return {
           lobbyCode,
+          fillPolicy: MultiplayerLobbyFillPolicy.HumanPriorityWithBotFallback,
+          maxParticipants: DEFAULT_MAX_LOBBY_PARTICIPANTS,
           hostUserId: player.userId,
           hostPlayerId: player.playerId,
           hostPlayerName: player.playerName,
@@ -102,8 +120,10 @@ export class JoinLobbyService {
     if (lobby.hostPlayerId === player.playerId) {
       throw new DomainError('O anfitrião não pode entrar novamente na própria sala.');
     }
-    if (lobby.participants.length >= MAX_LOBBY_PARTICIPANTS) {
-      throw new DomainError('Esta sala já está cheia e pronta para preparar a partida multiplayer.');
+
+    const humanParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
+    if (humanParticipantCount >= lobby.maxParticipants) {
+      throw new DomainError('Esta sala já está cheia e pronta para preparar a partida multiplayer entre humanos.');
     }
 
     const joinedLobby = await this.multiplayerRepository.joinLobby({
@@ -111,10 +131,17 @@ export class JoinLobbyService {
       userId: player.userId,
       playerId: player.playerId,
       playerName: player.playerName,
-      telegramId: player.telegramId
+      telegramId: player.telegramId,
+      participantKind: MultiplayerParticipantKind.Human
     });
 
-    const updatedLobby = await this.multiplayerRepository.updateLobbyStatus(joinedLobby.id, MultiplayerLobbyStatus.Ready, new Date());
+    const humanCountAfterJoin = joinedLobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
+    const shouldBeReady = humanCountAfterJoin >= 2;
+    const updatedLobby = await this.multiplayerRepository.updateLobbyStatus(
+      joinedLobby.id,
+      shouldBeReady ? MultiplayerLobbyStatus.Ready : MultiplayerLobbyStatus.Open,
+      shouldBeReady ? new Date() : undefined
+    );
     return buildLobbyStatusView(updatedLobby);
   }
 
@@ -134,6 +161,32 @@ export class JoinLobbyService {
     if (existingLobby) {
       throw new DomainError(`Você já está vinculado à sala ${existingLobby.lobbyCode}. Consulte /sala antes de entrar em outra.`);
     }
+  }
+}
+
+export class MarkLobbyBotFallbackEligibleService {
+  constructor(private readonly multiplayerRepository: MultiplayerLobbyRepository) {}
+
+  async execute(telegramId: string, requestedSlots = 1): Promise<MultiplayerLobbyStatusView> {
+    const lobby = await this.multiplayerRepository.findActiveLobbyByTelegramId(telegramId);
+    if (!lobby) {
+      throw new DomainError('Nenhuma sala multiplayer ativa foi encontrada para marcar fallback com bot.');
+    }
+    if (requestedSlots < 1 || !Number.isInteger(requestedSlots)) {
+      throw new DomainError('A quantidade de vagas elegíveis para fallback deve ser um inteiro positivo.');
+    }
+    if (lobby.fillPolicy !== MultiplayerLobbyFillPolicy.HumanPriorityWithBotFallback) {
+      throw new DomainError('Esta sala não permite fallback com bot.');
+    }
+
+    const currentStatus = buildLobbyStatusView(lobby);
+    if (currentStatus.openHumanSlotCount === 0) {
+      throw new DomainError('Não há vagas humanas abertas para marcar como elegíveis a fallback.');
+    }
+
+    const eligibleSlots = Math.min(currentStatus.openHumanSlotCount, requestedSlots);
+    const updatedLobby = await this.multiplayerRepository.markBotFallbackEligible(lobby.id, eligibleSlots);
+    return buildLobbyStatusView(updatedLobby);
   }
 }
 

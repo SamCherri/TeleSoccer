@@ -16,7 +16,7 @@ import { PrismaPlayerRepository } from '../infra/prisma/player-repository';
 import { MatchEngine } from '../domain/match/engine';
 import { GetActiveMatchService, ResolveMatchTurnService, StartMatchService } from '../domain/match/services';
 import { PrismaMatchRepository } from '../infra/prisma/match-repository';
-import { CreateLobbyService, GetLobbyStatusService, JoinLobbyService } from '../domain/multiplayer/services';
+import { CreateLobbyService, GetLobbyStatusService, JoinLobbyService, MarkLobbyBotFallbackEligibleService } from '../domain/multiplayer/services';
 import { PrismaMultiplayerLobbyRepository } from '../infra/prisma/multiplayer-repository';
 
 export const buildContainer = () => {
@@ -40,6 +40,7 @@ export const buildContainer = () => {
   const createLobbyService = new CreateLobbyService(multiplayerLobbyRepository);
   const joinLobbyService = new JoinLobbyService(multiplayerLobbyRepository);
   const getLobbyStatusService = new GetLobbyStatusService(multiplayerLobbyRepository);
+  const markLobbyBotFallbackEligibleService = new MarkLobbyBotFallbackEligibleService(multiplayerLobbyRepository);
 
   const phase1TelegramFacade = new Phase1TelegramFacade(
     createPlayerService,
@@ -72,6 +73,7 @@ export const buildContainer = () => {
     createLobbyService,
     joinLobbyService,
     getLobbyStatusService,
+    markLobbyBotFallbackEligibleService,
     phase1TelegramFacade,
     phase1PlayerCreationFlow,
     phase1TelegramDispatcher: new Phase1TelegramDispatcher(phase1TelegramFacade, phase1PlayerCreationFlow)

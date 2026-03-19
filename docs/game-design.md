@@ -1,51 +1,55 @@
 # TeleSoccer - Game Design do MVP atual
 
-## 1. Loop central atual
+## 1. Fantasia oficial do produto
 
-O loop jogável oficial do TeleSoccer neste momento é:
+O TeleSoccer é um jogo de futebol online via Telegram centrado em jogadores humanos reais.
+
+O usuário vive a carreira do próprio personagem e, progressivamente, participa de experiências compartilhadas com outros humanos.
+
+Bots existem apenas para contingência operacional quando faltarem pessoas suficientes.
+
+## 2. Loop central atual
 
 1. criar jogador
 2. evoluir com treino e peneira
 3. entrar no profissional
 4. jogar partida solo por turnos
-5. abrir ou entrar em sessão multiplayer
-6. preparar a futura partida online entre humanos
+5. abrir ou entrar em sessão online com humanos
+6. preparar a futura partida multiplayer compartilhada
 
-## 2. Fantasia do produto
+## 3. Regra de experiência
 
-O TeleSoccer é um jogo de futebol online via Telegram onde o usuário vive a carreira do próprio personagem e, progressivamente, entra em experiências compartilhadas com outros humanos.
+### Humanos primeiro
+- o jogo deve tentar reunir pessoas reais antes de qualquer fallback
+- a identidade do jogador humano precisa continuar sendo o centro da experiência
 
-## 3. Papel do multiplayer MVP no design
+### Bots como fallback
+- bot não substitui o objetivo do produto
+- bot é apoio de contingência para não bloquear o fluxo quando faltar gente
+- a experiência futura deve sempre priorizar humano quando disponível
 
-O multiplayer MVP não é um modo isolado e descartável.
-Ele é o primeiro elo concreto entre:
-- carreira persistida
-- identidade do jogador
-- sessão online entre humanos
-- futura partida multiplayer compartilhada
+## 4. Papel do multiplayer MVP no design
 
-## 4. Experiência mínima desejada
+O multiplayer MVP não é extra decorativo.
+Ele é a primeira forma oficial de sessão online persistida entre jogadores reais, já preparada para:
+- distinguir humano e bot
+- marcar necessidade de fallback
+- evoluir para partida compartilhada
 
-### Carreira
-- o usuário sente progressão do atleta
-- as decisões anteriores continuam válidas
+## 5. Impacto visual desejado
 
-### Partida solo
-- o usuário sente controle do próprio personagem
-- o ritmo é rápido e orientado por contexto
+Mesmo no Telegram, a leitura deve parecer jogo e não apenas texto administrativo.
+Por isso os cards atuais já mostram:
+- sessão online
+- participantes humanos
+- vagas abertas
+- fallback com bot apenas como contingência
 
-### Multiplayer MVP
-- o usuário sente que já existe uma sala online persistida
-- o segundo humano entra com um código simples
-- a sessão fica pronta para o próximo passo do jogo online
-
-### Visual MVP
-- o usuário lê blocos mais próximos de um card de jogo do que de texto solto
-
-## 5. Fora do design atual
+## 6. Fora do design atual
 
 Ainda não fazem parte do design ativo desta etapa:
 - gestão completa de clube
 - economia contratual profunda
-- competição online formal
+- competição online formal completa
 - interface externa ao Telegram como experiência principal
+- partida multiplayer completa em tempo real

@@ -109,6 +109,11 @@ enum MatchRole {
   CPU_SUPPORT
 }
 
+enum MatchParticipantKind {
+  HUMAN
+  BOT
+}
+
 enum MatchContextType {
   RECEIVED_FREE
   RECEIVED_PRESSED
@@ -163,6 +168,16 @@ enum MultiplayerLobbyStatus {
   OPEN
   READY
   CLOSED
+}
+
+enum MultiplayerLobbyFillPolicy {
+  HUMAN_ONLY
+  HUMAN_PRIORITY_WITH_BOT_FALLBACK
+}
+
+enum MultiplayerParticipantKind {
+  HUMAN
+  BOT
 }
 
 model User {
@@ -372,17 +387,18 @@ model Match {
 }
 
 model MatchLineup {
-  id               String              @id @default(cuid())
+  id               String               @id @default(cuid())
   matchId          String
   playerId         String?
   side             MatchPossessionSide
   role             MatchRole
+  participantKind  MatchParticipantKind @default(BOT)
   displayName      String
   shirtNumber      Int?
-  isUserControlled Boolean             @default(false)
-  createdAt        DateTime            @default(now())
-  match            Match               @relation(fields: [matchId], references: [id])
-  player           Player?             @relation(fields: [playerId], references: [id])
+  isUserControlled Boolean              @default(false)
+  createdAt        DateTime             @default(now())
+  match            Match                @relation(fields: [matchId], references: [id])
+  player           Player?              @relation(fields: [playerId], references: [id])
 
   @@index([matchId, side])
 }
@@ -477,34 +493,38 @@ model SuspensionRecord {
 }
 
 model MultiplayerLobby {
-  id                String                        @id @default(cuid())
-  lobbyCode         String                        @unique
-  status            MultiplayerLobbyStatus        @default(OPEN)
-  hostUserId        String
-  createdByPlayerId String
-  readyForMatchAt   DateTime?
-  linkedMatchId     String?
-  createdAt         DateTime                      @default(now())
-  updatedAt         DateTime                      @updatedAt
-  hostUser          User                          @relation("HostedMultiplayerLobbies", fields: [hostUserId], references: [id])
-  createdByPlayer   Player                        @relation("PlayerHostedMultiplayerLobbies", fields: [createdByPlayerId], references: [id])
-  linkedMatch       Match?                        @relation(fields: [linkedMatchId], references: [id])
-  participants      MultiplayerLobbyParticipant[]
+  id                       String                        @id @default(cuid())
+  lobbyCode                String                        @unique
+  status                   MultiplayerLobbyStatus        @default(OPEN)
+  fillPolicy               MultiplayerLobbyFillPolicy    @default(HUMAN_PRIORITY_WITH_BOT_FALLBACK)
+  maxParticipants          Int                           @default(2)
+  botFallbackEligibleSlots Int                           @default(0)
+  hostUserId               String
+  createdByPlayerId        String
+  readyForMatchAt          DateTime?
+  linkedMatchId            String?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+  hostUser                 User                          @relation("HostedMultiplayerLobbies", fields: [hostUserId], references: [id])
+  createdByPlayer          Player                        @relation("PlayerHostedMultiplayerLobbies", fields: [createdByPlayerId], references: [id])
+  linkedMatch              Match?                        @relation(fields: [linkedMatchId], references: [id])
+  participants             MultiplayerLobbyParticipant[]
 
   @@index([status, createdAt])
 }
 
 model MultiplayerLobbyParticipant {
-  id         String           @id @default(cuid())
+  id         String                     @id @default(cuid())
   lobbyId    String
   userId     String
   playerId   String
   slotNumber Int
-  isHost     Boolean          @default(false)
-  joinedAt   DateTime         @default(now())
-  lobby      MultiplayerLobby @relation(fields: [lobbyId], references: [id])
-  user       User             @relation(fields: [userId], references: [id])
-  player     Player           @relation(fields: [playerId], references: [id])
+  kind       MultiplayerParticipantKind @default(HUMAN)
+  isHost     Boolean                    @default(false)
+  joinedAt   DateTime                   @default(now())
+  lobby      MultiplayerLobby           @relation(fields: [lobbyId], references: [id])
+  user       User                       @relation(fields: [userId], references: [id])
+  player     Player                     @relation(fields: [playerId], references: [id])
 
   @@unique([lobbyId, userId])
   @@unique([lobbyId, slotNumber])

@@ -5,7 +5,13 @@ import {
   MultiplayerLobbyRepository,
   MultiplayerPlayerProfile
 } from '../../domain/multiplayer/repository';
-import { MultiplayerLobbyStatus, MultiplayerLobbyStatusView, MultiplayerLobbyView } from '../../domain/multiplayer/types';
+import {
+  MultiplayerLobbyFillPolicy,
+  MultiplayerParticipantKind,
+  MultiplayerLobbyStatus,
+  MultiplayerLobbyStatusView,
+  MultiplayerLobbyView
+} from '../../domain/multiplayer/types';
 import { getPrismaClient } from './client';
 
 interface MultiplayerPlayerRecord {
@@ -20,19 +26,23 @@ interface MultiplayerLobbyRecord {
   id: string;
   lobbyCode: string;
   status: MultiplayerLobbyStatus;
+  fillPolicy: MultiplayerLobbyFillPolicy;
+  maxParticipants: number;
+  botFallbackEligibleSlots: number;
   createdAt: Date;
   readyForMatchAt: Date | null;
   linkedMatchId: string | null;
   createdByPlayerId: string;
   createdByPlayer: { name: string };
   participants: Array<{
-    userId: string;
-    playerId: string;
+    userId: string | null;
+    playerId: string | null;
     joinedAt: Date;
     isHost: boolean;
     slotNumber: number;
-    user: { telegramId: string };
-    player: { name: string };
+    kind: MultiplayerParticipantKind;
+    user: { telegramId: string } | null;
+    player: { name: string } | null;
   }>;
 }
 
@@ -47,11 +57,18 @@ const lobbyInclude = {
   }
 };
 
-const buildLobbyStatusView = (lobby: MultiplayerLobbyView): MultiplayerLobbyStatusView => ({
-  ...lobby,
-  canStartMatchPreparation: lobby.status === MultiplayerLobbyStatus.Ready && lobby.participants.length >= 2,
-  openSlotCount: Math.max(0, 2 - lobby.participants.length)
-});
+const buildLobbyStatusView = (lobby: MultiplayerLobbyView): MultiplayerLobbyStatusView => {
+  const humanParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
+  const botParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Bot).length;
+
+  return {
+    ...lobby,
+    canStartMatchPreparation: humanParticipantCount >= 2 && lobby.status === MultiplayerLobbyStatus.Ready,
+    openHumanSlotCount: Math.max(0, lobby.maxParticipants - humanParticipantCount),
+    humanParticipantCount,
+    botParticipantCount
+  };
+};
 
 export class PrismaMultiplayerLobbyRepository implements MultiplayerLobbyRepository {
   async findPlayerByTelegramId(telegramId: string): Promise<MultiplayerPlayerProfile | null> {
@@ -105,6 +122,9 @@ export class PrismaMultiplayerLobbyRepository implements MultiplayerLobbyReposit
       data: {
         lobbyCode: input.lobbyCode,
         status: MultiplayerLobbyStatus.Open,
+        fillPolicy: input.fillPolicy,
+        maxParticipants: input.maxParticipants,
+        botFallbackEligibleSlots: 0,
         hostUserId: input.hostUserId,
         createdByPlayerId: input.hostPlayerId,
         participants: {
@@ -112,6 +132,7 @@ export class PrismaMultiplayerLobbyRepository implements MultiplayerLobbyReposit
             userId: input.hostUserId,
             playerId: input.hostPlayerId,
             slotNumber: 1,
+            kind: MultiplayerParticipantKind.Human,
             isHost: true
           }
         }
@@ -127,11 +148,13 @@ export class PrismaMultiplayerLobbyRepository implements MultiplayerLobbyReposit
     const lobby = (await prisma.multiplayerLobby.update({
       where: { id: input.lobbyId },
       data: {
+        botFallbackEligibleSlots: 0,
         participants: {
           create: {
             userId: input.userId,
             playerId: input.playerId,
             slotNumber: 2,
+            kind: input.participantKind,
             isHost: false
           }
         }
@@ -156,6 +179,19 @@ export class PrismaMultiplayerLobbyRepository implements MultiplayerLobbyReposit
     return this.toLobbyView(lobby);
   }
 
+  async markBotFallbackEligible(lobbyId: string, eligibleSlots: number): Promise<MultiplayerLobbyView> {
+    const prisma = getPrismaClient();
+    const lobby = (await prisma.multiplayerLobby.update({
+      where: { id: lobbyId },
+      data: {
+        botFallbackEligibleSlots: eligibleSlots
+      },
+      include: lobbyInclude
+    })) as MultiplayerLobbyRecord;
+
+    return this.toLobbyView(lobby);
+  }
+
   async getLobbyStatus(lobbyId: string): Promise<MultiplayerLobbyStatusView | null> {
     const prisma = getPrismaClient();
     const lobby = (await prisma.multiplayerLobby.findUnique({
@@ -171,18 +207,22 @@ export class PrismaMultiplayerLobbyRepository implements MultiplayerLobbyReposit
       id: lobby.id,
       lobbyCode: lobby.lobbyCode,
       status: lobby.status,
+      fillPolicy: lobby.fillPolicy,
+      maxParticipants: lobby.maxParticipants,
+      botFallbackEligibleSlots: lobby.botFallbackEligibleSlots,
       createdAt: new Date(lobby.createdAt),
       readyForMatchAt: lobby.readyForMatchAt ? new Date(lobby.readyForMatchAt) : undefined,
       linkedMatchId: lobby.linkedMatchId ?? undefined,
       hostPlayerId: lobby.createdByPlayerId,
       hostPlayerName: lobby.createdByPlayer.name,
       participants: lobby.participants.map((participant) => ({
-        userId: participant.userId,
-        playerId: participant.playerId,
-        playerName: participant.player.name,
-        telegramId: participant.user.telegramId,
+        userId: participant.userId ?? undefined,
+        playerId: participant.playerId ?? undefined,
+        playerName: participant.player?.name ?? 'Bot de fallback',
+        telegramId: participant.user?.telegramId ?? undefined,
         isHost: participant.isHost,
         slotNumber: participant.slotNumber,
+        kind: participant.kind,
         joinedAt: new Date(participant.joinedAt)
       }))
     };

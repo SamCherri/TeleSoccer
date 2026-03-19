@@ -8,6 +8,7 @@ import {
   MatchEventView,
   MatchStatus,
   MatchRole,
+  MatchParticipantKind,
   MatchTurnState,
   ResolveTurnResult
 } from '../../domain/match/types';
@@ -128,6 +129,8 @@ export class PrismaMatchRepository implements MatchRepository {
     awayClubName: string;
     playerId: string;
     userRole: MatchRole;
+    userParticipantKind: MatchParticipantKind;
+    opponentParticipantKind: MatchParticipantKind;
     initialTurn: CreateMatchTurnInput;
   }): Promise<MatchSummary> {
     const prisma = getPrismaClient();
@@ -153,6 +156,7 @@ export class PrismaMatchRepository implements MatchRepository {
               playerId: params.playerId,
               side: 'HOME',
               role: params.userRole,
+              participantKind: params.userParticipantKind,
               displayName: 'Você',
               shirtNumber: 10,
               isUserControlled: true
@@ -160,6 +164,7 @@ export class PrismaMatchRepository implements MatchRepository {
             {
               side: 'AWAY',
               role: MatchRole.CpuSupport,
+              participantKind: params.opponentParticipantKind,
               displayName: awayClub.name,
               shirtNumber: 9,
               isUserControlled: false

@@ -28,6 +28,11 @@ export enum MatchRole {
   CpuSupport = 'CPU_SUPPORT'
 }
 
+export enum MatchParticipantKind {
+  Human = 'HUMAN',
+  Bot = 'BOT'
+}
+
 export enum MatchContextType {
   ReceivedFree = 'RECEIVED_FREE',
   ReceivedPressed = 'RECEIVED_PRESSED',

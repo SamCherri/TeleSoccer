@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 
 const { CareerStatus, DominantFoot, PlayerPosition } = require('../dist/domain/shared/enums.js');
 const { CreatePlayerService, TryoutService, GetPlayerCardService, GetCareerStatusService, GetCareerHistoryService, GetWalletStatementService, WeeklyTrainingService } = require('../dist/domain/player/services.js');
-const { CreateLobbyService, GetLobbyStatusService, JoinLobbyService } = require('../dist/domain/multiplayer/services.js');
-const { MultiplayerLobbyStatus } = require('../dist/domain/multiplayer/types.js');
+const { CreateLobbyService, GetLobbyStatusService, JoinLobbyService, MarkLobbyBotFallbackEligibleService } = require('../dist/domain/multiplayer/services.js');
+const { MultiplayerLobbyFillPolicy, MultiplayerParticipantKind, MultiplayerLobbyStatus } = require('../dist/domain/multiplayer/types.js');
 const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { Phase1PlayerCreationFlow } = require('../dist/bot/player-creation-flow.js');
@@ -188,6 +188,9 @@ class InMemoryMultiplayerLobbyRepository {
       id: `lobby-${input.lobbyCode}`,
       lobbyCode: input.lobbyCode,
       status: MultiplayerLobbyStatus.Open,
+      fillPolicy: input.fillPolicy,
+      maxParticipants: input.maxParticipants,
+      botFallbackEligibleSlots: 0,
       createdAt: new Date('2026-03-03T12:00:00.000Z'),
       readyForMatchAt: undefined,
       linkedMatchId: undefined,
@@ -201,6 +204,7 @@ class InMemoryMultiplayerLobbyRepository {
           telegramId: input.hostTelegramId,
           isHost: true,
           slotNumber: 1,
+          kind: MultiplayerParticipantKind.Human,
           joinedAt: new Date('2026-03-03T12:00:00.000Z')
         }
       ]
@@ -212,6 +216,7 @@ class InMemoryMultiplayerLobbyRepository {
 
   async joinLobby(input) {
     const lobby = this.lobbies.get(input.lobbyId);
+    lobby.botFallbackEligibleSlots = 0;
     lobby.participants.push({
       userId: input.userId,
       playerId: input.playerId,
@@ -219,6 +224,7 @@ class InMemoryMultiplayerLobbyRepository {
       telegramId: input.telegramId,
       isHost: false,
       slotNumber: 2,
+      kind: input.participantKind,
       joinedAt: new Date('2026-03-03T12:05:00.000Z')
     });
     return lobby;
@@ -231,16 +237,27 @@ class InMemoryMultiplayerLobbyRepository {
     return lobby;
   }
 
+  async markBotFallbackEligible(lobbyId, eligibleSlots) {
+    const lobby = this.lobbies.get(lobbyId);
+    lobby.botFallbackEligibleSlots = eligibleSlots;
+    return lobby;
+  }
+
   async getLobbyStatus(lobbyId) {
     const lobby = this.lobbies.get(lobbyId);
     if (!lobby) {
       return null;
     }
 
+    const humanParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
+    const botParticipantCount = lobby.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Bot).length;
+
     return {
       ...lobby,
-      canStartMatchPreparation: lobby.status === MultiplayerLobbyStatus.Ready && lobby.participants.length === 2,
-      openSlotCount: Math.max(0, 2 - lobby.participants.length)
+      canStartMatchPreparation: humanParticipantCount >= 2 && lobby.status === MultiplayerLobbyStatus.Ready,
+      openHumanSlotCount: Math.max(0, lobby.maxParticipants - humanParticipantCount),
+      humanParticipantCount,
+      botParticipantCount
     };
   }
 }
@@ -268,7 +285,7 @@ async function createProfessionalPlayer(playerRepository, telegramId, name) {
   await tryoutService.execute(telegramId, new Date('2026-03-02T00:00:00.000Z'));
 }
 
-test('cria sala multiplayer persistida para jogador profissional', async () => {
+test('cria sala multiplayer persistida para jogador profissional humano com política humans-first', async () => {
   const playerRepository = new InMemoryPlayerRepository();
   await createProfessionalPlayer(playerRepository, '501', 'Caio Multiplayer');
   const lobbyRepository = new InMemoryMultiplayerLobbyRepository(playerRepository);
@@ -278,12 +295,14 @@ test('cria sala multiplayer persistida para jogador profissional', async () => {
 
   assert.equal(lobby.lobbyCode, 'ABC123');
   assert.equal(lobby.status, MultiplayerLobbyStatus.Open);
+  assert.equal(lobby.fillPolicy, MultiplayerLobbyFillPolicy.HumanPriorityWithBotFallback);
   assert.equal(lobby.participants.length, 1);
-  assert.equal(lobby.participants[0].isHost, true);
-  assert.equal(lobby.openSlotCount, 1);
+  assert.equal(lobby.participants[0].kind, MultiplayerParticipantKind.Human);
+  assert.equal(lobby.openHumanSlotCount, 1);
+  assert.equal(lobby.botFallbackEligibleSlots, 0);
 });
 
-test('permite que o segundo usuário entre na mesma sessão persistida e deixe a sala pronta', async () => {
+test('permite que o segundo humano entre na mesma sessão persistida e deixe a sala pronta', async () => {
   const playerRepository = new InMemoryPlayerRepository();
   await createProfessionalPlayer(playerRepository, '502', 'Host Jogador');
   await createProfessionalPlayer(playerRepository, '503', 'Visitante Jogador');
@@ -296,11 +315,13 @@ test('permite que o segundo usuário entre na mesma sessão persistida e deixe a
 
   assert.equal(joined.status, MultiplayerLobbyStatus.Ready);
   assert.equal(joined.participants.length, 2);
+  assert.equal(joined.humanParticipantCount, 2);
+  assert.equal(joined.botParticipantCount, 0);
   assert.equal(joined.canStartMatchPreparation, true);
   assert.ok(joined.readyForMatchAt instanceof Date);
 });
 
-test('consulta o estado da sessão multiplayer pelo participante', async () => {
+test('consulta o estado da sessão multiplayer pelo participante com contagem humano vs bot', async () => {
   const playerRepository = new InMemoryPlayerRepository();
   await createProfessionalPlayer(playerRepository, '504', 'Host Status');
   await createProfessionalPlayer(playerRepository, '505', 'Visitante Status');
@@ -316,27 +337,47 @@ test('consulta o estado da sessão multiplayer pelo participante', async () => {
   assert.equal(status.lobbyCode, 'STATE1');
   assert.equal(status.participants[0].playerName, 'Host Status');
   assert.equal(status.participants[1].playerName, 'Visitante Status');
+  assert.equal(status.humanParticipantCount, 2);
+  assert.equal(status.botParticipantCount, 0);
 });
 
-test('previne entrada inválida quando a sala já está cheia', async () => {
+test('domínio distingue explicitamente participante humano de bot e prepara fallback sem preencher automaticamente', async () => {
   const playerRepository = new InMemoryPlayerRepository();
-  await createProfessionalPlayer(playerRepository, '506', 'Host Cheia');
-  await createProfessionalPlayer(playerRepository, '507', 'Visitante 1');
-  await createProfessionalPlayer(playerRepository, '508', 'Visitante 2');
+  await createProfessionalPlayer(playerRepository, '506', 'Host Fallback');
+  const lobbyRepository = new InMemoryMultiplayerLobbyRepository(playerRepository);
+  const createService = new CreateLobbyService(lobbyRepository, () => 'BOT001');
+  const markFallbackService = new MarkLobbyBotFallbackEligibleService(lobbyRepository);
+
+  const created = await createService.execute('506');
+  assert.equal(created.participants[0].kind, MultiplayerParticipantKind.Human);
+  assert.equal(created.fillPolicy, MultiplayerLobbyFillPolicy.HumanPriorityWithBotFallback);
+
+  const updated = await markFallbackService.execute('506', 1);
+  assert.equal(updated.botFallbackEligibleSlots, 1);
+  assert.equal(updated.openHumanSlotCount, 1);
+  assert.equal(updated.humanParticipantCount, 1);
+  assert.equal(updated.botParticipantCount, 0);
+});
+
+test('previne entrada inválida quando a sala já está cheia de humanos', async () => {
+  const playerRepository = new InMemoryPlayerRepository();
+  await createProfessionalPlayer(playerRepository, '507', 'Host Cheia');
+  await createProfessionalPlayer(playerRepository, '508', 'Visitante 1');
+  await createProfessionalPlayer(playerRepository, '509', 'Visitante 2');
   const lobbyRepository = new InMemoryMultiplayerLobbyRepository(playerRepository);
   const createService = new CreateLobbyService(lobbyRepository, () => 'FULL01');
   const joinService = new JoinLobbyService(lobbyRepository);
 
-  await createService.execute('506');
-  await joinService.execute('507', 'FULL01');
+  await createService.execute('507');
+  await joinService.execute('508', 'FULL01');
 
-  await assert.rejects(() => joinService.execute('508', 'FULL01'), /já está cheia/);
+  await assert.rejects(() => joinService.execute('509', 'FULL01'), /já está cheia/);
 });
 
-test('dispatcher do bot integra o fluxo mínimo do multiplayer MVP sem quebrar o menu atual', async () => {
+test('dispatcher do bot integra o menu multiplayer com linguagem de humanos primeiro e fallback controlado', async () => {
   const playerRepository = new InMemoryPlayerRepository();
-  await createProfessionalPlayer(playerRepository, '509', 'Host Bot');
-  await createProfessionalPlayer(playerRepository, '510', 'Guest Bot');
+  await createProfessionalPlayer(playerRepository, '510', 'Host Bot');
+  await createProfessionalPlayer(playerRepository, '511', 'Guest Bot');
   const lobbyRepository = new InMemoryMultiplayerLobbyRepository(playerRepository);
 
   const facade = new Phase1TelegramFacade(
@@ -357,18 +398,22 @@ test('dispatcher do bot integra o fluxo mínimo do multiplayer MVP sem quebrar o
 
   const dispatcher = new Phase1TelegramDispatcher(facade, new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore()));
 
-  const mainMenu = await dispatcher.dispatch({ telegramId: '509', text: '/start' });
+  const mainMenu = await dispatcher.dispatch({ telegramId: '510', text: '/start' });
   assert.ok(mainMenu.actions.includes(phase1BotActions.multiplayerMenu));
 
-  const createLobbyReply = await dispatcher.dispatch({ telegramId: '509', text: '/criar-sala' });
-  assert.match(createLobbyReply.text, /Sala: BOT123/);
-  assert.match(createLobbyReply.text, /Aguardando adversário/);
+  const multiplayerMenu = await dispatcher.dispatch({ telegramId: '510', text: '/multiplayer' });
+  assert.match(multiplayerMenu.text, /jogadores humanos reais/);
+  assert.match(multiplayerMenu.text, /Bots não são padrão/);
 
-  const joinReply = await dispatcher.dispatch({ telegramId: '510', text: '/entrar-sala BOT123' });
-  assert.match(joinReply.text, /Participantes: 2\/2/);
-  assert.match(joinReply.text, /Pronta/);
+  const createLobbyReply = await dispatcher.dispatch({ telegramId: '510', text: '/criar-sala' });
+  assert.match(createLobbyReply.text, /Política de preenchimento: humanos primeiro, bot só como fallback/);
+  assert.match(createLobbyReply.text, /Participantes humanos: 1\/2/);
 
-  const statusReply = await dispatcher.dispatch({ telegramId: '510', text: '/sala' });
-  assert.match(statusReply.text, /MULTIPLAYER MVP/);
+  const joinReply = await dispatcher.dispatch({ telegramId: '511', text: '/entrar-sala BOT123' });
+  assert.match(joinReply.text, /Participantes humanos: 2\/2/);
+  assert.match(joinReply.text, /partida humana compartilhada/);
+
+  const statusReply = await dispatcher.dispatch({ telegramId: '511', text: '/sala' });
+  assert.match(statusReply.text, /Vagas elegíveis para fallback com bot: 0/);
   assert.match(statusReply.text, /Preparação multiplayer liberada/);
 });

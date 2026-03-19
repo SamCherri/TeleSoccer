@@ -1,5 +1,11 @@
 import { CareerStatus } from '../shared/enums';
-import { MultiplayerLobbyStatus, MultiplayerLobbyStatusView, MultiplayerLobbyView } from './types';
+import {
+  MultiplayerLobbyFillPolicy,
+  MultiplayerParticipantKind,
+  MultiplayerLobbyStatus,
+  MultiplayerLobbyStatusView,
+  MultiplayerLobbyView
+} from './types';
 
 export interface MultiplayerPlayerProfile {
   userId: string;
@@ -12,6 +18,8 @@ export interface MultiplayerPlayerProfile {
 
 export interface CreateMultiplayerLobbyInput {
   lobbyCode: string;
+  fillPolicy: MultiplayerLobbyFillPolicy;
+  maxParticipants: number;
   hostUserId: string;
   hostPlayerId: string;
   hostPlayerName: string;
@@ -24,6 +32,7 @@ export interface JoinMultiplayerLobbyInput {
   playerId: string;
   playerName: string;
   telegramId: string;
+  participantKind: MultiplayerParticipantKind;
 }
 
 export interface MultiplayerLobbyRepository {
@@ -33,5 +42,6 @@ export interface MultiplayerLobbyRepository {
   createLobby(input: CreateMultiplayerLobbyInput): Promise<MultiplayerLobbyView>;
   joinLobby(input: JoinMultiplayerLobbyInput): Promise<MultiplayerLobbyView>;
   updateLobbyStatus(lobbyId: string, status: MultiplayerLobbyStatus, readyForMatchAt?: Date): Promise<MultiplayerLobbyView>;
+  markBotFallbackEligible(lobbyId: string, eligibleSlots: number): Promise<MultiplayerLobbyView>;
   getLobbyStatus(lobbyId: string): Promise<MultiplayerLobbyStatusView | null>;
 }

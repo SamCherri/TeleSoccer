@@ -1,20 +1,26 @@
 # TeleSoccer - Fase Atual
 
 ## Fase atual
-**MVP completo pré-Fase 3 - carreira base + partida jogável + multiplayer MVP + visual MVP**
+**MVP completo pré-Fase 3 - carreira base + partida jogável + multiplayer MVP + visual MVP, com humanos primeiro e bots como fallback**
 
 ---
 
 ## 1. Objetivo
 
-Transformar o TeleSoccer no começo real do produto online via Telegram.
+Transformar o TeleSoccer no começo real de um jogo online via Telegram centrado em jogadores humanos reais.
 
-A base já estabilizada de Fase 1 e Fase 2 continua válida, mas agora o projeto passa a operar com quatro pilares oficiais do MVP completo pré-Fase 3:
+A base já estabilizada de Fase 1 e Fase 2 continua válida, mas agora o projeto opera com quatro pilares oficiais do MVP completo pré-Fase 3:
 
 1. carreira base persistida
 2. partida jogável por turnos
-3. multiplayer MVP simples e persistido
-4. visual MVP mínimo para apresentar o jogo com mais clareza
+3. multiplayer MVP simples, online e persistido
+4. visual MVP mínimo para apresentar o jogo com clareza
+
+Diretriz obrigatória desta etapa:
+- humanos são o padrão
+- bots são contingência
+- a arquitetura deve saber distinguir humano e bot
+- a evolução futura da partida multiplayer depende dessa base
 
 ---
 
@@ -34,25 +40,95 @@ A base já estabilizada de Fase 1 e Fase 2 continua válida, mas agora o projeto
 - ações válidas por botão
 - timeout de 30 segundos
 - eventos, disciplina, energia e lesão
+- base estrutural para origem do participante
 
 ### 2.3 Multiplayer MVP obrigatório
-- criação de sala multiplayer persistida
-- entrada do segundo usuário humano na mesma sessão
+- criação de sala online persistida por humano profissional
+- entrada do segundo humano na mesma sessão
 - consulta do estado da sala
+- política explícita de preenchimento com humanos primeiro
+- marcação estrutural de vagas elegíveis para bot fallback
 - preparação da sessão para futura partida multiplayer compartilhada
-- integração mínima no bot com comandos e ações coerentes
 
 ### 2.4 Visual MVP mínimo
 - renderização textual consistente para cards de partida
 - renderização textual consistente para cards de lobby multiplayer
-- base de apresentação pronta para próxima camada visual sem mover regra de negócio para o bot
+- linguagem de produto alinhada a jogo online entre humanos
 
 ---
 
-## 3. Fora de escopo nesta etapa
+## 3. Regra de negócio oficial
+
+### Humanos primeiro
+- todo jogador controlável deve ser humano por padrão
+- o sistema tenta formar experiências com pessoas reais primeiro
+- salas e partidas futuras devem considerar humanos como prioridade principal
+
+### Bots como fallback
+- bot não é padrão de design do produto
+- bot só entra por contingência quando faltarem humanos
+- a base precisa permitir vaga elegível para bot sem obrigar bot imediato
+- quando houver humano disponível, a prioridade é do humano
+
+### Arquitetura
+- regra de negócio no domínio
+- Prisma + PostgreSQL como persistência principal
+- Telegram como interface fina
+- Fase 1 e Fase 2 preservadas sem regressão
+
+---
+
+## 4. Fluxos do usuário que precisam existir agora
+
+1. usuário cria jogador e evolui normalmente
+2. jogador profissional entra em partida solo normalmente
+3. usuário profissional abre uma sala online para humanos
+4. segundo humano entra com código persistido
+5. ambos consultam o estado da sessão
+6. a sessão pronta representa preparação da futura partida compartilhada
+7. a sessão pode registrar vaga elegível para bot fallback sem substituir a prioridade humana
+
+---
+
+## 5. Impacto esperado no banco
+
+Esta etapa deve deixar o banco pronto para:
+
+- sessões multiplayer persistidas
+- distinção persistida entre participante humano e participante bot
+- política de preenchimento humano-primeiro com fallback
+- vagas elegíveis para bot quando faltarem humanos
+- futura ligação da sessão a uma partida multiplayer compartilhada
+- evolução da estrutura de partida para composição humano vs humano, humano + bot ou híbrida
+
+---
+
+## 6. Impacto esperado no bot Telegram
+
+O bot deve conseguir, no mínimo:
+
+- continuar operando carreira e partida solo
+- abrir o menu do multiplayer MVP com linguagem de humanos primeiro
+- criar sala multiplayer
+- entrar em sala por código
+- consultar estado da sala
+- comunicar claramente que bot é fallback e não padrão
+
+---
+
+## 7. Impacto visual
+
+O visual MVP deve:
+- deixar a experiência mais legível no Telegram
+- mostrar participantes humanos reais da sala
+- exibir vagas humanas abertas e elegibilidade de fallback com bot
+- preparar a futura evolução visual sem mover regra para o bot
+
+---
+
+## 8. Fora de escopo nesta etapa
 
 Não entram agora:
-
 - matchmaking público complexo
 - ranking competitivo
 - liga completa
@@ -66,70 +142,15 @@ Não entram agora:
 
 ---
 
-## 4. Regras de negócio obrigatórias
-
-### Carreira e partida
-- preservar os fluxos da Fase 1 e da Fase 2 sem regressão
-- manter a lógica principal no domínio
-- manter Telegram como interface fina
-
-### Multiplayer MVP
-- apenas jogadores profissionais participam das salas multiplayer
-- a sessão deve ser persistida no PostgreSQL via Prisma
-- dois usuários humanos devem poder ficar vinculados à mesma sessão persistida
-- a sala deve ter estado legível: aberta, pronta ou encerrada
-- a sala pronta representa preparação oficial para a futura partida multiplayer
-
-### Visual MVP
-- apresentação deve ser compatível com Telegram
-- o formato visual não pode acoplar a lógica de jogo ao dispatcher
-- o formato deve ser reaproveitável para próximos cards do jogo
-
----
-
-## 5. Fluxos do usuário que precisam existir agora
-
-1. usuário cria jogador e evolui normalmente
-2. jogador profissional entra em partida solo normalmente
-3. usuário profissional abre uma sala multiplayer
-4. segundo usuário entra na sala com um código persistido
-5. ambos consultam o estado da sessão
-6. o lobby pronto indica preparação liberada para evolução da partida multiplayer
-
----
-
-## 6. Impacto esperado no banco
-
-Esta etapa deve deixar o banco pronto para:
-
-- sessões multiplayer persistidas
-- participantes humanos vinculados à mesma sessão
-- futura ligação da sessão a uma partida multiplayer compartilhada
-- manutenção da base já existente de carreira e partidas
-
----
-
-## 7. Impacto esperado no bot Telegram
-
-O bot deve conseguir, no mínimo:
-
-- continuar operando carreira e partida solo
-- abrir o menu do multiplayer MVP
-- criar sala multiplayer
-- entrar em sala por código
-- consultar estado da sala
-- exibir cards textuais mais consistentes para partida e lobby
-
----
-
-## 8. Critérios de aceite
+## 9. Critérios de aceite
 
 A etapa só deve ser considerada pronta quando:
 
-1. a documentação refletir oficialmente o MVP completo pré-Fase 3
-2. Fase 1 e Fase 2 continuarem funcionais
+1. o projeto estiver documentado como jogo online centrado em humanos
+2. bots estiverem documentados como fallback apenas
 3. a sala multiplayer puder ser criada com persistência
-4. um segundo usuário puder entrar na mesma sala persistida
-5. o estado da sessão puder ser consultado de forma coerente
-6. o bot tiver fluxo mínimo funcional para multiplayer MVP
-7. a base visual mínima estiver aplicada sem exagero arquitetural
+4. um segundo humano puder entrar na mesma sala persistida
+5. humano e bot estiverem distinguidos claramente no domínio
+6. a sessão suportar estruturalmente fallback sem quebrar a prioridade humana
+7. o bot comunicar a nova direção corretamente
+8. Fase 1 e Fase 2 continuarem funcionais
