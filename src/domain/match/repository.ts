@@ -58,7 +58,6 @@ export interface MatchRepository {
     telegramId: string;
     homeClubId: string;
     homeClubName: string;
-    awayClubId: string;
     awayClubName: string;
     playerId: string;
     userRole: MatchRole;

@@ -334,7 +334,7 @@ export class Phase1TelegramFacade {
 
   private buildTrainingActions(isGoalkeeper: boolean): string[] {
     if (isGoalkeeper) {
-      return [phase1BotActions.trainingReflexes, phase1BotActions.trainingPassing, phase1BotActions.mainMenu];
+      return [phase1BotActions.trainingReflexes, phase1BotActions.trainingPassing, phase1BotActions.cancel, phase1BotActions.mainMenu];
     }
 
     return [
@@ -343,6 +343,7 @@ export class Phase1TelegramFacade {
       phase1BotActions.trainingDribbling,
       phase1BotActions.trainingSpeed,
       phase1BotActions.trainingMarking,
+      phase1BotActions.cancel,
       phase1BotActions.mainMenu
     ];
   }

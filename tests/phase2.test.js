@@ -1,11 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { CreatePlayerService, TryoutService } = require('../dist/domain/player/services.js');
+const { CreatePlayerService, GetPlayerCardService, TryoutService, WeeklyTrainingService } = require('../dist/domain/player/services.js');
 const { StartMatchService, GetActiveMatchService, ResolveMatchTurnService } = require('../dist/domain/match/services.js');
 const { MatchEngine } = require('../dist/domain/match/engine.js');
 const { DominantFoot, PlayerPosition, CareerStatus } = require('../dist/domain/shared/enums.js');
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchActionKey } = require('../dist/domain/match/types.js');
+const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { DomainError } = require('../dist/shared/errors.js');
 
 class InMemoryPlayerRepository {
@@ -41,9 +42,21 @@ class InMemoryPlayerRepository {
     return this.playersByTelegramId.get(telegramId) ?? null;
   }
 
-  async applyTraining() {
-    throw new Error('not used');
+  async applyTraining(params) {
+    const player = [...this.playersByTelegramId.values()].find((entry) => entry.id === params.playerId);
+    player.walletBalance -= params.cost;
+    player.attributes[params.focus] += params.attributeGain;
+    player.trainingHistoryCount += 1;
+    return {
+      playerId: player.id,
+      focus: params.focus,
+      newValue: player.attributes[params.focus],
+      cost: params.cost,
+      walletBalance: player.walletBalance,
+      weekNumber: params.weekNumber
+    };
   }
+
   async getCareerStatusByTelegramId() {
     throw new Error('not used');
   }
@@ -105,18 +118,18 @@ class InMemoryMatchRepository {
   }
 
   async getActiveMatchByTelegramId(telegramId) {
-    const match = this.matchesByTelegramId.get(telegramId);
-    return match && match.status === MatchStatus.InProgress ? structuredClone(match) : null;
+    const state = this.matchesByTelegramId.get(telegramId);
+    return state?.active ? structuredClone(state.active) : null;
   }
 
   async getLatestMatchByTelegramId(telegramId) {
-    const match = this.matchesByTelegramId.get(telegramId);
-    return match ? structuredClone(match) : null;
+    const state = this.matchesByTelegramId.get(telegramId);
+    return state?.active ? structuredClone(state.active) : state?.latest ? structuredClone(state.latest) : null;
   }
 
   async createMatchForPlayer(params) {
     const match = {
-      id: `match-${params.playerId}`,
+      id: `match-${params.playerId}-${Date.now()}`,
       playerId: params.playerId,
       status: MatchStatus.InProgress,
       scoreboard: {
@@ -150,12 +163,13 @@ class InMemoryMatchRepository {
       suspensionMatchesRemaining: 0,
       energy: 100
     };
-    this.matchesByTelegramId.set(params.telegramId, match);
+    this.matchesByTelegramId.set(params.telegramId, { active: match, latest: match });
     return structuredClone(match);
   }
 
   async resolveTurn(matchId, resolution) {
-    const [telegramId, match] = [...this.matchesByTelegramId.entries()].find(([, value]) => value.id === matchId);
+    const [telegramId, state] = [...this.matchesByTelegramId.entries()].find(([, value]) => (value.active ?? value.latest)?.id === matchId);
+    const match = state.active ?? state.latest;
     match.scoreboard.homeScore = resolution.homeScore;
     match.scoreboard.awayScore = resolution.awayScore;
     match.scoreboard.minute = resolution.minute;
@@ -195,7 +209,12 @@ class InMemoryMatchRepository {
         }
       : undefined;
 
-    this.matchesByTelegramId.set(telegramId, match);
+    if (resolution.status === MatchStatus.Finished) {
+      this.matchesByTelegramId.set(telegramId, { active: null, latest: match });
+    } else {
+      this.matchesByTelegramId.set(telegramId, { active: match, latest: match });
+    }
+
     return { match: structuredClone(match), resolutionText: resolution.outcomeText };
   }
 
@@ -204,6 +223,31 @@ class InMemoryMatchRepository {
     if (pending <= 0) return false;
     this.suspensions.set(playerId, pending - 1);
     return true;
+  }
+}
+
+class StaticMatchRepository {
+  constructor(activeMatch, latestMatch) {
+    this.activeMatch = activeMatch;
+    this.latestMatch = latestMatch;
+  }
+  async findPlayerByTelegramId() {
+    return null;
+  }
+  async getActiveMatchByTelegramId() {
+    return this.activeMatch;
+  }
+  async getLatestMatchByTelegramId() {
+    return this.latestMatch;
+  }
+  async createMatchForPlayer() {
+    throw new Error('not used');
+  }
+  async resolveTurn() {
+    throw new Error('not used');
+  }
+  async consumePendingSuspension() {
+    return false;
   }
 }
 
@@ -280,6 +324,24 @@ test('inicia partida profissional e devolve o primeiro lance pendente', async ()
   assert.ok(result.match.activeTurn.availableActions.length >= 3);
 });
 
+test('GetActiveMatchService prioriza partida em andamento quando ela existe', async () => {
+  const activeMatch = { id: 'active-1', status: MatchStatus.InProgress, activeTurn: { id: 'turn-1' } };
+  const latestMatch = { id: 'finished-1', status: MatchStatus.Finished, activeTurn: undefined };
+  const service = new GetActiveMatchService(new StaticMatchRepository(activeMatch, latestMatch));
+
+  const result = await service.execute('telegram-1');
+  assert.equal(result.id, 'active-1');
+});
+
+test('GetActiveMatchService retorna a última finalizada quando não há partida em andamento', async () => {
+  const latestMatch = { id: 'finished-1', status: MatchStatus.Finished, activeTurn: undefined };
+  const service = new GetActiveMatchService(new StaticMatchRepository(null, latestMatch));
+
+  const result = await service.execute('telegram-1');
+  assert.equal(result.id, 'finished-1');
+  assert.equal(result.activeTurn, undefined);
+});
+
 test('resolve lance, atualiza placar/eventos e encerra a partida ao fim dos turnos', async () => {
   const playerRepo = await createProfessionalPlayer('302');
   const matchRepo = new InMemoryMatchRepository(playerRepo);
@@ -301,6 +363,7 @@ test('resolve lance, atualiza placar/eventos e encerra a partida ao fim dos turn
 
   assert.equal(match.status, MatchStatus.Finished);
   assert.ok(match.scoreboard.minute >= 90);
+  assert.equal(match.activeTurn, undefined);
   assert.ok(match.recentEvents.some((event) => event.type === 'MATCH_FINISHED'));
 });
 
@@ -394,6 +457,37 @@ test('consulta partida finalizada quando não há mais partida em andamento', as
   const lastMatch = await getActiveMatchService.execute('304');
   assert.equal(lastMatch.status, MatchStatus.Finished);
   assert.equal(lastMatch.activeTurn, undefined);
+});
+
+test('menu de treino preserva a ação cancelar', async () => {
+  const playerRepo = new InMemoryPlayerRepository();
+  const createPlayerService = new CreatePlayerService(playerRepo);
+  const getPlayerCardService = new GetPlayerCardService(playerRepo);
+  const weeklyTrainingService = new WeeklyTrainingService(playerRepo);
+
+  await createPlayerService.execute({
+    telegramId: '306',
+    name: 'Caio Melo',
+    nationality: 'Brasil',
+    position: PlayerPosition.Midfielder,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 176,
+    weightKg: 70,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    getPlayerCardService,
+    { execute: async () => { throw new Error('not used'); } },
+    { execute: async () => { throw new Error('not used'); } },
+    { execute: async () => { throw new Error('not used'); } },
+    weeklyTrainingService,
+    { execute: async () => { throw new Error('not used'); } }
+  );
+
+  const reply = await facade.handleTrainingMenu('306');
+  assert.ok(reply.actions.includes(phase1BotActions.cancel));
 });
 
 test('bloqueia nova partida quando há suspensão pendente a cumprir', async () => {

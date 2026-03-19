@@ -114,7 +114,7 @@ export class PrismaMatchRepository implements MatchRepository {
     const prisma = getPrismaClient();
     const match = (await prisma.match.findFirst({
       where: { player: { generation: { isCurrent: true, user: { telegramId } } } },
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
       include: matchInclude(false)
     })) as MatchRecord | null;
 
@@ -125,7 +125,6 @@ export class PrismaMatchRepository implements MatchRepository {
     telegramId: string;
     homeClubId: string;
     homeClubName: string;
-    awayClubId: string;
     awayClubName: string;
     playerId: string;
     userRole: MatchRole;
@@ -337,7 +336,9 @@ export class PrismaMatchRepository implements MatchRepository {
   }
 
   private toSummary(match: MatchRecord): MatchSummary {
-    const activeTurnRecord = match.turns[0];
+    const latestTurnRecord = match.turns[0];
+    const activeTurnRecord = latestTurnRecord?.state === MatchTurnState.Pending ? latestTurnRecord : undefined;
+
     return {
       id: match.id,
       playerId: match.playerId,

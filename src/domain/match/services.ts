@@ -41,7 +41,6 @@ export class StartMatchService {
       telegramId,
       homeClubId: player.clubId ?? 'unknown-home-club',
       homeClubName: player.clubName ?? 'Clube profissional',
-      awayClubId: opponent.id,
       awayClubName: opponent.name,
       playerId: player.playerId,
       userRole: player.position === 'GOALKEEPER' ? MatchRole.Goalkeeper : MatchRole.UserPlayer,
