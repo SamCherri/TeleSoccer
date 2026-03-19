@@ -512,15 +512,32 @@ model MultiplayerSession {
   updatedAt             DateTime                      @updatedAt
   hostUser              User                           @relation("HostedMultiplayerSessions", fields: [hostUserId], references: [id])
   linkedMatch           Match?                         @relation(fields: [linkedMatchId], references: [id])
+  slots                 MultiplayerSessionSlot[]
   participants          MultiplayerSessionParticipant[]
 
   @@index([hostUserId, status, createdAt])
   @@index([linkedMatchId])
 }
 
+model MultiplayerSessionSlot {
+  id                   String                       @id @default(cuid())
+  sessionId            String
+  side                 MultiplayerTeamSide
+  slotNumber           Int
+  squadRole            MultiplayerSquadRole
+  isBotFallbackEligible Boolean                     @default(false)
+  createdAt            DateTime                     @default(now())
+  session              MultiplayerSession           @relation(fields: [sessionId], references: [id])
+  participant          MultiplayerSessionParticipant?
+
+  @@unique([sessionId, side, squadRole, slotNumber])
+  @@index([sessionId, side, squadRole])
+}
+
 model MultiplayerSessionParticipant {
   id         String                     @id @default(cuid())
   sessionId  String
+  slotId     String                     @unique
   side       MultiplayerTeamSide
   slotNumber Int
   squadRole  MultiplayerSquadRole
@@ -532,6 +549,7 @@ model MultiplayerSessionParticipant {
   isCaptain  Boolean                    @default(false)
   joinedAt   DateTime                   @default(now())
   session    MultiplayerSession         @relation(fields: [sessionId], references: [id])
+  slot       MultiplayerSessionSlot     @relation(fields: [slotId], references: [id])
   user       User?                      @relation(fields: [userId], references: [id])
   player     Player?                    @relation(fields: [playerId], references: [id])
 

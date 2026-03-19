@@ -26,9 +26,20 @@ export enum MultiplayerSessionFillPolicy {
   HumanPriorityWithBotFallback = 'HUMAN_PRIORITY_WITH_BOT_FALLBACK'
 }
 
+export interface MultiplayerSessionSlot {
+  id: string;
+  sessionId: string;
+  side: MultiplayerTeamSide;
+  slotNumber: number;
+  squadRole: MultiplayerSquadRole;
+  isBotFallbackEligible: boolean;
+  occupiedByParticipantId?: string;
+}
+
 export interface MultiplayerSessionParticipant {
   id: string;
   sessionId: string;
+  slotId: string;
   side: MultiplayerTeamSide;
   slotNumber: number;
   squadRole: MultiplayerSquadRole;
@@ -51,6 +62,7 @@ export interface MultiplayerSideSummary {
   substitutesCount: number;
   remainingStarterSlots: number;
   remainingSubstituteSlots: number;
+  botFallbackEligibleOpenSlots: number;
 }
 
 export interface MultiplayerSessionSummary {
@@ -66,6 +78,7 @@ export interface MultiplayerSessionSummary {
   status: MultiplayerSessionStatus;
   createdAt: Date;
   updatedAt: Date;
+  slots: MultiplayerSessionSlot[];
   participants: MultiplayerSessionParticipant[];
   home: MultiplayerSideSummary;
   away: MultiplayerSideSummary;
@@ -73,8 +86,9 @@ export interface MultiplayerSessionSummary {
   totalBotCount: number;
   totalParticipants: number;
   fallbackEligibleOpenSlots: number;
-  canUseBotFallback: boolean;
+  canUseBotFallbackNow: boolean;
   missingHumansToStart: number;
+  hasHumanStarterOnEachSide: boolean;
   canPrepareMatch: boolean;
 }
 

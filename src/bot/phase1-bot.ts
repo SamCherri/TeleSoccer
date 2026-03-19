@@ -366,19 +366,18 @@ export class Phase1TelegramFacade {
   }
 
   async handleMultiplayerHub(telegramId: string): Promise<BotReply> {
-    let sessionText = 'Nenhuma sala ativa encontrada para o seu usuário.';
-    try {
-      const session = await this.getMultiplayerSessionService.execute(telegramId);
-      sessionText = this.renderer.renderMultiplayerSessionCard(session);
-    } catch {
-      // keep hub guidance when there is no active session
-    }
+    const optionalSession = await this.getMultiplayerSessionService.getOptionalCurrentSession(telegramId);
+    const sessionText = optionalSession
+      ? this.renderer.renderMultiplayerSessionCard(optionalSession)
+      : 'Nenhuma sala ativa encontrada para o seu usuário profissional.';
 
     return {
       text: [
         '🌐 TeleSoccer Online Multiplayer',
         'Arquitetura humano-first: dois lados, muitos humanos por sessão, titulares e reservas.',
         'Bots não são o padrão. Eles entram apenas como fallback elegível e controlado.',
+        'Nesta etapa, criar, entrar, consultar e preparar sala exige jogador profissional.',
+        'Somente o host prepara a sala antes da futura convergência com a partida compartilhada.',
         sessionText,
         `Para entrar em uma sala existente use: /entrar-sala CODIGO ${sideExample} ${roleExample}`
       ].join('\n\n'),
@@ -402,7 +401,7 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSessionCard(result.session),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away),
-        'Sala criada com prioridade humana. Convide outros jogadores com o código acima.',
+        'Sala criada com prioridade humana e fallback controlado apenas em slots marcados.',
         `Exemplo de entrada: /entrar-sala ${result.session.code} AWAY TITULAR`
       ].join('\n\n'),
       actions: [phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
@@ -433,6 +432,7 @@ export class Phase1TelegramFacade {
       text: [
         `✅ Entrada confirmada na sala ${result.session.code}.`,
         `Você ocupou ${result.participant.side} | ${result.participant.squadRole} | slot ${result.participant.slotNumber}.`,
+        'Humano continua sendo prioridade; bots só entram depois, se o host preparar a sala e houver slot elegível.',
         this.renderer.renderMultiplayerSessionCard(result.session),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
@@ -444,8 +444,8 @@ export class Phase1TelegramFacade {
   async handlePrepareSession(telegramId: string, sessionCode?: string): Promise<BotReply> {
     const result = await this.prepareMultiplayerSessionService.execute(telegramId, sessionCode);
     const botSummary = result.botsAdded.length > 0
-      ? `Fallback aplicado com ${result.botsAdded.length} bot(s) nas vagas elegíveis.`
-      : 'Nenhum bot novo foi necessário nesta preparação.';
+      ? `Fallback aplicado agora com ${result.botsAdded.length} bot(s) novo(s) nas vagas elegíveis.`
+      : 'Nenhum bot novo foi necessário nesta preparação; a sessão permaneceu em priorização humana.';
     return {
       text: [
         botSummary,

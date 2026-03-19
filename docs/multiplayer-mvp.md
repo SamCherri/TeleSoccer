@@ -13,7 +13,7 @@ Estabelecer o multiplayer correto como sessão com dois elencos, sem prender o p
 - política de preenchimento
 - limite de titulares por lado
 - limite de reservas por lado
-- slots elegíveis para fallback
+- slots persistidos com elegibilidade de fallback
 - status da sessão
 - ligação futura com `Match`
 
@@ -37,11 +37,13 @@ Cada participante registra:
 
 ## 4. Regras de negócio
 
+- criar, entrar, consultar e preparar sala exige jogador profissional
 - humano entra primeiro
 - slot é ocupado por lado + papel de elenco + número da vaga
-- bots só entram quando a política permitir e houver vaga elegível
+- bots só entram quando a política permitir, o mínimo humano tiver sido atingido e houver slot elegível
+- apenas o host prepara a sala nesta etapa
 - a sessão não possui limite estrutural total de 2 participantes
-- a prontidão considera mínimo de humanos e presença de titulares em ambos os lados
+- a prontidão considera mínimo de humanos, titulares humanos em ambos os lados e ausência de fallback pendente
 
 ## 5. Direção futura
 

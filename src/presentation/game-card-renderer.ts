@@ -8,18 +8,20 @@ import {
 import { MatchSummary } from '../domain/match/types';
 import { MultiplayerSessionSummary, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
+const divider = '━━━━━━━━━━━━━━━━━━━━';
 const renderBlock = (title: string, lines: string[]): string => [title, ...lines].join('\n');
+const renderList = (lines: string[], emptyLine: string): string[] => (lines.length > 0 ? lines.map((line) => `• ${line}`) : [`• ${emptyLine}`]);
 
 export class GameCardRenderer {
   renderMatchCard(match: MatchSummary): string {
     const viewModel = buildMatchCardViewModel(match);
     return [
       viewModel.headline,
-      '━━━━━━━━━━━━━━━━━━',
+      divider,
       viewModel.scoreboard,
       ...viewModel.details,
-      viewModel.currentPlay ? renderBlock('Lance atual', viewModel.currentPlay) : 'Lance atual\nSem lance pendente.',
-      viewModel.events.length > 0 ? renderBlock('Eventos recentes', viewModel.events.map((line) => `• ${line}`)) : 'Eventos recentes\n• Sem eventos.'
+      viewModel.currentPlay ? renderBlock('LANCE ATUAL', viewModel.currentPlay) : 'LANCE ATUAL\nSem lance pendente.',
+      viewModel.events.length > 0 ? renderBlock('EVENTOS RECENTES', viewModel.events.map((line) => `• ${line}`)) : 'EVENTOS RECENTES\n• Sem eventos.'
     ].join('\n');
   }
 
@@ -27,7 +29,7 @@ export class GameCardRenderer {
     const viewModel = buildMultiplayerSessionCardViewModel(session);
     return [
       viewModel.headline,
-      '━━━━━━━━━━━━━━━━━━',
+      divider,
       `Código: ${viewModel.sessionCode}`,
       viewModel.status,
       viewModel.policy,
@@ -41,15 +43,17 @@ export class GameCardRenderer {
   renderMultiplayerSquadCard(session: MultiplayerSessionSummary, side: MultiplayerTeamSide): string {
     const viewModel = buildMultiplayerSquadCardViewModel(session, side);
     return [
-      `${viewModel.title} | Elenco`,
+      viewModel.title,
+      divider,
       viewModel.subtitle,
-      renderBlock(squadSectionTitle.STARTER, viewModel.starters.length > 0 ? viewModel.starters.map((entry) => `• ${entry.label}`) : ['• Nenhum titular definido.']),
-      renderBlock(squadSectionTitle.SUBSTITUTE, viewModel.substitutes.length > 0 ? viewModel.substitutes.map((entry) => `• ${entry.label}`) : ['• Nenhum reserva definido.'])
+      viewModel.openSlots,
+      renderBlock(squadSectionTitle.STARTER.toUpperCase(), renderList(viewModel.starters.map((entry) => entry.label), 'Nenhum titular definido.')),
+      renderBlock(squadSectionTitle.SUBSTITUTE.toUpperCase(), renderList(viewModel.substitutes.map((entry) => entry.label), 'Nenhum reserva definido.'))
     ].join('\n');
   }
 
   renderMultiplayerPreparationCard(session: MultiplayerSessionSummary): string {
     const viewModel = buildMultiplayerPreparationCardViewModel(session);
-    return [viewModel.title, '━━━━━━━━━━━━━━━━━━', viewModel.readiness, ...viewModel.notes.map((line) => `• ${line}`)].join('\n');
+    return [viewModel.title, divider, viewModel.readiness, ...viewModel.notes.map((line) => `• ${line}`)].join('\n');
   }
 }

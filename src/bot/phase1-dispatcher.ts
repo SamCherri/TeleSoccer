@@ -113,24 +113,53 @@ export class Phase1TelegramDispatcher {
       }
 
       if (normalizedText.startsWith('/entrar-sala')) {
-        const [, code, sideToken, roleToken] = normalizedText.split(/\s+/);
+        const parts = normalizedText.split(/\s+/);
+        const [, code, sideToken, roleToken] = parts;
         if (!code) {
           return {
-            text: 'Use /entrar-sala CODIGO HOME|AWAY TITULAR|RESERVA para entrar em uma sala multiplayer.',
+            text: 'Use /entrar-sala CODIGO [HOME|AWAY] [TITULAR|RESERVA]. Se omitir lado/papel, o sistema tenta encaixar a próxima vaga disponível.',
             actions: [phase1BotActions.multiplayerHub, phase1BotActions.currentSession, phase1BotActions.mainMenu]
           };
         }
 
-        return await this.facade.handleJoinSession(request.telegramId, code, parseSide(sideToken), parseRole(roleToken));
+        if (parts.length > 4) {
+          return {
+            text: 'Formato inválido. Exemplo válido: /entrar-sala ABC123 AWAY TITULAR',
+            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+          };
+        }
+
+        const parsedSide = parseSide(sideToken);
+        const parsedRole = parseRole(roleToken);
+        if (sideToken && !parsedSide) {
+          return {
+            text: 'Lado inválido. Use HOME ou AWAY ao entrar na sala.',
+            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+          };
+        }
+        if (roleToken && !parsedRole) {
+          return {
+            text: 'Papel inválido. Use TITULAR ou RESERVA ao entrar na sala.',
+            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+          };
+        }
+
+        return await this.facade.handleJoinSession(request.telegramId, code, parsedSide, parsedRole);
       }
 
       if (normalizedText.startsWith('/sala ')) {
         const [, code] = normalizedText.split(/\s+/);
+        if (!code) {
+          return await this.facade.handleCurrentSession(request.telegramId);
+        }
         return await this.facade.handleCurrentSession(request.telegramId, code);
       }
 
       if (normalizedText.startsWith('/preparar-sala ')) {
         const [, code] = normalizedText.split(/\s+/);
+        if (!code) {
+          return await this.facade.handlePrepareSession(request.telegramId);
+        }
         return await this.facade.handlePrepareSession(request.telegramId, code);
       }
 

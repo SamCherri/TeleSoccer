@@ -18,7 +18,7 @@ Regras de negócio puras.
 
 - `player/`: carreira, treino, peneira e ficha
 - `match/`: motor da partida solo por turnos
-- `multiplayer/`: sessão pré-jogo com dois elencos, múltiplos humanos, reservas e fallback
+- `multiplayer/`: sessão pré-jogo com dois elencos, múltiplos humanos, slots persistidos, reservas e fallback
 
 ### `src/infra/`
 Adaptadores de persistência e integrações.
@@ -46,6 +46,7 @@ O projeto saiu de uma estrutura implícita de “host + segundo participante” 
 
 ### Entidades centrais
 - `MultiplayerSession`
+- `MultiplayerSessionSlot`
 - `MultiplayerSessionParticipant`
 
 ### Eixos de composição

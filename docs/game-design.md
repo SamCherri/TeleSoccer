@@ -44,3 +44,11 @@ Nesta etapa, o produto ainda não entrega:
 - interação simultânea ao vivo entre todos os humanos
 
 Mas a base de dados, a regra e a apresentação já foram alinhadas para chegar lá sem retrabalho estrutural grande.
+
+
+## 5. Regras operacionais do MVP multiplayer
+
+- só jogador profissional entra no multiplayer
+- o host prepara a sala
+- bots só podem preencher slots marcados para fallback
+- fallback não deve antecipar a entrada humana mínima

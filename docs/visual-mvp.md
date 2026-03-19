@@ -22,8 +22,8 @@ Mostra:
 - humanos e bots por lado
 - titulares e reservas por lado
 - vagas abertas
-- fallback elegível
-- prontidão
+- fallback elegível por slots marcados
+- prontidão e bloqueios de preparação
 
 ### Card de elenco por lado
 Mostra:

@@ -11,10 +11,10 @@ Antes de contratos e mercado, o produto precisava corrigir dois riscos:
 
 - Fase 1 preservada
 - Fase 2 preservada
-- sessão multiplayer com dois elencos e múltiplos participantes
+- sessão multiplayer com dois elencos, múltiplos participantes e slots persistidos
 - titulares e reservas por lado
 - humanos como padrão
-- bots apenas como fallback
+- bots apenas como fallback em slots marcados e sob preparação do host
 - cards visuais oficiais do MVP
 - separação entre regra, view model e renderer
 

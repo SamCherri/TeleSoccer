@@ -12,7 +12,7 @@ A base já entrega, sem quebrar Fase 1 e Fase 2:
 - sessão multiplayer com dois lados (`HOME` e `AWAY`)
 - múltiplos jogadores humanos por sessão
 - titulares e reservas por lado
-- mistura de humanos e bots, com bots usados apenas como fallback elegível
+- mistura de humanos e bots, com bots usados apenas como fallback elegível em slots marcados
 - renderização de cards visuais de sessão, elencos, preparação de confronto e partida
 - estrutura pronta para evoluir até 11x11 + reservas e partida compartilhada
 - runtime pronto para Railway com Telegram Bot API
@@ -55,11 +55,12 @@ A PR atual abandona a mentalidade de “host + segundo jogador” e passa a mode
 - `MultiplayerSessionFillPolicy`
 
 ### Regras-chave
-- humanos entram primeiro
+- criar, entrar, consultar e preparar sala exige jogador profissional
 - cada humano ocupa um lado e uma vaga de elenco
 - cada lado suporta titulares e reservas
 - bots só entram como fallback, nunca como padrão
-- a sessão mostra contagem por lado, por tipo e por papel de elenco
+- o fallback usa slots explicitamente marcados e só é liberado quando o mínimo humano já foi atingido
+- somente o host prepara a sala nesta etapa
 - a base já prepara a ligação futura com `Match`
 
 ## Camada visual MVP

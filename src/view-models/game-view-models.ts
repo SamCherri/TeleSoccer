@@ -1,5 +1,5 @@
 import { MatchHalf, MatchSummary, MatchTurnView } from '../domain/match/types';
-import { MultiplayerParticipantKind, MultiplayerSessionSummary, MultiplayerSquadRole, MultiplayerTeamSide } from '../domain/multiplayer/types';
+import { MultiplayerParticipantKind, MultiplayerSessionStatus, MultiplayerSessionSummary, MultiplayerSquadRole, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
 const halfLabelMap: Record<MatchHalf, string> = {
   [MatchHalf.First]: '1º tempo',
@@ -18,6 +18,14 @@ const roleLabelMap: Record<MultiplayerSquadRole, string> = {
   [MultiplayerSquadRole.Substitute]: 'Reservas'
 };
 
+const sessionStatusLabelMap: Record<MultiplayerSessionStatus, string> = {
+  [MultiplayerSessionStatus.WaitingForPlayers]: 'Aguardando mais humanos',
+  [MultiplayerSessionStatus.ReadyForFallback]: 'Pronta para fallback controlado',
+  [MultiplayerSessionStatus.ReadyToPrepare]: 'Pronta para preparar confronto',
+  [MultiplayerSessionStatus.PreparingMatch]: 'Preparando confronto',
+  [MultiplayerSessionStatus.Closed]: 'Encerrada'
+};
+
 export interface MatchCardViewModel {
   headline: string;
   scoreboard: string;
@@ -33,6 +41,7 @@ export interface MultiplayerParticipantViewModel {
 export interface MultiplayerSquadCardViewModel {
   title: string;
   subtitle: string;
+  openSlots: string;
   starters: MultiplayerParticipantViewModel[];
   substitutes: MultiplayerParticipantViewModel[];
 }
@@ -55,7 +64,7 @@ export interface MultiplayerPreparationCardViewModel {
 }
 
 const formatParticipant = (name: string, kind: MultiplayerParticipantKind, isHost: boolean, isCaptain: boolean, slotNumber: number): string => {
-  const badges = [kind === MultiplayerParticipantKind.Human ? '🧑' : '🤖'];
+  const badges = [kind === MultiplayerParticipantKind.Human ? '🧑 HUM' : '🤖 BOT'];
   if (isHost) {
     badges.push('HOST');
   }
@@ -63,15 +72,16 @@ const formatParticipant = (name: string, kind: MultiplayerParticipantKind, isHos
     badges.push('CAP');
   }
 
-  return `${slotNumber}. ${name} [${badges.join(' · ')}]`;
+  return `${slotNumber}. ${name} [${badges.join(' • ')}]`;
 };
 
 export const buildMultiplayerSquadCardViewModel = (session: MultiplayerSessionSummary, side: MultiplayerTeamSide): MultiplayerSquadCardViewModel => {
   const summary = side === MultiplayerTeamSide.Home ? session.home : session.away;
 
   return {
-    title: `${sideIconMap[side]} ${side}`,
-    subtitle: `${summary.humanCount} humano(s) • ${summary.botCount} bot(s) • ${summary.remainingStarterSlots} vaga(s) de titular • ${summary.remainingSubstituteSlots} vaga(s) de reserva`,
+    title: `${sideIconMap[side]} ${side} | Elenco`,
+    subtitle: `${summary.humanCount} humano(s) • ${summary.botCount} bot(s) • fallback aberto ${summary.botFallbackEligibleOpenSlots}`,
+    openSlots: `Vagas: titulares ${summary.remainingStarterSlots} • reservas ${summary.remainingSubstituteSlots}`,
     starters: summary.starters.map((participant) => ({
       label: formatParticipant(participant.playerName, participant.kind, participant.isHost, participant.isCaptain, participant.slotNumber)
     })),
@@ -82,37 +92,44 @@ export const buildMultiplayerSquadCardViewModel = (session: MultiplayerSessionSu
 };
 
 export const buildMultiplayerSessionCardViewModel = (session: MultiplayerSessionSummary): MultiplayerSessionCardViewModel => ({
-  headline: '🏟️ TeleSoccer Online | Sessão multiplayer humano-first',
+  headline: '🏟️ TELESOCCER ONLINE | SALA MULTIPLAYER',
   sessionCode: session.code,
-  status: `Status: ${session.status}`,
-  policy: `Preenchimento: ${session.fillPolicy}`,
+  status: `Status: ${sessionStatusLabelMap[session.status]}`,
+  policy: `Política: ${session.fillPolicy === 'HUMAN_ONLY' ? 'Somente humanos' : 'Humanos primeiro, bot só no fallback'}`,
   readiness: session.canPrepareMatch
-    ? 'Prontidão: confronto pronto para preparação.'
-    : `Prontidão: faltam ${session.missingHumansToStart} humano(s) para atingir o mínimo e fechar os elencos.`,
+    ? 'Prontidão: base humana fechada e sessão pronta para preparação do confronto.'
+    : session.canUseBotFallbackNow
+      ? 'Prontidão: humanos mínimos confirmados; fallback elegível pode completar as vagas marcadas.'
+      : `Prontidão: faltam ${session.missingHumansToStart} humano(s) para liberar a preparação ou o fallback.`,
   matchup: `HOME ${session.home.startersCount + session.home.substitutesCount} x ${session.away.startersCount + session.away.substitutesCount} AWAY`,
   sideSummaries: [
-    `HOME | humanos ${session.home.humanCount} | bots ${session.home.botCount} | titulares ${session.home.startersCount}/${session.maxStartersPerSide} | reservas ${session.home.substitutesCount}/${session.maxSubstitutesPerSide} | vagas ${session.home.remainingStarterSlots + session.home.remainingSubstituteSlots}`,
-    `AWAY | humanos ${session.away.humanCount} | bots ${session.away.botCount} | titulares ${session.away.startersCount}/${session.maxStartersPerSide} | reservas ${session.away.substitutesCount}/${session.maxSubstitutesPerSide} | vagas ${session.away.remainingStarterSlots + session.away.remainingSubstituteSlots}`
+    `HOME | humanos ${session.home.humanCount} | bots ${session.home.botCount} | titulares ${session.home.startersCount}/${session.maxStartersPerSide} | reservas ${session.home.substitutesCount}/${session.maxSubstitutesPerSide} | fallback aberto ${session.home.botFallbackEligibleOpenSlots}`,
+    `AWAY | humanos ${session.away.humanCount} | bots ${session.away.botCount} | titulares ${session.away.startersCount}/${session.maxStartersPerSide} | reservas ${session.away.substitutesCount}/${session.maxSubstitutesPerSide} | fallback aberto ${session.away.botFallbackEligibleOpenSlots}`
   ],
-  fallback: session.canUseBotFallback
-    ? `Fallback: ${session.fallbackEligibleOpenSlots} vaga(s) aberta(s) ainda elegíveis para bots.`
-    : 'Fallback: bots desativados ou sem vagas elegíveis no momento.'
+  fallback: session.fallbackEligibleOpenSlots > 0
+    ? `Fallback total aberto: ${session.fallbackEligibleOpenSlots} slot(s) marcados para bot.`
+    : 'Fallback total aberto: nenhum slot elegível pendente.'
 });
 
 export const buildMultiplayerPreparationCardViewModel = (session: MultiplayerSessionSummary): MultiplayerPreparationCardViewModel => ({
-  title: `⚔️ Preparação do confronto | HOME vs AWAY | código ${session.code}`,
+  title: `⚔️ PREPARAÇÃO DE CONFRONTO | HOME vs AWAY | sala ${session.code}`,
   readiness: session.canPrepareMatch
-    ? 'A sessão já tem base humana mínima para avançar rumo à partida compartilhada.'
-    : 'A sessão ainda precisa de mais humanos titulares/reservas antes de preparar o confronto.',
+    ? 'Confronto pronto para a próxima etapa: há base humana mínima, titulares humanos em ambos os lados e nenhuma vaga elegível de fallback pendente.'
+    : session.canUseBotFallbackNow
+      ? 'Sessão apta a aplicar fallback controlado antes de seguir para o confronto.'
+      : 'Sessão ainda bloqueada: faltam humanos ou titulares humanos em um dos lados.',
   notes: [
     `HOME: ${session.home.humanCount} humano(s), ${session.home.botCount} bot(s), ${session.home.startersCount} titular(es), ${session.home.substitutesCount} reserva(s).`,
     `AWAY: ${session.away.humanCount} humano(s), ${session.away.botCount} bot(s), ${session.away.startersCount} titular(es), ${session.away.substitutesCount} reserva(s).`,
-    session.canUseBotFallback
-      ? `Ainda existem ${session.fallbackEligibleOpenSlots} slot(s) elegíveis para fallback controlado.`
-      : 'Não há slots elegíveis para fallback no estado atual.',
+    session.hasHumanStarterOnEachSide
+      ? 'Cada lado já tem ao menos um titular humano.'
+      : 'Ainda falta titular humano em um dos lados.',
+    session.canUseBotFallbackNow
+      ? `Há ${session.fallbackEligibleOpenSlots} vaga(s) elegível(is) para fallback controlado.`
+      : 'Nenhuma vaga de fallback pode ser preenchida agora.',
     session.missingHumansToStart > 0
       ? `Faltam ${session.missingHumansToStart} humano(s) para atingir o mínimo configurado.`
-      : 'Mínimo humano atingido para a preparação.'
+      : 'Mínimo humano atingido para esta sala.'
   ]
 });
 
@@ -123,7 +140,7 @@ const turnText = (turn: MatchTurnView): string[] => [
 ];
 
 export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel => ({
-  headline: '🎮 TeleSoccer Match Center',
+  headline: '🎮 TELESOCCER MATCH CENTER',
   scoreboard: `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
   details: [
     `⏱️ ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]} • status ${match.scoreboard.status}`,

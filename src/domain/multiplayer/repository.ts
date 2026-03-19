@@ -1,9 +1,11 @@
+import { CareerStatus } from '../shared/enums';
 import {
   MultiplayerParticipantKind,
   MultiplayerSessionFillPolicy,
   MultiplayerSessionParticipant,
-  MultiplayerSessionSummary,
+  MultiplayerSessionSlot,
   MultiplayerSessionStatus,
+  MultiplayerSessionSummary,
   MultiplayerSquadRole,
   MultiplayerTeamSide
 } from './types';
@@ -13,6 +15,7 @@ export interface MultiplayerPlayerProfile {
   telegramId: string;
   playerId?: string;
   playerName: string;
+  careerStatus: CareerStatus;
 }
 
 export interface CreateMultiplayerSessionInput {
@@ -42,11 +45,17 @@ export interface JoinMultiplayerSessionInput {
 export interface AddBotFallbackInput {
   sessionId: string;
   bots: Array<{
+    slotId: string;
     side: MultiplayerTeamSide;
     squadRole: MultiplayerSquadRole;
     slotNumber: number;
     playerName: string;
   }>;
+}
+
+export interface AddBotFallbackResult {
+  session: MultiplayerSessionSummary;
+  createdParticipants: MultiplayerSessionParticipant[];
 }
 
 export interface MultiplayerRepository {
@@ -55,7 +64,7 @@ export interface MultiplayerRepository {
   getSessionByCode(sessionCode: string): Promise<MultiplayerSessionSummary | null>;
   getCurrentSessionForTelegramUser(telegramId: string): Promise<MultiplayerSessionSummary | null>;
   joinSession(input: JoinMultiplayerSessionInput): Promise<{ session: MultiplayerSessionSummary; participant: MultiplayerSessionParticipant }>;
-  addBotFallbackParticipants(input: AddBotFallbackInput): Promise<MultiplayerSessionSummary>;
+  addBotFallbackParticipants(input: AddBotFallbackInput): Promise<AddBotFallbackResult>;
   updateSessionStatus(sessionId: string, status: MultiplayerSessionStatus): Promise<MultiplayerSessionSummary>;
   findParticipantByUser(sessionId: string, userId: string): Promise<MultiplayerSessionParticipant | null>;
 }
@@ -65,25 +74,43 @@ export const squadRoleOrder = [MultiplayerSquadRole.Starter, MultiplayerSquadRol
 
 export const isHumanParticipant = (participant: MultiplayerSessionParticipant): boolean => participant.kind === MultiplayerParticipantKind.Human;
 
+const sortParticipants = (participants: MultiplayerSessionParticipant[]): MultiplayerSessionParticipant[] =>
+  [...participants].sort((left, right) => {
+    if (left.side !== right.side) {
+      return left.side.localeCompare(right.side);
+    }
+    if (left.squadRole !== right.squadRole) {
+      return left.squadRole.localeCompare(right.squadRole);
+    }
+    return left.slotNumber - right.slotNumber;
+  });
+
+const sortSlots = (slots: MultiplayerSessionSlot[]): MultiplayerSessionSlot[] =>
+  [...slots].sort((left, right) => {
+    if (left.side !== right.side) {
+      return left.side.localeCompare(right.side);
+    }
+    if (left.squadRole !== right.squadRole) {
+      return left.squadRole.localeCompare(right.squadRole);
+    }
+    return left.slotNumber - right.slotNumber;
+  });
+
 export const buildSideSummary = (
   sessionId: string,
   side: MultiplayerTeamSide,
   participants: MultiplayerSessionParticipant[],
-  maxStartersPerSide: number,
-  maxSubstitutesPerSide: number
+  slots: MultiplayerSessionSlot[]
 ) => {
-  const sideParticipants = participants
-    .filter((participant) => participant.sessionId === sessionId && participant.side === side)
-    .sort((left, right) => {
-      if (left.squadRole !== right.squadRole) {
-        return left.squadRole.localeCompare(right.squadRole);
-      }
-      return left.slotNumber - right.slotNumber;
-    });
+  const sideParticipants = sortParticipants(participants).filter((participant) => participant.sessionId === sessionId && participant.side === side);
+  const sideSlots = sortSlots(slots).filter((slot) => slot.sessionId === sessionId && slot.side === side);
   const starters = sideParticipants.filter((participant) => participant.squadRole === MultiplayerSquadRole.Starter);
   const substitutes = sideParticipants.filter((participant) => participant.squadRole === MultiplayerSquadRole.Substitute);
   const humanCount = sideParticipants.filter(isHumanParticipant).length;
   const botCount = sideParticipants.length - humanCount;
+  const starterSlots = sideSlots.filter((slot) => slot.squadRole === MultiplayerSquadRole.Starter);
+  const substituteSlots = sideSlots.filter((slot) => slot.squadRole === MultiplayerSquadRole.Substitute);
+  const botFallbackEligibleOpenSlots = sideSlots.filter((slot) => slot.isBotFallbackEligible && !slot.occupiedByParticipantId).length;
 
   return {
     side,
@@ -93,38 +120,64 @@ export const buildSideSummary = (
     botCount,
     startersCount: starters.length,
     substitutesCount: substitutes.length,
-    remainingStarterSlots: Math.max(maxStartersPerSide - starters.length, 0),
-    remainingSubstituteSlots: Math.max(maxSubstitutesPerSide - substitutes.length, 0)
+    remainingStarterSlots: Math.max(starterSlots.length - starters.length, 0),
+    remainingSubstituteSlots: Math.max(substituteSlots.length - substitutes.length, 0),
+    botFallbackEligibleOpenSlots
   };
 };
 
 export const deriveSessionSummary = (
-  raw: Omit<MultiplayerSessionSummary, 'home' | 'away' | 'totalHumanCount' | 'totalBotCount' | 'totalParticipants' | 'fallbackEligibleOpenSlots' | 'canUseBotFallback' | 'missingHumansToStart' | 'canPrepareMatch'>
+  raw: Omit<
+    MultiplayerSessionSummary,
+    | 'home'
+    | 'away'
+    | 'totalHumanCount'
+    | 'totalBotCount'
+    | 'totalParticipants'
+    | 'fallbackEligibleOpenSlots'
+    | 'canUseBotFallbackNow'
+    | 'missingHumansToStart'
+    | 'hasHumanStarterOnEachSide'
+    | 'canPrepareMatch'
+  >
 ): MultiplayerSessionSummary => {
-  const home = buildSideSummary(raw.id, MultiplayerTeamSide.Home, raw.participants, raw.maxStartersPerSide, raw.maxSubstitutesPerSide);
-  const away = buildSideSummary(raw.id, MultiplayerTeamSide.Away, raw.participants, raw.maxStartersPerSide, raw.maxSubstitutesPerSide);
-  const totalHumanCount = raw.participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
-  const totalBotCount = raw.participants.length - totalHumanCount;
-  const totalParticipants = raw.participants.length;
-  const openSlots = home.remainingStarterSlots + home.remainingSubstituteSlots + away.remainingStarterSlots + away.remainingSubstituteSlots;
-  const fallbackEligibleOpenSlots = Math.min(raw.botFallbackEligibleSlots, openSlots);
+  const participants = sortParticipants(raw.participants);
+  const slots = sortSlots(raw.slots).map((slot) => ({
+    ...slot,
+    occupiedByParticipantId: participants.find((participant) => participant.slotId === slot.id)?.id
+  }));
+  const home = buildSideSummary(raw.id, MultiplayerTeamSide.Home, participants, slots);
+  const away = buildSideSummary(raw.id, MultiplayerTeamSide.Away, participants, slots);
+  const totalHumanCount = participants.filter((participant) => participant.kind === MultiplayerParticipantKind.Human).length;
+  const totalBotCount = participants.length - totalHumanCount;
+  const totalParticipants = participants.length;
+  const fallbackEligibleOpenSlots = slots.filter((slot) => slot.isBotFallbackEligible && !slot.occupiedByParticipantId).length;
   const minimumHumansToStart = raw.minimumHumansToStart ?? 2;
   const missingHumansToStart = Math.max(minimumHumansToStart - totalHumanCount, 0);
-  const eachSideHasStarter = home.startersCount > 0 && away.startersCount > 0;
-  const canUseBotFallback =
-    raw.fillPolicy === MultiplayerSessionFillPolicy.HumanPriorityWithBotFallback && fallbackEligibleOpenSlots > 0 && raw.status !== MultiplayerSessionStatus.Closed;
-  const canPrepareMatch = eachSideHasStarter && missingHumansToStart === 0;
+  const hasHumanStarterOnEachSide =
+    home.starters.some((participant) => participant.kind === MultiplayerParticipantKind.Human) &&
+    away.starters.some((participant) => participant.kind === MultiplayerParticipantKind.Human);
+  const canUseBotFallbackNow =
+    raw.fillPolicy === MultiplayerSessionFillPolicy.HumanPriorityWithBotFallback &&
+    raw.status !== MultiplayerSessionStatus.Closed &&
+    hasHumanStarterOnEachSide &&
+    missingHumansToStart === 0 &&
+    fallbackEligibleOpenSlots > 0;
+  const canPrepareMatch = hasHumanStarterOnEachSide && missingHumansToStart === 0 && fallbackEligibleOpenSlots === 0;
 
   return {
     ...raw,
+    slots,
+    participants,
     home,
     away,
     totalHumanCount,
     totalBotCount,
     totalParticipants,
     fallbackEligibleOpenSlots,
-    canUseBotFallback,
+    canUseBotFallbackNow,
     missingHumansToStart,
+    hasHumanStarterOnEachSide,
     canPrepareMatch
   };
 };
