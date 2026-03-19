@@ -1,14 +1,17 @@
 import { CareerStatus } from '../shared/enums';
 import { DomainError } from '../../shared/errors';
 import { MatchEngine } from './engine';
-import { MatchRepository } from './repository';
-import { MatchActionKey, MatchRole, MatchStatus, ResolveTurnResult, StartMatchResult } from './types';
+import { MatchPlayerProfile, MatchRepository } from './repository';
+import { MatchActionKey, MatchRole, MatchStatus, MatchSummary, ResolveTurnResult, StartMatchResult } from './types';
 
 const cpuClubPool = [
   { id: 'cpu-club-1', name: 'Atlético da Serra' },
   { id: 'cpu-club-2', name: 'Real Aurora' },
   { id: 'cpu-club-3', name: 'Ferroviário do Norte' }
 ];
+
+const hasExpiredPendingTurn = (match: MatchSummary, now: Date): boolean =>
+  Boolean(match.activeTurn && match.activeTurn.deadlineAt.getTime() <= now.getTime());
 
 export class StartMatchService {
   constructor(
@@ -52,12 +55,15 @@ export class StartMatchService {
 }
 
 export class GetActiveMatchService {
-  constructor(private readonly matchRepository: MatchRepository) {}
+  constructor(
+    private readonly matchRepository: MatchRepository,
+    private readonly matchEngine: MatchEngine
+  ) {}
 
-  async execute(telegramId: string) {
+  async execute(telegramId: string, now = new Date()) {
     const activeMatch = await this.matchRepository.getActiveMatchByTelegramId(telegramId);
     if (activeMatch) {
-      return activeMatch;
+      return this.resolveExpiredTurnIfNeeded(telegramId, activeMatch, now);
     }
 
     const latestMatch = await this.matchRepository.getLatestMatchByTelegramId(telegramId);
@@ -66,6 +72,43 @@ export class GetActiveMatchService {
     }
 
     throw new DomainError('Nenhuma partida ativa ou finalizada encontrada para este jogador.');
+  }
+
+  private async resolveExpiredTurnIfNeeded(telegramId: string, match: MatchSummary, now: Date): Promise<MatchSummary> {
+    if (!hasExpiredPendingTurn(match, now)) {
+      return match;
+    }
+
+    const player = await this.requirePlayer(telegramId);
+    const resolution = this.matchEngine.resolve({
+      matchId: match.id,
+      player,
+      turn: {
+        id: match.activeTurn!.id,
+        sequence: match.activeTurn!.sequence,
+        minute: match.activeTurn!.minute,
+        half: match.activeTurn!.half,
+        possessionSide: match.activeTurn!.possessionSide,
+        contextType: match.activeTurn!.contextType,
+        deadlineAt: match.activeTurn!.deadlineAt,
+        homeScore: match.scoreboard.homeScore,
+        awayScore: match.scoreboard.awayScore,
+        energy: match.energy,
+        stoppageMinutes: match.scoreboard.stoppageMinutes,
+        currentYellowCards: match.yellowCards
+      },
+      now
+    });
+
+    return (await this.matchRepository.resolveTurn(match.id, resolution)).match;
+  }
+
+  private async requirePlayer(telegramId: string): Promise<MatchPlayerProfile> {
+    const player = await this.matchRepository.findPlayerByTelegramId(telegramId);
+    if (!player) {
+      throw new DomainError('Jogador não encontrado para consultar a partida.');
+    }
+    return player;
   }
 }
 
@@ -86,7 +129,8 @@ export class ResolveMatchTurnService {
       throw new DomainError('Não existe lance pendente para esta partida.');
     }
 
-    if (action && !activeMatch.activeTurn.availableActions.some((candidate) => candidate.key === action)) {
+    const expired = hasExpiredPendingTurn(activeMatch, now);
+    if (!expired && action && !activeMatch.activeTurn.availableActions.some((candidate) => candidate.key === action)) {
       throw new DomainError('Ação inválida para o contexto atual do lance.');
     }
 
@@ -107,7 +151,7 @@ export class ResolveMatchTurnService {
         stoppageMinutes: activeMatch.scoreboard.stoppageMinutes,
         currentYellowCards: activeMatch.yellowCards
       },
-      action,
+      action: expired ? undefined : action,
       now
     });
 

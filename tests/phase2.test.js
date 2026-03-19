@@ -1,13 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { CreatePlayerService, GetPlayerCardService, TryoutService, WeeklyTrainingService } = require('../dist/domain/player/services.js');
+const { CreatePlayerService, TryoutService, WeeklyTrainingService, GetPlayerCardService } = require('../dist/domain/player/services.js');
 const { StartMatchService, GetActiveMatchService, ResolveMatchTurnService } = require('../dist/domain/match/services.js');
 const { MatchEngine } = require('../dist/domain/match/engine.js');
 const { DominantFoot, PlayerPosition, CareerStatus } = require('../dist/domain/shared/enums.js');
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchActionKey } = require('../dist/domain/match/types.js');
 const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { DomainError } = require('../dist/shared/errors.js');
+
+const SPECIAL_CONTEXTS = new Set([MatchContextType.FreeKick, MatchContextType.PenaltyKick, MatchContextType.CornerKick]);
 
 class InMemoryPlayerRepository {
   constructor() {
@@ -128,8 +130,9 @@ class InMemoryMatchRepository {
   }
 
   async createMatchForPlayer(params) {
+    const matchId = `match-${params.playerId}-${Date.now()}`;
     const match = {
-      id: `match-${params.playerId}-${Date.now()}`,
+      id: matchId,
       playerId: params.playerId,
       status: MatchStatus.InProgress,
       scoreboard: {
@@ -144,7 +147,7 @@ class InMemoryMatchRepository {
       },
       activeTurn: {
         id: `turn-${params.initialTurn.sequence}`,
-        matchId: `match-${params.playerId}`,
+        matchId,
         sequence: params.initialTurn.sequence,
         minute: params.initialTurn.minute,
         half: params.initialTurn.half,
@@ -251,27 +254,31 @@ class StaticMatchRepository {
   }
 }
 
-function findMatchIdFor({ sequence, contextType, action, predicate }) {
+function createSearchPlayer(position = PlayerPosition.Defender) {
+  return {
+    playerId: 'player-search',
+    telegramId: 'search',
+    playerName: 'Tester',
+    clubId: 'club-1',
+    clubName: 'Porto Azul FC',
+    position,
+    careerStatus: CareerStatus.Professional,
+    attributes: { PASSING: 50, SHOOTING: 50, DRIBBLING: 50, SPEED: 50, MARKING: 45, POSITIONING: 48, REFLEXES: 46, HANDLING: 46, KICKING: 46 }
+  };
+}
+
+function findMatchIdFor({ sequence, contextType, action, predicate, position = PlayerPosition.Defender, possessionSide = MatchPossessionSide.Home }) {
   for (let index = 1; index < 5000; index += 1) {
     const matchId = `match-search-${index}`;
     const resolution = new MatchEngine().resolve({
       matchId,
-      player: {
-        playerId: 'player-search',
-        telegramId: 'search',
-        playerName: 'Tester',
-        clubId: 'club-1',
-        clubName: 'Porto Azul FC',
-        position: PlayerPosition.Defender,
-        careerStatus: CareerStatus.Professional,
-        attributes: { PASSING: 50, SHOOTING: 50, DRIBBLING: 50, SPEED: 50, MARKING: 45, POSITIONING: 48, REFLEXES: 46, HANDLING: 46, KICKING: 46 }
-      },
+      player: createSearchPlayer(position),
       turn: {
         id: 'turn-search',
         sequence,
         minute: 60,
         half: MatchHalf.Second,
-        possessionSide: MatchPossessionSide.Home,
+        possessionSide,
         contextType,
         deadlineAt: new Date('2026-03-03T12:00:30.000Z'),
         homeScore: 0,
@@ -313,7 +320,8 @@ async function createProfessionalPlayer(telegramId, position = PlayerPosition.Fo
 test('inicia partida profissional e devolve o primeiro lance pendente', async () => {
   const playerRepo = await createProfessionalPlayer('301');
   const matchRepo = new InMemoryMatchRepository(playerRepo);
-  const startMatchService = new StartMatchService(matchRepo, new MatchEngine());
+  const engine = new MatchEngine();
+  const startMatchService = new StartMatchService(matchRepo, engine);
 
   const result = await startMatchService.execute('301', new Date('2026-03-03T12:00:00.000Z'));
 
@@ -325,21 +333,56 @@ test('inicia partida profissional e devolve o primeiro lance pendente', async ()
 });
 
 test('GetActiveMatchService prioriza partida em andamento quando ela existe', async () => {
-  const activeMatch = { id: 'active-1', status: MatchStatus.InProgress, activeTurn: { id: 'turn-1' } };
+  const activeMatch = { id: 'active-1', status: MatchStatus.InProgress, activeTurn: { id: 'turn-1', deadlineAt: new Date('2026-03-03T12:00:30.000Z') } };
   const latestMatch = { id: 'finished-1', status: MatchStatus.Finished, activeTurn: undefined };
-  const service = new GetActiveMatchService(new StaticMatchRepository(activeMatch, latestMatch));
+  const service = new GetActiveMatchService(new StaticMatchRepository(activeMatch, latestMatch), new MatchEngine());
 
-  const result = await service.execute('telegram-1');
+  const result = await service.execute('telegram-1', new Date('2026-03-03T12:00:00.000Z'));
   assert.equal(result.id, 'active-1');
 });
 
 test('GetActiveMatchService retorna a última finalizada quando não há partida em andamento', async () => {
   const latestMatch = { id: 'finished-1', status: MatchStatus.Finished, activeTurn: undefined };
-  const service = new GetActiveMatchService(new StaticMatchRepository(null, latestMatch));
+  const service = new GetActiveMatchService(new StaticMatchRepository(null, latestMatch), new MatchEngine());
 
   const result = await service.execute('telegram-1');
   assert.equal(result.id, 'finished-1');
   assert.equal(result.activeTurn, undefined);
+});
+
+test('consulta resolve timeout expirado automaticamente antes de retornar a partida', async () => {
+  const playerRepo = await createProfessionalPlayer('307');
+  const matchRepo = new InMemoryMatchRepository(playerRepo);
+  const engine = new MatchEngine();
+  const startMatchService = new StartMatchService(matchRepo, engine);
+  const getActiveMatchService = new GetActiveMatchService(matchRepo, engine);
+
+  const started = await startMatchService.execute('307', new Date('2026-03-03T12:00:00.000Z'));
+  const expiredNow = new Date(started.match.activeTurn.deadlineAt.getTime() + 1000);
+  const match = await getActiveMatchService.execute('307', expiredNow);
+
+  assert.equal(match.status, MatchStatus.InProgress);
+  assert.ok(match.activeTurn);
+  assert.equal(match.activeTurn.sequence, started.match.activeTurn.sequence + 1);
+  assert.equal(match.activeTurn.possessionSide, MatchPossessionSide.Away);
+  assert.ok(match.recentEvents.some((event) => event.type === 'TIMEOUT'));
+  assert.equal(match.activeTurn.contextType === MatchContextType.PenaltyKick, false);
+});
+
+test('tentativa de resolver turno expirado processa timeout corretamente', async () => {
+  const playerRepo = await createProfessionalPlayer('303');
+  const matchRepo = new InMemoryMatchRepository(playerRepo);
+  const engine = new MatchEngine();
+  const startMatchService = new StartMatchService(matchRepo, engine);
+  const resolveMatchTurnService = new ResolveMatchTurnService(matchRepo, engine);
+
+  const started = await startMatchService.execute('303', new Date('2026-03-03T12:00:00.000Z'));
+  const expiredAt = new Date(started.match.activeTurn.deadlineAt.getTime() + 1000);
+  const resolved = await resolveMatchTurnService.execute('303', started.match.activeTurn.availableActions[0].key, expiredAt);
+
+  assert.ok(resolved.resolutionText.includes('não respondeu'));
+  assert.ok(resolved.match.recentEvents.some((event) => event.type === 'TIMEOUT'));
+  assert.equal(resolved.match.activeTurn.possessionSide, MatchPossessionSide.Away);
 });
 
 test('resolve lance, atualiza placar/eventos e encerra a partida ao fim dos turnos', async () => {
@@ -347,12 +390,12 @@ test('resolve lance, atualiza placar/eventos e encerra a partida ao fim dos turn
   const matchRepo = new InMemoryMatchRepository(playerRepo);
   const engine = new MatchEngine();
   const startMatchService = new StartMatchService(matchRepo, engine);
-  const getActiveMatchService = new GetActiveMatchService(matchRepo);
+  const getActiveMatchService = new GetActiveMatchService(matchRepo, engine);
   const resolveMatchTurnService = new ResolveMatchTurnService(matchRepo, engine);
 
   await startMatchService.execute('302', new Date('2026-03-03T12:00:00.000Z'));
 
-  let match = await getActiveMatchService.execute('302');
+  let match = await getActiveMatchService.execute('302', new Date('2026-03-03T12:00:00.000Z'));
   let safety = 0;
   while (match.status === MatchStatus.InProgress && safety < 20) {
     const action = match.activeTurn.availableActions[0].key;
@@ -367,19 +410,54 @@ test('resolve lance, atualiza placar/eventos e encerra a partida ao fim dos turn
   assert.ok(match.recentEvents.some((event) => event.type === 'MATCH_FINISHED'));
 });
 
-test('aplica timeout ao perder o prazo do turno', async () => {
-  const playerRepo = await createProfessionalPlayer('303');
-  const matchRepo = new InMemoryMatchRepository(playerRepo);
+test('falta perigosa gera FREE_KICK como próximo contexto', () => {
+  const { resolution } = findMatchIdFor({
+    sequence: 5,
+    contextType: MatchContextType.ReceivedPressed,
+    action: MatchActionKey.Pass,
+    predicate: (candidate) => candidate.events.some((event) => event.type === 'FOUL') && candidate.nextTurn?.contextType === MatchContextType.FreeKick
+  });
+
+  assert.ok(resolution.events.some((event) => event.type === 'FOUL'));
+  assert.equal(resolution.nextTurn.contextType, MatchContextType.FreeKick);
+});
+
+test('pênalti marcado gera PENALTY_KICK como próximo contexto', () => {
+  const { resolution } = findMatchIdFor({
+    sequence: 5,
+    contextType: MatchContextType.InBox,
+    action: MatchActionKey.Shoot,
+    predicate: (candidate) => candidate.events.some((event) => event.type === 'PENALTY_AWARDED') && candidate.nextTurn?.contextType === MatchContextType.PenaltyKick
+  });
+
+  assert.ok(resolution.events.some((event) => event.type === 'PENALTY_AWARDED'));
+  assert.equal(resolution.nextTurn.contextType, MatchContextType.PenaltyKick);
+});
+
+test('escanteio concedido gera CORNER_KICK como próximo contexto', () => {
+  const { resolution } = findMatchIdFor({
+    sequence: 6,
+    contextType: MatchContextType.ReceivedFree,
+    action: MatchActionKey.Shoot,
+    predicate: (candidate) => candidate.events.some((event) => event.type === 'CORNER_AWARDED') && candidate.nextTurn?.contextType === MatchContextType.CornerKick
+  });
+
+  assert.ok(resolution.events.some((event) => event.type === 'CORNER_AWARDED'));
+  assert.equal(resolution.nextTurn.contextType, MatchContextType.CornerKick);
+});
+
+test('contextos especiais não surgem aleatoriamente sem causa anterior coerente', () => {
   const engine = new MatchEngine();
-  const startMatchService = new StartMatchService(matchRepo, engine);
-  const resolveMatchTurnService = new ResolveMatchTurnService(matchRepo, engine);
+  const linePlayer = createSearchPlayer(PlayerPosition.Forward);
+  const goalkeeper = createSearchPlayer(PlayerPosition.Goalkeeper);
 
-  const started = await startMatchService.execute('303', new Date('2026-03-03T12:00:00.000Z'));
-  const expiredAt = new Date(started.match.activeTurn.deadlineAt.getTime() + 1000);
-  const resolved = await resolveMatchTurnService.execute('303', undefined, expiredAt);
+  for (let sequence = 1; sequence <= 14; sequence += 1) {
+    const outfieldTurn = engine.createTurn(linePlayer, sequence, { now: new Date('2026-03-03T12:00:00.000Z') });
+    const goalkeeperTurn = engine.createTurn(goalkeeper, sequence, { now: new Date('2026-03-03T12:00:00.000Z') });
 
-  assert.ok(resolved.resolutionText.includes('não respondeu'));
-  assert.ok(resolved.match.recentEvents.some((event) => event.type === 'TIMEOUT'));
+    assert.equal(SPECIAL_CONTEXTS.has(outfieldTurn.contextType), false);
+    assert.equal(SPECIAL_CONTEXTS.has(goalkeeperTurn.contextType), false);
+  }
 });
 
 test('duelo defensivo não gera falta automaticamente e evita duplicidade de FOUL', () => {
@@ -436,17 +514,17 @@ test('cartão amarelo é mais comum que vermelho no duelo defensivo', () => {
   assert.ok(amarelo.events.some((event) => event.type === 'YELLOW_CARD'));
 });
 
-test('consulta partida finalizada quando não há mais partida em andamento', async () => {
+test('consulta partida finalizada quando não há mais partida em andamento e não expõe activeTurn', async () => {
   const playerRepo = await createProfessionalPlayer('304');
   const matchRepo = new InMemoryMatchRepository(playerRepo);
   const engine = new MatchEngine();
   const startMatchService = new StartMatchService(matchRepo, engine);
-  const getActiveMatchService = new GetActiveMatchService(matchRepo);
+  const getActiveMatchService = new GetActiveMatchService(matchRepo, engine);
   const resolveMatchTurnService = new ResolveMatchTurnService(matchRepo, engine);
 
   await startMatchService.execute('304', new Date('2026-03-03T12:00:00.000Z'));
 
-  let match = await getActiveMatchService.execute('304');
+  let match = await getActiveMatchService.execute('304', new Date('2026-03-03T12:00:00.000Z'));
   let safety = 0;
   while (match.status === MatchStatus.InProgress && safety < 20) {
     const action = match.activeTurn.availableActions[0].key;
@@ -454,7 +532,7 @@ test('consulta partida finalizada quando não há mais partida em andamento', as
     safety += 1;
   }
 
-  const lastMatch = await getActiveMatchService.execute('304');
+  const lastMatch = await getActiveMatchService.execute('304', new Date('2026-03-03T13:00:00.000Z'));
   assert.equal(lastMatch.status, MatchStatus.Finished);
   assert.equal(lastMatch.activeTurn, undefined);
 });

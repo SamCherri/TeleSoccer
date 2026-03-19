@@ -32,7 +32,7 @@ export const buildContainer = () => {
   const weeklyTrainingService = new WeeklyTrainingService(playerRepository);
   const tryoutService = new TryoutService(playerRepository, clubRepository);
   const startMatchService = new StartMatchService(matchRepository, matchEngine);
-  const getActiveMatchService = new GetActiveMatchService(matchRepository);
+  const getActiveMatchService = new GetActiveMatchService(matchRepository, matchEngine);
   const resolveMatchTurnService = new ResolveMatchTurnService(matchRepository, matchEngine);
   const phase1TelegramFacade = new Phase1TelegramFacade(
     createPlayerService,

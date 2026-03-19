@@ -61,14 +61,11 @@ const contextTexts: Record<MatchContextType, string> = {
   [MatchContextType.CornerKick]: 'Escanteio a favor. Escolha o lado e a altura do cruzamento.'
 };
 
-const attackingContexts = [
+const generalAttackingContexts = [
   MatchContextType.ReceivedFree,
   MatchContextType.ReceivedPressed,
   MatchContextType.BackToGoal,
-  MatchContextType.InBox,
-  MatchContextType.FreeKick,
-  MatchContextType.CornerKick,
-  MatchContextType.PenaltyKick
+  MatchContextType.InBox
 ];
 
 const defensiveContexts = [MatchContextType.DefensiveDuel, MatchContextType.GoalkeeperSave];
@@ -83,24 +80,39 @@ const hashFrom = (input: string): number => {
   return acc;
 };
 
+interface TurnCreationOptions {
+  previousOutcome?: string;
+  now?: Date;
+  forcedContextType?: MatchContextType;
+  forcedPossessionSide?: MatchPossessionSide;
+}
+
+interface ForcedContinuation {
+  contextType?: MatchContextType;
+  possessionSide?: MatchPossessionSide;
+}
+
 export class MatchEngine {
   createInitialTurn(player: MatchPlayerProfile, now = new Date()): CreateMatchTurnInput {
-    return this.createTurn(player, 1, undefined, now);
+    return this.createTurn(player, 1, { now });
   }
 
-  createTurn(player: MatchPlayerProfile, sequence: number, previousOutcome?: string, now = new Date()): CreateMatchTurnInput {
-    const contextType = this.pickContext(player, sequence);
+  createTurn(player: MatchPlayerProfile, sequence: number, options: TurnCreationOptions = {}): CreateMatchTurnInput {
+    const now = options.now ?? new Date();
+    const contextType = options.forcedContextType ?? this.pickContext(player, sequence);
+    const possessionSide = options.forcedPossessionSide ?? (sequence % 2 === 0 ? MatchPossessionSide.Away : MatchPossessionSide.Home);
+
     return {
       sequence,
       minute: TURN_MINUTES[Math.min(sequence - 1, TURN_MINUTES.length - 1)],
       half: sequence <= FIRST_HALF_TURNS ? MatchHalf.First : MatchHalf.Second,
-      possessionSide: sequence % 2 === 0 ? MatchPossessionSide.Away : MatchPossessionSide.Home,
+      possessionSide,
       contextType,
       contextText: contextTexts[contextType],
       availableActions: contextActionMap[contextType],
       deadlineAt: new Date(now.getTime() + TURN_TIME_LIMIT_SECONDS * 1000),
       isGoalkeeperContext: contextType === MatchContextType.GoalkeeperSave,
-      previousOutcome
+      previousOutcome: options.previousOutcome
     };
   }
 
@@ -141,10 +153,12 @@ export class MatchEngine {
     let redCardIssued = false;
     let suspensionMatchesToAdd = 0;
     let injury: MatchResolutionInput['injury'];
+    let forcedContinuation: ForcedContinuation | undefined;
 
     if (timedOut) {
       outcomeText = 'Você não respondeu em 30 segundos. O lance foi perdido e o adversário retomou a posse.';
       events.push({ type: MatchEventType.Timeout, minute: params.turn.minute, description: outcomeText });
+      forcedContinuation = { possessionSide: MatchPossessionSide.Away };
     } else {
       const success = skill + 8 >= roll;
       outcomeText = success
@@ -164,11 +178,18 @@ export class MatchEngine {
         events.push({ type: MatchEventType.Foul, minute: params.turn.minute, description: foulDescription });
         if (isPenalty) {
           events.push({ type: MatchEventType.PenaltyAwarded, minute: params.turn.minute, description: 'Pênalti confirmado após a falta na área.' });
-          homeScore += 1;
-          outcomeText += ' A cobrança foi convertida.';
-          events.push({ type: MatchEventType.Goal, minute: params.turn.minute, description: 'Gol de pênalti para o seu time.' });
+          outcomeText += ' O próximo lance será a cobrança de pênalti.';
+          forcedContinuation = {
+            contextType: MatchContextType.PenaltyKick,
+            possessionSide: MatchPossessionSide.Home
+          };
           stoppageMinutes += 2;
         } else {
+          outcomeText += ' O próximo lance será a cobrança da falta perigosa.';
+          forcedContinuation = {
+            contextType: MatchContextType.FreeKick,
+            possessionSide: MatchPossessionSide.Home
+          };
           stoppageMinutes += 1;
         }
       } else if (success && this.shouldScore(params.turn.contextType, params.action!, roll, skill)) {
@@ -187,9 +208,14 @@ export class MatchEngine {
       } else if (!success && this.shouldConcedeCorner(roll)) {
         outcomeText += ' A defesa desviou para escanteio.';
         events.push({ type: MatchEventType.CornerAwarded, minute: params.turn.minute, description: 'Escanteio concedido após desvio.' });
+        forcedContinuation = {
+          contextType: MatchContextType.CornerKick,
+          possessionSide: MatchPossessionSide.Home
+        };
       } else if (!success && this.shouldConcedeGoalKick(roll)) {
-        outcomeText += ' A jogada terminou em tiro de meta.';
+        outcomeText += ' A jogada terminou em tiro de meta para o adversário reorganizar a saída.';
         events.push({ type: MatchEventType.GoalKickAwarded, minute: params.turn.minute, description: 'Tiro de meta para reorganizar a defesa.' });
+        forcedContinuation = { possessionSide: MatchPossessionSide.Away };
       }
 
       const cardResult = this.getCardOutcome(params.turn.sequence, roll, params.turn.contextType);
@@ -233,7 +259,14 @@ export class MatchEngine {
     }
 
     const finished = nextSequence > MATCH_TOTAL_TURNS;
-    const nextTurn = finished ? undefined : this.createTurn(params.player, nextSequence, outcomeText, now);
+    const nextTurn = finished
+      ? undefined
+      : this.createTurn(params.player, nextSequence, {
+          previousOutcome: outcomeText,
+          now,
+          forcedContextType: forcedContinuation?.contextType,
+          forcedPossessionSide: forcedContinuation?.possessionSide
+        });
     const currentMinute = nextTurn?.minute ?? 90 + stoppageMinutes;
 
     if (finished) {
@@ -272,10 +305,10 @@ export class MatchEngine {
 
   private pickContext(player: MatchPlayerProfile, sequence: number): MatchContextType {
     if (player.position === PlayerPosition.Goalkeeper) {
-      return sequence % 3 === 0 ? MatchContextType.GoalkeeperSave : sequence % 5 === 0 ? MatchContextType.FreeKick : MatchContextType.ReceivedFree;
+      return sequence % 3 === 0 ? MatchContextType.GoalkeeperSave : MatchContextType.ReceivedFree;
     }
 
-    const options = sequence % 4 === 0 ? defensiveContexts : attackingContexts;
+    const options = sequence % 4 === 0 ? defensiveContexts : generalAttackingContexts;
     return options[hashFrom(`${player.playerId}:${sequence}`) % options.length];
   }
 
@@ -310,12 +343,15 @@ export class MatchEngine {
     if (context === MatchContextType.InBox && action === MatchActionKey.Shoot) {
       return roll < skill + 12;
     }
+    if (context === MatchContextType.FreeKick) {
+      return action !== MatchActionKey.Pass && roll < skill + 4;
+    }
     return action === MatchActionKey.Shoot && roll < skill - 8;
   }
 
   private shouldTriggerFoul(sequence: number, roll: number, context: MatchContextType): boolean {
     if (context === MatchContextType.PenaltyKick) {
-      return roll % 8 === 0;
+      return false;
     }
     if (context === MatchContextType.DefensiveDuel) {
       return roll < 26 || sequence % 5 === 0;
