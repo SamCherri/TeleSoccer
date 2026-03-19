@@ -2,7 +2,7 @@ import { CareerStatus } from '../shared/enums';
 import { DomainError } from '../../shared/errors';
 import { MatchEngine } from './engine';
 import { MatchPlayerProfile, MatchRepository } from './repository';
-import { MatchActionKey, MatchRole, MatchStatus, MatchSummary, ResolveTurnResult, StartMatchResult } from './types';
+import { MatchActionKey, MatchParticipantKind, MatchRole, MatchStatus, MatchSummary, ResolveTurnResult, StartMatchResult } from './types';
 
 const cpuClubPool = [
   { id: 'cpu-club-1', name: 'Atlético da Serra' },
@@ -47,6 +47,8 @@ export class StartMatchService {
       awayClubName: opponent.name,
       playerId: player.playerId,
       userRole: player.position === 'GOALKEEPER' ? MatchRole.Goalkeeper : MatchRole.UserPlayer,
+      userParticipantKind: MatchParticipantKind.Human,
+      opponentParticipantKind: MatchParticipantKind.Bot,
       initialTurn
     });
 

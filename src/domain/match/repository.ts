@@ -1,4 +1,4 @@
-import { MatchActionKey, MatchContextType, MatchEventType, MatchHalf, MatchPossessionSide, MatchRole, MatchStatus, MatchSummary, MatchTurnState, MatchTurnView, ResolveTurnResult } from './types';
+import { MatchActionKey, MatchContextType, MatchEventType, MatchHalf, MatchParticipantKind, MatchPossessionSide, MatchRole, MatchStatus, MatchSummary, MatchTurnState, MatchTurnView, ResolveTurnResult } from './types';
 
 export interface MatchPlayerProfile {
   playerId: string;
@@ -61,6 +61,8 @@ export interface MatchRepository {
     awayClubName: string;
     playerId: string;
     userRole: MatchRole;
+    userParticipantKind: MatchParticipantKind;
+    opponentParticipantKind: MatchParticipantKind;
     initialTurn: CreateMatchTurnInput;
   }): Promise<MatchSummary>;
   resolveTurn(matchId: string, resolution: MatchResolutionInput): Promise<ResolveTurnResult>;

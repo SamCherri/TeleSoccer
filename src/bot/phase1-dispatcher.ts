@@ -24,6 +24,9 @@ const commandToAction = new Map<string, string>([
   ['/partida', phase1BotActions.startMatch],
   ['/lance', phase1BotActions.currentMatch],
   ['/perder-lance', phase1BotActions.resolveTimeout],
+  ['/multiplayer', phase1BotActions.multiplayerMenu],
+  ['/criar-sala', phase1BotActions.multiplayerCreateLobby],
+  ['/sala', phase1BotActions.multiplayerLobbyStatus],
   ['/cancelar', phase1BotActions.cancel],
   ['/criar-jogador', phase1BotActions.createPlayer]
 ]);
@@ -66,7 +69,8 @@ export class Phase1TelegramDispatcher {
 
   async dispatch(request: Phase1BotRequest): Promise<BotReply> {
     const normalizedText = request.text?.trim() ?? '/start';
-    const action = commandToAction.get(normalizedText) ?? normalizedText;
+    const joinLobbyCode = this.extractJoinLobbyCode(normalizedText);
+    const action = joinLobbyCode ? '/entrar-sala' : commandToAction.get(normalizedText) ?? normalizedText;
 
     try {
       const expirationReply = await this.creationFlow.expireIfNeeded(request.telegramId);
@@ -131,6 +135,18 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.resolveTimeout) {
         return await this.facade.handleMatchAction(request.telegramId);
       }
+      if (action === phase1BotActions.multiplayerMenu) {
+        return this.facade.handleMultiplayerMenu();
+      }
+      if (action === phase1BotActions.multiplayerCreateLobby) {
+        return await this.facade.handleCreateLobby(request.telegramId);
+      }
+      if (action === phase1BotActions.multiplayerLobbyStatus) {
+        return await this.facade.handleLobbyStatus(request.telegramId);
+      }
+      if (action === '/entrar-sala') {
+        return await this.facade.handleJoinLobby(request.telegramId, joinLobbyCode!);
+      }
 
       const trainingFocus = trainingActionMap.get(action);
       if (trainingFocus) {
@@ -150,7 +166,8 @@ export class Phase1TelegramDispatcher {
           phase1BotActions.careerStatus,
           phase1BotActions.careerHistory,
           phase1BotActions.weeklyTraining,
-          phase1BotActions.startMatch
+          phase1BotActions.startMatch,
+          phase1BotActions.multiplayerMenu
         ]
       };
     } catch (error) {
@@ -164,12 +181,22 @@ export class Phase1TelegramDispatcher {
             phase1BotActions.careerHistory,
             phase1BotActions.weeklyTraining,
             phase1BotActions.tryout,
-            phase1BotActions.startMatch
+            phase1BotActions.startMatch,
+            phase1BotActions.multiplayerMenu
           ]
         };
       }
 
       throw error;
     }
+  }
+
+  private extractJoinLobbyCode(text: string): string | null {
+    if (!text.startsWith('/entrar-sala')) {
+      return null;
+    }
+
+    const [, rawCode] = text.split(/\s+/, 2);
+    return rawCode?.trim() || null;
   }
 }
