@@ -45,3 +45,15 @@ export enum HistoryEntryType {
   TryoutApproved = 'TRYOUT_APPROVED',
   ProfessionalContractStarted = 'PROFESSIONAL_CONTRACT_STARTED'
 }
+
+export enum PlayerCreationStep {
+  Name = 'NAME',
+  Nationality = 'NATIONALITY',
+  Position = 'POSITION',
+  DominantFoot = 'DOMINANT_FOOT',
+  HeightCm = 'HEIGHT_CM',
+  WeightKg = 'WEIGHT_KG',
+  SkinTone = 'SKIN_TONE',
+  HairStyle = 'HAIR_STYLE',
+  Confirmation = 'CONFIRMATION'
+}

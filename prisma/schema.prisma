@@ -67,6 +67,18 @@ enum HistoryEntryType {
   PROFESSIONAL_CONTRACT_STARTED
 }
 
+enum PlayerCreationStep {
+  NAME
+  NATIONALITY
+  POSITION
+  DOMINANT_FOOT
+  HEIGHT_CM
+  WEIGHT_KG
+  SKIN_TONE
+  HAIR_STYLE
+  CONFIRMATION
+}
+
 model User {
   id          String             @id @default(cuid())
   telegramId  String             @unique
@@ -225,7 +237,7 @@ model PlayerHistoryEntry {
 
 model PlayerCreationConversation {
   telegramId String   @id
-  step       String
+  step       PlayerCreationStep
   draft      Json
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

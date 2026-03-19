@@ -10,6 +10,7 @@ const { createServer } = require('http') as {
 interface HttpRequest {
   method?: string;
   url?: string;
+  headers?: Record<string, string | string[] | undefined>;
   [Symbol.asyncIterator](): AsyncIterableIterator<string>;
 }
 
@@ -37,6 +38,23 @@ const respond = (response: HttpResponse, statusCode: number, body: string): void
   response.statusCode = statusCode;
   response.setHeader('content-type', 'text/plain; charset=utf-8');
   response.end(body);
+};
+
+const normalizeHeaderValue = (value: string | string[] | undefined): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+};
+
+const hasValidWebhookSecret = (request: HttpRequest, webhookSecret?: string): boolean => {
+  if (!webhookSecret) {
+    return true;
+  }
+
+  const headerValue = normalizeHeaderValue(request.headers?.['x-telegram-bot-api-secret-token']);
+  return headerValue === webhookSecret;
 };
 
 export interface RailwayTelegramServerHandle {
@@ -69,9 +87,18 @@ export const createRailwayTelegramServer = (params: {
         }
 
         if (request.method === 'POST' && request.url === webhookPath) {
-          const update = await readJsonBody<TelegramUpdate>(request);
-          await params.runtime.processUpdate(update);
-          respond(response, 200, 'accepted');
+          if (!hasValidWebhookSecret(request, params.env.TELEGRAM_WEBHOOK_SECRET)) {
+            respond(response, 401, 'unauthorized');
+            return;
+          }
+
+          try {
+            const update = await readJsonBody<TelegramUpdate>(request);
+            await params.runtime.processUpdate(update);
+            respond(response, 200, 'accepted');
+          } catch {
+            respond(response, 400, 'invalid-json');
+          }
           return;
         }
 

@@ -1,15 +1,5 @@
+import { PlayerCreationStep } from '../domain/shared/enums';
 import { CreatePlayerInput } from '../domain/player/types';
-
-export type PlayerCreationStep =
-  | 'name'
-  | 'nationality'
-  | 'position'
-  | 'dominantFoot'
-  | 'heightCm'
-  | 'weightKg'
-  | 'skinTone'
-  | 'hairStyle'
-  | 'confirmation';
 
 export interface PlayerCreationDraft {
   name?: CreatePlayerInput['name'];

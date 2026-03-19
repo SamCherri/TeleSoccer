@@ -15,7 +15,7 @@ const { InMemoryPlayerCreationConversationStore } = require('../dist/bot/convers
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { Phase1PlayerCreationFlow } = require('../dist/bot/player-creation-flow.js');
-const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
+const { AttributeKey, CareerStatus, DominantFoot, HistoryEntryType, PlayerCreationStep, PlayerPosition, TryoutStatus, WalletTransactionType } = require('../dist/domain/shared/enums.js');
 const { PrismaPlayerCreationConversationStore } = require('../dist/infra/prisma/player-creation-conversation-store.js');
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
@@ -757,6 +757,20 @@ test('dispatcher permite cancelar criação conversacional com segurança', asyn
 });
 
 
+
+test('flow de criação persiste etapa usando enum forte do domínio', async () => {
+  const store = new InMemoryPlayerCreationConversationStore();
+  const flow = new Phase1PlayerCreationFlow(store);
+
+  await flow.start('enum-user');
+  const startedSession = await store.get('enum-user');
+  assert.equal(startedSession.step, PlayerCreationStep.Name);
+
+  await flow.handleInput('enum-user', 'Mateus Rocha');
+  const progressedSession = await store.get('enum-user');
+  assert.equal(progressedSession.step, PlayerCreationStep.Nationality);
+});
+
 test('store Prisma persiste e remove sessão de criação conversacional', async () => {
   let persistedSession = null;
 
@@ -792,7 +806,7 @@ test('store Prisma persiste e remove sessão de criação conversacional', async
   const store = new PrismaPlayerCreationConversationStore();
   await store.save({
     telegramId: 'session-1',
-    step: 'position',
+    step: PlayerCreationStep.Position,
     draft: {
       name: 'Ruan',
       nationality: 'Brasil',
@@ -801,7 +815,7 @@ test('store Prisma persiste e remove sessão de criação conversacional', async
   });
 
   const loaded = await store.get('session-1');
-  assert.equal(loaded.step, 'position');
+  assert.equal(loaded.step, PlayerCreationStep.Position);
   assert.equal(loaded.draft.name, 'Ruan');
 
   await store.clear('session-1');
@@ -817,7 +831,7 @@ test('fluxo de criação continua normalmente quando a sessão ainda está váli
 
   await store.save({
     telegramId: 'active-session',
-    step: 'nationality',
+    step: PlayerCreationStep.Nationality,
     draft: { name: 'Rafael' },
     updatedAt: new Date()
   });
@@ -835,7 +849,7 @@ test('fluxo de criação expira sessão antiga, limpa e orienta reinício', asyn
 
   await store.save({
     telegramId: 'expired-session',
-    step: 'position',
+    step: PlayerCreationStep.Position,
     draft: { name: 'Vitor', nationality: 'Brasil' },
     updatedAt: new Date('2026-01-01T00:00:00.000Z')
   });
@@ -1067,7 +1081,10 @@ test('servidor Railway expõe healthcheck e processa webhook do Telegram', async
 
   const webhook = await fetch(`http://127.0.0.1:${port}/telegram/webhook/railway-secret`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-telegram-bot-api-secret-token': 'railway-secret'
+    },
     body: JSON.stringify({ update_id: 2, message: { message_id: 5, chat: { id: 1, type: 'private' }, from: { id: 2 }, text: '/start' } })
   });
   assert.equal(webhook.status, 200);
@@ -1075,4 +1092,52 @@ test('servidor Railway expõe healthcheck e processa webhook do Telegram', async
 
   await server.stop();
   global.fetch = originalFetch;
+});
+
+
+test('servidor Railway rejeita webhook sem secret token válido e payload inválido', async () => {
+  const processedUpdates = [];
+  const runtime = {
+    async processUpdate(update) {
+      processedUpdates.push(update);
+      return true;
+    }
+  };
+  const telegramClient = {
+    async sendMessage() {},
+    async setWebhook() {}
+  };
+
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgresql://tele',
+      PORT: 3311,
+      NODE_ENV: 'test',
+      TELEGRAM_WEBHOOK_SECRET: 'secret-phase1'
+    },
+    runtime,
+    telegramClient
+  });
+
+  await server.start();
+
+  const unauthorizedResponse = await fetch('http://127.0.0.1:3311/telegram/webhook/secret-phase1', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ update_id: 1 })
+  });
+  assert.equal(unauthorizedResponse.status, 401);
+
+  const invalidJsonResponse = await fetch('http://127.0.0.1:3311/telegram/webhook/secret-phase1', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-telegram-bot-api-secret-token': 'secret-phase1'
+    },
+    body: '{invalid'
+  });
+  assert.equal(invalidJsonResponse.status, 400);
+  assert.equal(processedUpdates.length, 0);
+
+  await server.stop();
 });

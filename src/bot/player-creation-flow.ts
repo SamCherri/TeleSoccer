@@ -1,4 +1,4 @@
-import { DominantFoot, PlayerPosition } from '../domain/shared/enums';
+import { DominantFoot, PlayerCreationStep, PlayerPosition } from '../domain/shared/enums';
 import { BotReply, phase1BotActions } from './phase1-bot';
 import { PlayerCreationConversationStore, PlayerCreationSession } from './conversation-store';
 import { CreatePlayerInput } from '../domain/player/types';
@@ -38,7 +38,7 @@ export class Phase1PlayerCreationFlow {
   async start(telegramId: string): Promise<BotReply> {
     const session = {
       telegramId,
-      step: 'name' as const,
+      step: PlayerCreationStep.Name,
       draft: { visual: {} }
     };
 
@@ -110,65 +110,65 @@ export class Phase1PlayerCreationFlow {
     }
 
     switch (session.step) {
-      case 'name':
+      case PlayerCreationStep.Name:
         session.draft.name = input;
-        session.step = 'nationality';
+        session.step = PlayerCreationStep.Nationality;
         break;
-      case 'nationality':
+      case PlayerCreationStep.Nationality:
         session.draft.nationality = input;
-        session.step = 'position';
+        session.step = PlayerCreationStep.Position;
         break;
-      case 'position': {
+      case PlayerCreationStep.Position: {
         const position = positionActionMap.get(input);
         if (!position) {
           return { kind: 'reply', reply: this.withValidationMessage(session, 'Escolha a posição usando um dos botões sugeridos.') };
         }
         session.draft.position = position;
-        session.step = 'dominantFoot';
+        session.step = PlayerCreationStep.DominantFoot;
         break;
       }
-      case 'dominantFoot': {
+      case PlayerCreationStep.DominantFoot: {
         const dominantFoot = dominantFootActionMap.get(input);
         if (!dominantFoot) {
           return { kind: 'reply', reply: this.withValidationMessage(session, 'Escolha o pé dominante usando um dos botões sugeridos.') };
         }
         session.draft.dominantFoot = dominantFoot;
-        session.step = 'heightCm';
+        session.step = PlayerCreationStep.HeightCm;
         break;
       }
-      case 'heightCm': {
+      case PlayerCreationStep.HeightCm: {
         const heightCm = Number.parseInt(input, 10);
         if (!Number.isInteger(heightCm)) {
           return { kind: 'reply', reply: this.withValidationMessage(session, 'Informe a altura em centímetros usando apenas números.') };
         }
         session.draft.heightCm = heightCm;
-        session.step = 'weightKg';
+        session.step = PlayerCreationStep.WeightKg;
         break;
       }
-      case 'weightKg': {
+      case PlayerCreationStep.WeightKg: {
         const weightKg = Number.parseInt(input, 10);
         if (!Number.isInteger(weightKg)) {
           return { kind: 'reply', reply: this.withValidationMessage(session, 'Informe o peso em quilos usando apenas números.') };
         }
         session.draft.weightKg = weightKg;
-        session.step = 'skinTone';
+        session.step = PlayerCreationStep.SkinTone;
         break;
       }
-      case 'skinTone':
+      case PlayerCreationStep.SkinTone:
         session.draft.visual = {
           ...session.draft.visual,
           skinTone: input
         };
-        session.step = 'hairStyle';
+        session.step = PlayerCreationStep.HairStyle;
         break;
-      case 'hairStyle':
+      case PlayerCreationStep.HairStyle:
         session.draft.visual = {
           ...session.draft.visual,
           hairStyle: input
         };
-        session.step = 'confirmation';
+        session.step = PlayerCreationStep.Confirmation;
         break;
-      case 'confirmation':
+      case PlayerCreationStep.Confirmation:
         if (input === phase1BotActions.restartCreation) {
           return { kind: 'reply', reply: await this.restart(telegramId) };
         }
@@ -201,8 +201,8 @@ export class Phase1PlayerCreationFlow {
       telegramId,
       name: session.draft.name ?? '',
       nationality: session.draft.nationality ?? '',
-      position: session.draft.position as PlayerPosition,
-      dominantFoot: session.draft.dominantFoot as DominantFoot,
+      position: session.draft.position ?? PlayerPosition.Forward,
+      dominantFoot: session.draft.dominantFoot ?? DominantFoot.Right,
       heightCm: session.draft.heightCm ?? 0,
       weightKg: session.draft.weightKg ?? 0,
       visual: {
@@ -222,17 +222,17 @@ export class Phase1PlayerCreationFlow {
 
   private buildPrompt(session: PlayerCreationSession): BotReply {
     switch (session.step) {
-      case 'name':
+      case PlayerCreationStep.Name:
         return {
           text: 'Criação do jogador - Etapa 1/9\nInforme o nome do seu jogador.',
           actions: [phase1BotActions.cancel]
         };
-      case 'nationality':
+      case PlayerCreationStep.Nationality:
         return {
           text: 'Criação do jogador - Etapa 2/9\nInforme a nacionalidade do seu jogador.',
           actions: [phase1BotActions.cancel]
         };
-      case 'position':
+      case PlayerCreationStep.Position:
         return {
           text: 'Criação do jogador - Etapa 3/9\nEscolha a posição principal.',
           actions: [
@@ -243,22 +243,22 @@ export class Phase1PlayerCreationFlow {
             phase1BotActions.cancel
           ]
         };
-      case 'dominantFoot':
+      case PlayerCreationStep.DominantFoot:
         return {
           text: 'Criação do jogador - Etapa 4/9\nEscolha o pé dominante.',
           actions: [phase1BotActions.footRight, phase1BotActions.footLeft, phase1BotActions.cancel]
         };
-      case 'heightCm':
+      case PlayerCreationStep.HeightCm:
         return {
           text: 'Criação do jogador - Etapa 5/9\nInforme a altura em centímetros.',
           actions: [phase1BotActions.cancel]
         };
-      case 'weightKg':
+      case PlayerCreationStep.WeightKg:
         return {
           text: 'Criação do jogador - Etapa 6/9\nInforme o peso em quilos.',
           actions: [phase1BotActions.cancel]
         };
-      case 'skinTone':
+      case PlayerCreationStep.SkinTone:
         return {
           text: 'Criação do jogador - Etapa 7/9\nDefina o tom de pele do jogador.',
           actions: [
@@ -269,7 +269,7 @@ export class Phase1PlayerCreationFlow {
             phase1BotActions.cancel
           ]
         };
-      case 'hairStyle':
+      case PlayerCreationStep.HairStyle:
         return {
           text: 'Criação do jogador - Etapa 8/9\nDefina o estilo de cabelo do jogador.',
           actions: [
@@ -280,7 +280,7 @@ export class Phase1PlayerCreationFlow {
             phase1BotActions.cancel
           ]
         };
-      case 'confirmation':
+      case PlayerCreationStep.Confirmation:
         return {
           text: [
             'Criação do jogador - Etapa 9/9',

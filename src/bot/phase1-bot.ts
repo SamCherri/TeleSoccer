@@ -1,4 +1,4 @@
-import { AttributeKey, TryoutStatus, WalletTransactionType } from '../domain/shared/enums';
+import { AttributeKey, CareerStatus, PlayerPosition, TryoutStatus, WalletTransactionType } from '../domain/shared/enums';
 import {
   CreatePlayerService,
   GetCareerHistoryService,
@@ -98,7 +98,7 @@ export class Phase1TelegramFacade {
     const player = await this.createPlayerService.execute(input);
     return {
       text: `Jogador ${player.name} criado com sucesso. Saldo inicial: ${player.walletBalance} moedas.`,
-      actions: this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')
+      actions: this.buildMainMenuActions(player.careerStatus === CareerStatus.Professional)
     };
   }
 
@@ -114,7 +114,7 @@ export class Phase1TelegramFacade {
         `Status: ${player.careerStatus}`,
         `Saldo: ${player.walletBalance} moedas`
       ].join('\n'),
-      actions: this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')
+      actions: this.buildMainMenuActions(player.careerStatus === CareerStatus.Professional)
     };
   }
 
@@ -132,7 +132,7 @@ export class Phase1TelegramFacade {
           .map(([key, value]) => `${key} ${value}`)
           .join(', ')}`
       ].join('\n'),
-      actions: [...this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')]
+      actions: [...this.buildMainMenuActions(player.careerStatus === CareerStatus.Professional)]
     };
   }
 
@@ -157,7 +157,7 @@ export class Phase1TelegramFacade {
         latestTryoutLine,
         `Histórico recente: ${status.recentHistory.length > 0 ? status.recentHistory.map((entry) => entry.description).join(' | ') : 'sem eventos ainda.'}`
       ].join('\n'),
-      actions: this.buildMainMenuActions(status.careerStatus === 'PROFESSIONAL')
+      actions: this.buildMainMenuActions(status.careerStatus === CareerStatus.Professional)
     };
   }
 
@@ -174,7 +174,7 @@ export class Phase1TelegramFacade {
           ? history.entries.map((entry) => `- ${formatDate(entry.createdAt)} | ${entry.description}`).join('\n')
           : 'Nenhum evento registrado ainda.'
       ].join('\n'),
-      actions: this.buildMainMenuActions(history.careerStatus === 'PROFESSIONAL')
+      actions: this.buildMainMenuActions(history.careerStatus === CareerStatus.Professional)
     };
   }
 
@@ -195,7 +195,7 @@ export class Phase1TelegramFacade {
               .join('\n')
           : 'Nenhuma transação registrada ainda.'
       ].join('\n'),
-      actions: this.buildMainMenuActions(statement.careerStatus === 'PROFESSIONAL')
+      actions: this.buildMainMenuActions(statement.careerStatus === CareerStatus.Professional)
     };
   }
 
@@ -208,7 +208,7 @@ export class Phase1TelegramFacade {
         `Saldo atual: ${player.walletBalance} moedas`,
         'Escolha o fundamento para esta semana.'
       ].join('\n'),
-      actions: this.buildTrainingActions(player.position === 'GOALKEEPER')
+      actions: this.buildTrainingActions(player.position === PlayerPosition.Goalkeeper)
     };
   }
 
@@ -230,7 +230,7 @@ export class Phase1TelegramFacade {
     const player = await this.getPlayerCardService.execute(telegramId);
     return {
       text: `Treino concluído em ${focus}. Novo valor: ${result.newValue}. Saldo restante: ${result.walletBalance}.`,
-      actions: this.buildMainMenuActions(player.careerStatus === 'PROFESSIONAL')
+      actions: this.buildMainMenuActions(player.careerStatus === CareerStatus.Professional)
     };
   }
 
