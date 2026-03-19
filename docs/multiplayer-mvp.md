@@ -56,6 +56,7 @@ Persistência principal no Prisma/PostgreSQL com:
 - capacidade humana da sessão
 - contagem de vagas elegíveis para fallback com bot
 - tipo do participante (`HUMAN` ou `BOT`)
+- suporte técnico para participante bot sem vínculo obrigatório com `User`/`Player`
 - ponte opcional com `Match` para evolução futura
 
 ## 6. Impacto no bot Telegram

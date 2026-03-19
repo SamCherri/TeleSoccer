@@ -28,10 +28,10 @@ export interface CreateMultiplayerLobbyInput {
 
 export interface JoinMultiplayerLobbyInput {
   lobbyId: string;
-  userId: string;
-  playerId: string;
+  userId?: string;
+  playerId?: string;
   playerName: string;
-  telegramId: string;
+  telegramId?: string;
   participantKind: MultiplayerParticipantKind;
 }
 

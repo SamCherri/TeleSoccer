@@ -359,6 +359,29 @@ test('domínio distingue explicitamente participante humano de bot e prepara fal
   assert.equal(updated.botParticipantCount, 0);
 });
 
+
+
+test('estrutura permite participante BOT sem userId/playerId obrigatórios e mantém leitura coerente', async () => {
+  const playerRepository = new InMemoryPlayerRepository();
+  await createProfessionalPlayer(playerRepository, '506b', 'Host Bot Estrutural');
+  const lobbyRepository = new InMemoryMultiplayerLobbyRepository(playerRepository);
+  const createService = new CreateLobbyService(lobbyRepository, () => 'BOTSTR');
+
+  const created = await createService.execute('506b');
+  await lobbyRepository.joinLobby({
+    lobbyId: created.id,
+    playerName: 'Bot Reserva',
+    participantKind: MultiplayerParticipantKind.Bot
+  });
+  await lobbyRepository.updateLobbyStatus(created.id, MultiplayerLobbyStatus.Open);
+
+  const status = await lobbyRepository.getLobbyStatus(created.id);
+  assert.equal(status.botParticipantCount, 1);
+  assert.equal(status.participants[1].kind, MultiplayerParticipantKind.Bot);
+  assert.equal(status.participants[1].userId, undefined);
+  assert.equal(status.participants[1].playerId, undefined);
+});
+
 test('previne entrada inválida quando a sala já está cheia de humanos', async () => {
   const playerRepository = new InMemoryPlayerRepository();
   await createProfessionalPlayer(playerRepository, '507', 'Host Cheia');

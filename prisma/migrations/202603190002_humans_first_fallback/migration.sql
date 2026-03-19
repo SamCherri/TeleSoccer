@@ -13,4 +13,6 @@ ADD COLUMN "maxParticipants" INTEGER NOT NULL DEFAULT 2,
 ADD COLUMN "botFallbackEligibleSlots" INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE "MultiplayerLobbyParticipant"
-ADD COLUMN "kind" "MultiplayerParticipantKind" NOT NULL DEFAULT 'HUMAN';
+ADD COLUMN "kind" "MultiplayerParticipantKind" NOT NULL DEFAULT 'HUMAN',
+ALTER COLUMN "userId" DROP NOT NULL,
+ALTER COLUMN "playerId" DROP NOT NULL;

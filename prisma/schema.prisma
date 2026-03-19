@@ -516,15 +516,15 @@ model MultiplayerLobby {
 model MultiplayerLobbyParticipant {
   id         String                     @id @default(cuid())
   lobbyId    String
-  userId     String
-  playerId   String
+  userId     String?
+  playerId   String?
   slotNumber Int
   kind       MultiplayerParticipantKind @default(HUMAN)
   isHost     Boolean                    @default(false)
   joinedAt   DateTime                   @default(now())
   lobby      MultiplayerLobby           @relation(fields: [lobbyId], references: [id])
-  user       User                       @relation(fields: [userId], references: [id])
-  player     Player                     @relation(fields: [playerId], references: [id])
+  user       User?                      @relation(fields: [userId], references: [id])
+  player     Player?                    @relation(fields: [playerId], references: [id])
 
   @@unique([lobbyId, userId])
   @@unique([lobbyId, slotNumber])

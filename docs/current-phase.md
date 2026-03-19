@@ -96,6 +96,7 @@ Esta etapa deve deixar o banco pronto para:
 
 - sessões multiplayer persistidas
 - distinção persistida entre participante humano e participante bot
+- suporte coerente a participante bot futuro sem exigir vínculo humano obrigatório
 - política de preenchimento humano-primeiro com fallback
 - vagas elegíveis para bot quando faltarem humanos
 - futura ligação da sessão a uma partida multiplayer compartilhada
