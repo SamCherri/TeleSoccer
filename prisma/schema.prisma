@@ -159,12 +159,42 @@ enum MatchEventType {
   MATCH_FINISHED
 }
 
+enum MultiplayerTeamSide {
+  HOME
+  AWAY
+}
+
+enum MultiplayerParticipantKind {
+  HUMAN
+  BOT
+}
+
+enum MultiplayerSquadRole {
+  STARTER
+  SUBSTITUTE
+}
+
+enum MultiplayerSessionStatus {
+  WAITING_FOR_PLAYERS
+  READY_FOR_FALLBACK
+  READY_TO_PREPARE
+  PREPARING_MATCH
+  CLOSED
+}
+
+enum MultiplayerSessionFillPolicy {
+  HUMAN_ONLY
+  HUMAN_PRIORITY_WITH_BOT_FALLBACK
+}
+
 model User {
-  id          String             @id @default(cuid())
-  telegramId  String             @unique
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  generations PlayerGeneration[]
+  id                         String                          @id @default(cuid())
+  telegramId                 String                          @unique
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  generations                PlayerGeneration[]
+  hostedMultiplayerSessions  MultiplayerSession[]            @relation("HostedMultiplayerSessions")
+  multiplayerParticipants    MultiplayerSessionParticipant[]
 }
 
 model PlayerGeneration {
@@ -183,34 +213,35 @@ model PlayerGeneration {
 }
 
 model Player {
-  id               String             @id @default(cuid())
-  generationId     String             @unique
-  name             String
-  nationality      String
-  position         PlayerPosition
-  dominantFoot     DominantFoot
-  age              Int
-  heightCm         Int
-  weightKg         Int
-  skinTone         String
-  hairStyle        String
-  careerStatus     CareerStatus       @default(YOUTH)
-  currentClubId    String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  generation       PlayerGeneration   @relation(fields: [generationId], references: [id])
-  currentClub      Club?              @relation(fields: [currentClubId], references: [id])
-  attributes       PlayerAttribute[]
-  wallet           Wallet?
-  trainingSessions TrainingSession[]
-  tryoutAttempts   TryoutAttempt[]
-  clubMemberships  ClubMembership[]
-  historyEntries   PlayerHistoryEntry[]
-  matchLineups     MatchLineup[]
-  matches          Match[]
-  disciplinaryEvents MatchDisciplinaryEvent[]
-  injuries         InjuryRecord[]
-  suspensions      SuspensionRecord[]
+  id                         String                          @id @default(cuid())
+  generationId               String                          @unique
+  name                       String
+  nationality                String
+  position                   PlayerPosition
+  dominantFoot               DominantFoot
+  age                        Int
+  heightCm                   Int
+  weightKg                   Int
+  skinTone                   String
+  hairStyle                  String
+  careerStatus               CareerStatus                    @default(YOUTH)
+  currentClubId              String?
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  generation                 PlayerGeneration                @relation(fields: [generationId], references: [id])
+  currentClub                Club?                           @relation(fields: [currentClubId], references: [id])
+  attributes                 PlayerAttribute[]
+  wallet                     Wallet?
+  trainingSessions           TrainingSession[]
+  tryoutAttempts             TryoutAttempt[]
+  clubMemberships            ClubMembership[]
+  historyEntries             PlayerHistoryEntry[]
+  matchLineups               MatchLineup[]
+  matches                    Match[]
+  disciplinaryEvents         MatchDisciplinaryEvent[]
+  injuries                   InjuryRecord[]
+  suspensions                SuspensionRecord[]
+  multiplayerParticipants    MultiplayerSessionParticipant[]
 
   @@index([currentClubId])
 }
@@ -331,72 +362,73 @@ model PlayerCreationConversation {
 }
 
 model Match {
-  id              String              @id @default(cuid())
-  playerId        String
-  homeClubId      String
-  awayClubId      String
-  homeScore       Int                 @default(0)
-  awayScore       Int                 @default(0)
-  currentMinute   Int                 @default(0)
-  currentHalf     MatchHalf           @default(FIRST_HALF)
-  status          MatchStatus         @default(PENDING)
-  possessionSide  MatchPossessionSide @default(HOME)
-  stoppageMinutes Int                 @default(0)
-  userEnergy      Int                 @default(100)
-  yellowCards     Int                 @default(0)
-  redCards        Int                 @default(0)
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  player          Player              @relation(fields: [playerId], references: [id])
-  homeClub        Club                @relation("HomeMatches", fields: [homeClubId], references: [id])
-  awayClub        Club                @relation("AwayMatches", fields: [awayClubId], references: [id])
-  lineups         MatchLineup[]
-  turns           MatchTurn[]
-  events          MatchEvent[]
-  disciplinary    MatchDisciplinaryEvent[]
-  injuries        InjuryRecord[]
-  suspensions     SuspensionRecord[]
+  id                        String                  @id @default(cuid())
+  playerId                  String
+  homeClubId                String
+  awayClubId                String
+  homeScore                 Int                     @default(0)
+  awayScore                 Int                     @default(0)
+  currentMinute             Int                     @default(0)
+  currentHalf               MatchHalf               @default(FIRST_HALF)
+  status                    MatchStatus             @default(PENDING)
+  possessionSide            MatchPossessionSide     @default(HOME)
+  stoppageMinutes           Int                     @default(0)
+  userEnergy                Int                     @default(100)
+  yellowCards               Int                     @default(0)
+  redCards                  Int                     @default(0)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  player                    Player                  @relation(fields: [playerId], references: [id])
+  homeClub                  Club                    @relation("HomeMatches", fields: [homeClubId], references: [id])
+  awayClub                  Club                    @relation("AwayMatches", fields: [awayClubId], references: [id])
+  lineups                   MatchLineup[]
+  turns                     MatchTurn[]
+  events                    MatchEvent[]
+  disciplinary              MatchDisciplinaryEvent[]
+  injuries                  InjuryRecord[]
+  suspensions               SuspensionRecord[]
+  linkedMultiplayerSessions MultiplayerSession[]
 
   @@index([playerId, status, createdAt])
 }
 
 model MatchLineup {
-  id         String    @id @default(cuid())
-  matchId     String
-  playerId    String?
-  side       MatchPossessionSide
-  role       MatchRole
-  displayName String
-  shirtNumber Int?
-  isUserControlled Boolean @default(false)
-  createdAt   DateTime  @default(now())
-  match       Match      @relation(fields: [matchId], references: [id])
-  player      Player?    @relation(fields: [playerId], references: [id])
+  id               String              @id @default(cuid())
+  matchId           String
+  playerId          String?
+  side             MatchPossessionSide
+  role             MatchRole
+  displayName      String
+  shirtNumber      Int?
+  isUserControlled Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  match            Match               @relation(fields: [matchId], references: [id])
+  player           Player?             @relation(fields: [playerId], references: [id])
 
   @@index([matchId, side])
 }
 
 model MatchTurn {
-  id                String              @id @default(cuid())
-  matchId           String
-  sequence          Int
-  minute            Int
-  half              MatchHalf
-  possessionSide    MatchPossessionSide
-  contextType       MatchContextType
-  contextText       String
-  availableActions  MatchActionKey[]
-  chosenAction      MatchActionKey?
-  deadlineAt        DateTime
-  resolvedAt        DateTime?
-  resolutionText    String?
-  state             MatchTurnState      @default(PENDING)
-  previousOutcome   String?
-  isGoalkeeperContext Boolean           @default(false)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  match             Match               @relation(fields: [matchId], references: [id])
-  events            MatchEvent[]
+  id                  String              @id @default(cuid())
+  matchId             String
+  sequence            Int
+  minute              Int
+  half                MatchHalf
+  possessionSide      MatchPossessionSide
+  contextType         MatchContextType
+  contextText         String
+  availableActions    MatchActionKey[]
+  chosenAction        MatchActionKey?
+  deadlineAt          DateTime
+  resolvedAt          DateTime?
+  resolutionText      String?
+  state               MatchTurnState      @default(PENDING)
+  previousOutcome     String?
+  isGoalkeeperContext Boolean             @default(false)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  match               Match               @relation(fields: [matchId], references: [id])
+  events              MatchEvent[]
 
   @@unique([matchId, sequence])
   @@index([matchId, state, sequence])
@@ -418,16 +450,16 @@ model MatchEvent {
 }
 
 model MatchDisciplinaryEvent {
-  id          String         @id @default(cuid())
-  matchId      String
-  playerId     String
-  type        MatchEventType
-  minute      Int
-  description String
-  suspensionMatches Int      @default(0)
-  createdAt   DateTime       @default(now())
-  match       Match          @relation(fields: [matchId], references: [id])
-  player      Player         @relation(fields: [playerId], references: [id])
+  id                String         @id @default(cuid())
+  matchId           String
+  playerId          String
+  type              MatchEventType
+  minute            Int
+  description       String
+  suspensionMatches Int            @default(0)
+  createdAt         DateTime       @default(now())
+  match             Match          @relation(fields: [matchId], references: [id])
+  player            Player         @relation(fields: [playerId], references: [id])
 
   @@index([playerId, createdAt])
   @@index([matchId, createdAt])
@@ -463,4 +495,48 @@ model SuspensionRecord {
   match            Match?   @relation(fields: [matchId], references: [id])
 
   @@index([playerId, isActive])
+}
+
+model MultiplayerSession {
+  id                    String                         @id @default(cuid())
+  code                  String                         @unique
+  hostUserId            String
+  fillPolicy            MultiplayerSessionFillPolicy
+  maxStartersPerSide    Int
+  maxSubstitutesPerSide Int
+  botFallbackEligibleSlots Int
+  minimumHumansToStart  Int?
+  linkedMatchId         String?
+  status                MultiplayerSessionStatus      @default(WAITING_FOR_PLAYERS)
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  hostUser              User                           @relation("HostedMultiplayerSessions", fields: [hostUserId], references: [id])
+  linkedMatch           Match?                         @relation(fields: [linkedMatchId], references: [id])
+  participants          MultiplayerSessionParticipant[]
+
+  @@index([hostUserId, status, createdAt])
+  @@index([linkedMatchId])
+}
+
+model MultiplayerSessionParticipant {
+  id         String                     @id @default(cuid())
+  sessionId  String
+  side       MultiplayerTeamSide
+  slotNumber Int
+  squadRole  MultiplayerSquadRole
+  kind       MultiplayerParticipantKind
+  userId     String?
+  playerId   String?
+  playerName String
+  isHost     Boolean                    @default(false)
+  isCaptain  Boolean                    @default(false)
+  joinedAt   DateTime                   @default(now())
+  session    MultiplayerSession         @relation(fields: [sessionId], references: [id])
+  user       User?                      @relation(fields: [userId], references: [id])
+  player     Player?                    @relation(fields: [playerId], references: [id])
+
+  @@unique([sessionId, side, squadRole, slotNumber])
+  @@index([sessionId, side, squadRole])
+  @@index([userId])
+  @@index([playerId])
 }

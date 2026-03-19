@@ -13,6 +13,18 @@ import { CreatePlayerInput } from '../domain/player/types';
 import { DomainError } from '../shared/errors';
 import { GetActiveMatchService, ResolveMatchTurnService, StartMatchService } from '../domain/match/services';
 import { MatchActionKey, MatchStatus } from '../domain/match/types';
+import {
+  CreateMultiplayerSessionService,
+  GetMultiplayerSessionService,
+  JoinMultiplayerSessionService,
+  PrepareMultiplayerSessionService
+} from '../domain/multiplayer/services';
+import {
+  MultiplayerSessionFillPolicy,
+  MultiplayerSquadRole,
+  MultiplayerTeamSide
+} from '../domain/multiplayer/types';
+import { GameCardRenderer } from '../presentation/game-card-renderer';
 
 export interface BotReply {
   text: string;
@@ -32,6 +44,11 @@ export const phase1BotActions = {
   startMatch: 'Entrar em partida',
   currentMatch: 'Ver partida atual',
   resolveTimeout: 'Forçar perda do lance',
+  multiplayerHub: '/multiplayer',
+  createSession: '/criar-sala',
+  currentSession: '/sala',
+  prepareSession: '/preparar-sala',
+  joinSessionGuide: '/entrar-sala CODIGO HOME TITULAR',
   trainingPassing: 'Treinar passe',
   trainingShooting: 'Treinar finalização',
   trainingDribbling: 'Treinar drible',
@@ -104,10 +121,18 @@ const matchActionLabels: Record<MatchActionKey, string> = {
   [MatchActionKey.AimHighRight]: phase1BotActions.matchHighRight
 };
 
+const sideExample = 'HOME ou AWAY';
+const roleExample = 'TITULAR ou RESERVA';
+
 export class Phase1TelegramFacade {
   private readonly startMatchService: StartMatchService;
   private readonly getActiveMatchService: GetActiveMatchService;
   private readonly resolveMatchTurnService: ResolveMatchTurnService;
+  private readonly createMultiplayerSessionService: CreateMultiplayerSessionService;
+  private readonly getMultiplayerSessionService: GetMultiplayerSessionService;
+  private readonly joinMultiplayerSessionService: JoinMultiplayerSessionService;
+  private readonly prepareMultiplayerSessionService: PrepareMultiplayerSessionService;
+  private readonly renderer: GameCardRenderer;
 
   constructor(
     private readonly createPlayerService: CreatePlayerService,
@@ -119,7 +144,12 @@ export class Phase1TelegramFacade {
     private readonly tryoutService: TryoutService,
     startMatchService?: StartMatchService,
     getActiveMatchService?: GetActiveMatchService,
-    resolveMatchTurnService?: ResolveMatchTurnService
+    resolveMatchTurnService?: ResolveMatchTurnService,
+    createMultiplayerSessionService?: CreateMultiplayerSessionService,
+    getMultiplayerSessionService?: GetMultiplayerSessionService,
+    joinMultiplayerSessionService?: JoinMultiplayerSessionService,
+    prepareMultiplayerSessionService?: PrepareMultiplayerSessionService,
+    renderer?: GameCardRenderer
   ) {
     this.startMatchService =
       startMatchService ??
@@ -130,6 +160,19 @@ export class Phase1TelegramFacade {
     this.resolveMatchTurnService =
       resolveMatchTurnService ??
       ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as ResolveMatchTurnService);
+    this.createMultiplayerSessionService =
+      createMultiplayerSessionService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer ainda não configurado neste ambiente de teste.'); } } as unknown as CreateMultiplayerSessionService);
+    this.getMultiplayerSessionService =
+      getMultiplayerSessionService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer ainda não configurado neste ambiente de teste.'); } } as unknown as GetMultiplayerSessionService);
+    this.joinMultiplayerSessionService =
+      joinMultiplayerSessionService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer ainda não configurado neste ambiente de teste.'); } } as unknown as JoinMultiplayerSessionService);
+    this.prepareMultiplayerSessionService =
+      prepareMultiplayerSessionService ??
+      ({ execute: async () => { throw new DomainError('Multiplayer ainda não configurado neste ambiente de teste.'); } } as unknown as PrepareMultiplayerSessionService);
+    this.renderer = renderer ?? new GameCardRenderer();
   }
 
   async handleEntry(telegramId: string): Promise<BotReply> {
@@ -173,7 +216,8 @@ export class Phase1TelegramFacade {
         `Posição: ${player.position}`,
         `Clube: ${player.currentClubName ?? 'Base amadora'}`,
         `Status: ${player.careerStatus}`,
-        `Saldo: ${player.walletBalance} moedas`
+        `Saldo: ${player.walletBalance} moedas`,
+        'Modo online: use /multiplayer para ver ou criar uma sessão humano-first.'
       ].join('\n'),
       actions: this.buildMainMenuActions(player.careerStatus === CareerStatus.Professional)
     };
@@ -321,6 +365,99 @@ export class Phase1TelegramFacade {
     return this.toMatchReply(result.match, result.resolutionText);
   }
 
+  async handleMultiplayerHub(telegramId: string): Promise<BotReply> {
+    let sessionText = 'Nenhuma sala ativa encontrada para o seu usuário.';
+    try {
+      const session = await this.getMultiplayerSessionService.execute(telegramId);
+      sessionText = this.renderer.renderMultiplayerSessionCard(session);
+    } catch {
+      // keep hub guidance when there is no active session
+    }
+
+    return {
+      text: [
+        '🌐 TeleSoccer Online Multiplayer',
+        'Arquitetura humano-first: dois lados, muitos humanos por sessão, titulares e reservas.',
+        'Bots não são o padrão. Eles entram apenas como fallback elegível e controlado.',
+        sessionText,
+        `Para entrar em uma sala existente use: /entrar-sala CODIGO ${sideExample} ${roleExample}`
+      ].join('\n\n'),
+      actions: [phase1BotActions.createSession, phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handleCreateSession(telegramId: string): Promise<BotReply> {
+    const result = await this.createMultiplayerSessionService.execute(telegramId, {
+      preferredSide: MultiplayerTeamSide.Home,
+      preferredRole: MultiplayerSquadRole.Starter,
+      fillPolicy: MultiplayerSessionFillPolicy.HumanPriorityWithBotFallback,
+      maxStartersPerSide: 3,
+      maxSubstitutesPerSide: 2,
+      botFallbackEligibleSlots: 2,
+      minimumHumansToStart: 2
+    });
+
+    return {
+      text: [
+        this.renderer.renderMultiplayerSessionCard(result.session),
+        this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
+        this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away),
+        'Sala criada com prioridade humana. Convide outros jogadores com o código acima.',
+        `Exemplo de entrada: /entrar-sala ${result.session.code} AWAY TITULAR`
+      ].join('\n\n'),
+      actions: [phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handleCurrentSession(telegramId: string, sessionCode?: string): Promise<BotReply> {
+    const session = await this.getMultiplayerSessionService.execute(telegramId, sessionCode);
+    return {
+      text: [
+        this.renderer.renderMultiplayerSessionCard(session),
+        this.renderer.renderMultiplayerSquadCard(session, MultiplayerTeamSide.Home),
+        this.renderer.renderMultiplayerSquadCard(session, MultiplayerTeamSide.Away),
+        this.renderer.renderMultiplayerPreparationCard(session)
+      ].join('\n\n'),
+      actions: [phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handleJoinSession(
+    telegramId: string,
+    sessionCode: string,
+    preferredSide?: MultiplayerTeamSide,
+    preferredRole?: MultiplayerSquadRole
+  ): Promise<BotReply> {
+    const result = await this.joinMultiplayerSessionService.execute(telegramId, sessionCode, { preferredSide, preferredRole });
+    return {
+      text: [
+        `✅ Entrada confirmada na sala ${result.session.code}.`,
+        `Você ocupou ${result.participant.side} | ${result.participant.squadRole} | slot ${result.participant.slotNumber}.`,
+        this.renderer.renderMultiplayerSessionCard(result.session),
+        this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
+        this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
+      ].join('\n\n'),
+      actions: [phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+    };
+  }
+
+  async handlePrepareSession(telegramId: string, sessionCode?: string): Promise<BotReply> {
+    const result = await this.prepareMultiplayerSessionService.execute(telegramId, sessionCode);
+    const botSummary = result.botsAdded.length > 0
+      ? `Fallback aplicado com ${result.botsAdded.length} bot(s) nas vagas elegíveis.`
+      : 'Nenhum bot novo foi necessário nesta preparação.';
+    return {
+      text: [
+        botSummary,
+        this.renderer.renderMultiplayerSessionCard(result.session),
+        this.renderer.renderMultiplayerPreparationCard(result.session),
+        this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
+        this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
+      ].join('\n\n'),
+      actions: [phase1BotActions.currentSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+    };
+  }
+
   buildMainMenuActions(isProfessional: boolean): string[] {
     return [
       phase1BotActions.playerCard,
@@ -328,6 +465,7 @@ export class Phase1TelegramFacade {
       phase1BotActions.careerHistory,
       phase1BotActions.walletStatement,
       phase1BotActions.weeklyTraining,
+      phase1BotActions.multiplayerHub,
       ...(isProfessional ? [phase1BotActions.startMatch, phase1BotActions.currentMatch] : [phase1BotActions.tryout])
     ];
   }
@@ -350,35 +488,19 @@ export class Phase1TelegramFacade {
 
   private toMatchReply(match: Awaited<ReturnType<GetActiveMatchService['execute']>>, leadText: string): BotReply {
     const turn = match.activeTurn;
-    const eventLines = match.recentEvents.slice(0, 4).map((event) => `- ${event.minute}' ${event.description}`);
-    const injuryLine = match.injury
-      ? `Lesão ativa: ${match.injury.description} (${match.injury.matchesRemaining} partida(s) restantes).`
-      : 'Lesão ativa: nenhuma.';
-    const text = [
-      leadText,
-      `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
-      `Minuto: ${match.scoreboard.minute}' | Tempo: ${match.scoreboard.half} | Energia: ${match.energy}`,
-      `Cartões: ${match.yellowCards} amarelo(s), ${match.redCards} vermelho(s).`,
-      `Suspensão acumulada: ${match.suspensionMatchesRemaining} partida(s).`,
-      injuryLine,
-      turn
-        ? [
-            `Lance ${turn.sequence}: ${turn.contextText}`,
-            turn.previousOutcome ? `Resultado anterior: ${turn.previousOutcome}` : undefined,
-            `Prazo do turno: ${turn.deadlineAt.toISOString()}`
-          ]
-            .filter(Boolean)
-            .join('\n')
-        : 'Não há lance pendente no momento.',
-      eventLines.length > 0 ? `Eventos recentes:\n${eventLines.join('\n')}` : 'Eventos recentes: sem registros.'
-    ].join('\n');
 
     return {
-      text,
+      text: [leadText, this.renderer.renderMatchCard(match)].join('\n\n'),
       actions:
         match.status === MatchStatus.Finished || !turn
-          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch]
-          : [...turn.availableActions.map((action) => matchActionLabels[action.key]), phase1BotActions.resolveTimeout, phase1BotActions.currentMatch, phase1BotActions.mainMenu]
+          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch, phase1BotActions.multiplayerHub]
+          : [
+              ...turn.availableActions.map((action) => matchActionLabels[action.key]),
+              phase1BotActions.resolveTimeout,
+              phase1BotActions.currentMatch,
+              phase1BotActions.multiplayerHub,
+              phase1BotActions.mainMenu
+            ]
     };
   }
 }

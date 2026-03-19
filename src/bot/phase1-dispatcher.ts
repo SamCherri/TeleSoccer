@@ -4,6 +4,7 @@ import { DomainError } from '../shared/errors';
 import { BotReply, phase1BotActions, Phase1TelegramFacade } from './phase1-bot';
 import { Phase1PlayerCreationFlow } from './player-creation-flow';
 import { MatchActionKey } from '../domain/match/types';
+import { MultiplayerSquadRole, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
 export interface Phase1BotRequest {
   telegramId: string;
@@ -24,6 +25,10 @@ const commandToAction = new Map<string, string>([
   ['/partida', phase1BotActions.startMatch],
   ['/lance', phase1BotActions.currentMatch],
   ['/perder-lance', phase1BotActions.resolveTimeout],
+  ['/multiplayer', phase1BotActions.multiplayerHub],
+  ['/criar-sala', phase1BotActions.createSession],
+  ['/sala', phase1BotActions.currentSession],
+  ['/preparar-sala', phase1BotActions.prepareSession],
   ['/cancelar', phase1BotActions.cancel],
   ['/criar-jogador', phase1BotActions.createPlayer]
 ]);
@@ -58,6 +63,22 @@ const matchActionMap = new Map<string, MatchActionKey>([
   [phase1BotActions.matchHighRight, MatchActionKey.AimHighRight]
 ]);
 
+const parseSide = (value?: string): MultiplayerTeamSide | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'HOME') return MultiplayerTeamSide.Home;
+  if (normalized === 'AWAY') return MultiplayerTeamSide.Away;
+  return undefined;
+};
+
+const parseRole = (value?: string): MultiplayerSquadRole | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'TITULAR' || normalized === 'STARTER') return MultiplayerSquadRole.Starter;
+  if (normalized === 'RESERVA' || normalized === 'SUBSTITUTE') return MultiplayerSquadRole.Substitute;
+  return undefined;
+};
+
 export class Phase1TelegramDispatcher {
   constructor(
     private readonly facade: Phase1TelegramFacade,
@@ -89,6 +110,28 @@ export class Phase1TelegramDispatcher {
         }
 
         return flowResult.reply;
+      }
+
+      if (normalizedText.startsWith('/entrar-sala')) {
+        const [, code, sideToken, roleToken] = normalizedText.split(/\s+/);
+        if (!code) {
+          return {
+            text: 'Use /entrar-sala CODIGO HOME|AWAY TITULAR|RESERVA para entrar em uma sala multiplayer.',
+            actions: [phase1BotActions.multiplayerHub, phase1BotActions.currentSession, phase1BotActions.mainMenu]
+          };
+        }
+
+        return await this.facade.handleJoinSession(request.telegramId, code, parseSide(sideToken), parseRole(roleToken));
+      }
+
+      if (normalizedText.startsWith('/sala ')) {
+        const [, code] = normalizedText.split(/\s+/);
+        return await this.facade.handleCurrentSession(request.telegramId, code);
+      }
+
+      if (normalizedText.startsWith('/preparar-sala ')) {
+        const [, code] = normalizedText.split(/\s+/);
+        return await this.facade.handlePrepareSession(request.telegramId, code);
       }
 
       if (action === phase1BotActions.mainMenu || action === phase1BotActions.cancel) {
@@ -131,6 +174,18 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.resolveTimeout) {
         return await this.facade.handleMatchAction(request.telegramId);
       }
+      if (action === phase1BotActions.multiplayerHub) {
+        return await this.facade.handleMultiplayerHub(request.telegramId);
+      }
+      if (action === phase1BotActions.createSession) {
+        return await this.facade.handleCreateSession(request.telegramId);
+      }
+      if (action === phase1BotActions.currentSession) {
+        return await this.facade.handleCurrentSession(request.telegramId);
+      }
+      if (action === phase1BotActions.prepareSession) {
+        return await this.facade.handlePrepareSession(request.telegramId);
+      }
 
       const trainingFocus = trainingActionMap.get(action);
       if (trainingFocus) {
@@ -143,14 +198,15 @@ export class Phase1TelegramDispatcher {
       }
 
       return {
-        text: 'Comando não reconhecido nesta fase. Use o menu principal para continuar sua carreira.',
+        text: 'Comando não reconhecido nesta fase. Use o menu principal ou /multiplayer para continuar sua carreira.',
         actions: [
           phase1BotActions.mainMenu,
           phase1BotActions.playerCard,
           phase1BotActions.careerStatus,
           phase1BotActions.careerHistory,
           phase1BotActions.weeklyTraining,
-          phase1BotActions.startMatch
+          phase1BotActions.startMatch,
+          phase1BotActions.multiplayerHub
         ]
       };
     } catch (error) {
@@ -164,7 +220,8 @@ export class Phase1TelegramDispatcher {
             phase1BotActions.careerHistory,
             phase1BotActions.weeklyTraining,
             phase1BotActions.tryout,
-            phase1BotActions.startMatch
+            phase1BotActions.startMatch,
+            phase1BotActions.multiplayerHub
           ]
         };
       }

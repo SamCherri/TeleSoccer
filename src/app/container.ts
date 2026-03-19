@@ -16,13 +16,23 @@ import { PrismaPlayerRepository } from '../infra/prisma/player-repository';
 import { MatchEngine } from '../domain/match/engine';
 import { GetActiveMatchService, ResolveMatchTurnService, StartMatchService } from '../domain/match/services';
 import { PrismaMatchRepository } from '../infra/prisma/match-repository';
+import {
+  CreateMultiplayerSessionService,
+  GetMultiplayerSessionService,
+  JoinMultiplayerSessionService,
+  PrepareMultiplayerSessionService
+} from '../domain/multiplayer/services';
+import { PrismaMultiplayerRepository } from '../infra/prisma/multiplayer-repository';
+import { GameCardRenderer } from '../presentation/game-card-renderer';
 
 export const buildContainer = () => {
   const playerRepository = new PrismaPlayerRepository();
   const clubRepository = new PrismaClubRepository();
   const playerCreationConversationStore = new PrismaPlayerCreationConversationStore();
   const matchRepository = new PrismaMatchRepository();
+  const multiplayerRepository = new PrismaMultiplayerRepository();
   const matchEngine = new MatchEngine();
+  const renderer = new GameCardRenderer();
 
   const createPlayerService = new CreatePlayerService(playerRepository);
   const getPlayerCardService = new GetPlayerCardService(playerRepository);
@@ -34,6 +44,10 @@ export const buildContainer = () => {
   const startMatchService = new StartMatchService(matchRepository, matchEngine);
   const getActiveMatchService = new GetActiveMatchService(matchRepository, matchEngine);
   const resolveMatchTurnService = new ResolveMatchTurnService(matchRepository, matchEngine);
+  const createMultiplayerSessionService = new CreateMultiplayerSessionService(multiplayerRepository);
+  const getMultiplayerSessionService = new GetMultiplayerSessionService(multiplayerRepository);
+  const joinMultiplayerSessionService = new JoinMultiplayerSessionService(multiplayerRepository);
+  const prepareMultiplayerSessionService = new PrepareMultiplayerSessionService(multiplayerRepository);
   const phase1TelegramFacade = new Phase1TelegramFacade(
     createPlayerService,
     getPlayerCardService,
@@ -44,7 +58,12 @@ export const buildContainer = () => {
     tryoutService,
     startMatchService,
     getActiveMatchService,
-    resolveMatchTurnService
+    resolveMatchTurnService,
+    createMultiplayerSessionService,
+    getMultiplayerSessionService,
+    joinMultiplayerSessionService,
+    prepareMultiplayerSessionService,
+    renderer
   );
   const phase1PlayerCreationFlow = new Phase1PlayerCreationFlow(playerCreationConversationStore);
 
@@ -59,6 +78,11 @@ export const buildContainer = () => {
     startMatchService,
     getActiveMatchService,
     resolveMatchTurnService,
+    createMultiplayerSessionService,
+    getMultiplayerSessionService,
+    joinMultiplayerSessionService,
+    prepareMultiplayerSessionService,
+    renderer,
     phase1TelegramFacade,
     phase1PlayerCreationFlow,
     phase1TelegramDispatcher: new Phase1TelegramDispatcher(phase1TelegramFacade, phase1PlayerCreationFlow)
