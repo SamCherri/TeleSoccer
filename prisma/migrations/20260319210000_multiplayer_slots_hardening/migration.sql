@@ -21,7 +21,7 @@ ALTER TABLE "MultiplayerSessionParticipant" ADD COLUMN "slotId" TEXT;
 
 WITH generated_slots AS (
   SELECT
-    gen_random_uuid()::text AS id,
+    md5(random()::text || clock_timestamp()::text || session_data.id || slot_data.side::text || slot_data."squadRole"::text || slot_data."slotNumber"::text) AS id,
     session_data.id AS "sessionId",
     slot_data.side AS side,
     slot_data."squadRole" AS "squadRole",
@@ -60,7 +60,7 @@ SELECT id, "sessionId", side, "slotNumber", "squadRole", "isBotFallbackEligible"
 FROM generated_slots;
 
 INSERT INTO "MultiplayerSessionSlot" ("id", "sessionId", "side", "slotNumber", "squadRole", "isBotFallbackEligible")
-SELECT gen_random_uuid()::text, session.id, participant.side, participant."slotNumber", participant."squadRole", false
+SELECT md5(session.id || participant.side::text || participant."squadRole"::text || participant."slotNumber"::text || participant.id), session.id, participant.side, participant."slotNumber", participant."squadRole", false
 FROM "MultiplayerSession" session
 JOIN "MultiplayerSessionParticipant" participant ON participant."sessionId" = session.id
 LEFT JOIN "MultiplayerSessionSlot" slot

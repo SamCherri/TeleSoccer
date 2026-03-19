@@ -56,11 +56,12 @@ A PR atual abandona a mentalidade de “host + segundo jogador” e passa a mode
 
 ### Regras-chave
 - criar, entrar, consultar e preparar sala exige jogador profissional
+- `/sala CODIGO` pode ser consultado por qualquer jogador profissional que tenha o código; `/sala` sem código continua representando a sala atual do participante
 - cada humano ocupa um lado e uma vaga de elenco
 - cada lado suporta titulares e reservas
 - bots só entram como fallback, nunca como padrão
 - o fallback usa slots explicitamente marcados e só é liberado quando o mínimo humano já foi atingido
-- somente o host prepara a sala nesta etapa
+- somente o host prepara a sala nesta etapa, o que move a sessão para preparação de confronto
 - a base já prepara a ligação futura com `Match`
 
 ## Camada visual MVP

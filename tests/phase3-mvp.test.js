@@ -388,7 +388,7 @@ test('fallback não entra cedo demais e preparação é exclusiva do host', asyn
   const secondPrepare = await prepareService.execute('host');
   assert.equal(secondPrepare.botsAdded.length, 2);
   assert.equal(secondPrepare.session.totalBotCount, 2);
-  assert.equal(secondPrepare.session.status, MultiplayerSessionStatus.ReadyToPrepare);
+  assert.equal(secondPrepare.session.status, MultiplayerSessionStatus.PreparingMatch);
 });
 
 test('preparação retorna apenas bots criados agora, não repete bots antigos', async () => {
@@ -463,6 +463,14 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
 
   const prepReply = await facade.handlePrepareSession('host');
   assert.match(prepReply.text, /Fallback aplicado agora/);
+});
+
+test('consulta /sala CODIGO permite leitura por profissional com o código mesmo sem participar', async () => {
+  const { createService, getService } = createServices();
+  const created = await createService.execute('host');
+  const outsiderView = await getService.execute('p5', created.session.code);
+  assert.equal(outsiderView.code, created.session.code);
+  assert.equal(outsiderView.totalParticipants, 1);
 });
 
 test('dispatcher valida comando multiplayer inválido com orientação clara', async () => {

@@ -30,8 +30,8 @@ Cada participante registra:
 
 - `/multiplayer`: hub do modo online
 - `/criar-sala`: cria uma sessão humano-first
-- `/sala`: lê a sessão atual do usuário
-- `/sala CODIGO`: lê uma sessão pelo código
+- `/sala`: lê a sessão atual do participante
+- `/sala CODIGO`: lê uma sessão pelo código para qualquer jogador profissional que tenha o código
 - `/entrar-sala CODIGO HOME TITULAR`: entra explicitando lado e papel
 - `/preparar-sala`: aplica fallback elegível e recalcula prontidão
 
@@ -41,7 +41,7 @@ Cada participante registra:
 - humano entra primeiro
 - slot é ocupado por lado + papel de elenco + número da vaga
 - bots só entram quando a política permitir, o mínimo humano tiver sido atingido e houver slot elegível
-- apenas o host prepara a sala nesta etapa
+- apenas o host prepara a sala nesta etapa, levando a sessão ao estado `PREPARING_MATCH` quando a preparação fecha corretamente
 - a sessão não possui limite estrutural total de 2 participantes
 - a prontidão considera mínimo de humanos, titulares humanos em ambos os lados e ausência de fallback pendente
 

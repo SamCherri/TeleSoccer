@@ -82,3 +82,10 @@ Fluxo atual:
 2. view model organiza os dados
 3. renderer monta o card textual
 4. facade do bot devolve a resposta para o Telegram
+
+
+## 6. Política de consulta da sala
+
+- `/sala` sem código consulta a sala atual do participante
+- `/sala CODIGO` pode ser usada por qualquer jogador profissional que possua o código da sessão
+- `/preparar-sala` continua restrito ao host

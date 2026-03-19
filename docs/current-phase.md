@@ -34,7 +34,7 @@ Consolidar a Fase 2 e corrigir a direção do multiplayer antes da Fase 3, deixa
 - `HUMAN` e `BOT`
 - política `HUMAN_ONLY` ou `HUMAN_PRIORITY_WITH_BOT_FALLBACK`
 - slots persistidos por lado/papel, com marcação explícita de fallback
-- leitura de prontidão e permissão de preparação da sessão
+- leitura de prontidão, permissão de preparação e transição para estado real de preparação da sessão
 
 ### 2.3 Camada visual MVP oficial
 - card forte de sessão multiplayer

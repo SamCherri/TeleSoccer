@@ -147,8 +147,8 @@ export class JoinMultiplayerSessionService {
     if (!session) {
       throw new DomainError('Código de sala inválido. Confira o código e tente novamente.');
     }
-    if (session.status === MultiplayerSessionStatus.Closed) {
-      throw new DomainError('Esta sessão já foi encerrada e não aceita novos participantes.');
+    if (session.status === MultiplayerSessionStatus.Closed || session.status === MultiplayerSessionStatus.PreparingMatch) {
+      throw new DomainError('Esta sessão não aceita novos participantes no estado atual.');
     }
 
     const result = await this.multiplayerRepository.joinSession({
@@ -190,6 +190,9 @@ export class PrepareMultiplayerSessionService {
     if (session.status === MultiplayerSessionStatus.Closed) {
       throw new DomainError('Esta sessão já foi encerrada e não pode mais ser preparada.');
     }
+    if (session.status === MultiplayerSessionStatus.PreparingMatch) {
+      return { session, botsAdded: [] };
+    }
 
     const requesterParticipant = await this.multiplayerRepository.findParticipantByUser(session.id, requester.userId);
     if (!requesterParticipant) {
@@ -219,7 +222,7 @@ export class PrepareMultiplayerSessionService {
       }
     }
 
-    const targetStatus = deriveTargetStatus(workingSession);
+    const targetStatus = workingSession.canPrepareMatch ? MultiplayerSessionStatus.PreparingMatch : deriveTargetStatus(workingSession);
     if (workingSession.status !== targetStatus) {
       workingSession = await this.multiplayerRepository.updateSessionStatus(workingSession.id, targetStatus);
     }

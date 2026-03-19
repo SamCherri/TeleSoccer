@@ -22,7 +22,7 @@ import {
 
 const sessionInclude = {
   slots: { orderBy: [{ side: 'asc' }, { squadRole: 'asc' }, { slotNumber: 'asc' }] },
-  participants: { orderBy: [{ side: 'asc' }, { squadRole: 'asc' }, { slotNumber: 'asc' }, { joinedAt: 'asc' }] }
+  participants: { include: { slot: true }, orderBy: [{ side: 'asc' }, { squadRole: 'asc' }, { slotNumber: 'asc' }, { joinedAt: 'asc' }] }
 } as const;
 
 const sessionCodeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -42,21 +42,34 @@ const mapSlot = (slot: any): MultiplayerSessionSlot => ({
   occupiedByParticipantId: slot.participant?.id ?? undefined
 });
 
-const mapParticipant = (participant: any): MultiplayerSessionParticipant => ({
-  id: participant.id,
-  sessionId: participant.sessionId,
-  slotId: participant.slotId,
-  side: participant.side,
-  slotNumber: participant.slotNumber,
-  squadRole: participant.squadRole,
-  kind: participant.kind,
-  userId: participant.userId ?? undefined,
-  playerId: participant.playerId ?? undefined,
-  playerName: participant.playerName,
-  isHost: participant.isHost,
-  isCaptain: participant.isCaptain,
-  joinedAt: participant.joinedAt
-});
+const mapParticipant = (participant: any): MultiplayerSessionParticipant => {
+  if (participant.slot) {
+    const slotMatchesParticipant =
+      participant.slot.id === participant.slotId &&
+      participant.slot.side === participant.side &&
+      participant.slot.squadRole === participant.squadRole &&
+      participant.slot.slotNumber === participant.slotNumber;
+    if (!slotMatchesParticipant) {
+      throw new Error(`Inconsistência entre slot e participante na sessão multiplayer (${participant.id}).`);
+    }
+  }
+
+  return {
+    id: participant.id,
+    sessionId: participant.sessionId,
+    slotId: participant.slotId,
+    side: participant.side,
+    slotNumber: participant.slotNumber,
+    squadRole: participant.squadRole,
+    kind: participant.kind,
+    userId: participant.userId ?? undefined,
+    playerId: participant.playerId ?? undefined,
+    playerName: participant.playerName,
+    isHost: participant.isHost,
+    isCaptain: participant.isCaptain,
+    joinedAt: participant.joinedAt
+  };
+};
 
 const mapSession = (session: any): MultiplayerSessionSummary =>
   deriveSessionSummary({
