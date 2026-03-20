@@ -47,7 +47,6 @@ export const phase1BotActions = {
   weekAgenda: 'Ver agenda da semana',
   lockerRoom: 'Entrar no vestiário',
   invitations: 'Convites e oportunidades',
-  mmorpgHub: '/mmorpg',
   createSession: 'Abrir convocação do confronto',
   currentSession: 'Ver meu elenco',
   prepareSession: 'Levar elenco ao aquecimento',
@@ -159,7 +158,10 @@ export class Phase1TelegramFacade {
       ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as StartMatchService);
     this.getActiveMatchService =
       getActiveMatchService ??
-      ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as GetActiveMatchService);
+      ({
+        execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); },
+        executeOptional: async () => null
+      } as unknown as GetActiveMatchService);
     this.resolveMatchTurnService =
       resolveMatchTurnService ??
       ({ execute: async () => { throw new DomainError('Partidas da Fase 2 não configuradas neste ambiente de teste.'); } } as unknown as ResolveMatchTurnService);
@@ -342,17 +344,24 @@ export class Phase1TelegramFacade {
 
   async handleStartMatch(telegramId: string): Promise<BotReply> {
     const result = await this.startMatchService.execute(telegramId);
-    return this.toMatchReply(result.match, 'Partida iniciada com sucesso.');
+    const snapshot = await this.getWorldSnapshot(telegramId);
+    return this.toMatchReply(result.match, 'Partida iniciada com sucesso.', this.buildWorldActionsFromSnapshot(snapshot));
   }
 
   async handleCurrentMatch(telegramId: string): Promise<BotReply> {
     const match = await this.getActiveMatchService.execute(telegramId);
-    return this.toMatchReply(match, match.status === MatchStatus.Finished ? 'Última partida encerrada.' : 'Status atual da partida.');
+    const snapshot = await this.getWorldSnapshot(telegramId);
+    return this.toMatchReply(
+      match,
+      match.status === MatchStatus.Finished ? 'Última partida encerrada.' : 'Status atual da partida.',
+      this.buildWorldActionsFromSnapshot(snapshot)
+    );
   }
 
   async handleMatchAction(telegramId: string, action?: MatchActionKey): Promise<BotReply> {
     const result = await this.resolveMatchTurnService.execute(telegramId, action);
-    return this.toMatchReply(result.match, result.resolutionText);
+    const snapshot = await this.getWorldSnapshot(telegramId);
+    return this.toMatchReply(result.match, result.resolutionText, this.buildWorldActionsFromSnapshot(snapshot));
   }
 
   async handleWorldHub(telegramId: string): Promise<BotReply> {
@@ -412,11 +421,7 @@ export class Phase1TelegramFacade {
           ? 'Seu elenco compartilhado já existe, então a agenda da semana também passa pelo vestiário.'
           : 'Sem convocação ativa, a semana fica livre para evolução pessoal e novas oportunidades.'
       ].join('\n\n'),
-      actions: this.buildWorldActions({
-        isProfessional: snapshot.player.careerStatus === CareerStatus.Professional,
-        hasActiveMatch: Boolean(snapshot.activeMatch),
-        hasCurrentSession: Boolean(snapshot.currentSession)
-      })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
@@ -432,11 +437,7 @@ export class Phase1TelegramFacade {
             ? 'Quando você abrir uma convocação ou entrar em uma chamada existente, o elenco aparecerá aqui com titulares, reservas e aquecimento.'
             : 'Primeiro consolide sua carreira nas peneiras regionais para passar a frequentar o ambiente profissional.'
         ].join('\n\n'),
-        actions: this.buildWorldActions({
-          isProfessional: snapshot.player.careerStatus === CareerStatus.Professional,
-          hasActiveMatch: Boolean(snapshot.activeMatch),
-          hasCurrentSession: false
-        })
+        actions: this.buildWorldActionsFromSnapshot(snapshot)
       };
     }
 
@@ -448,11 +449,7 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSquadCard(snapshot.currentSession, MultiplayerTeamSide.Away),
         this.renderer.renderMultiplayerPreparationCard(snapshot.currentSession)
       ].join('\n\n'),
-      actions: this.buildWorldActions({
-        isProfessional: snapshot.player.careerStatus === CareerStatus.Professional,
-        hasActiveMatch: Boolean(snapshot.activeMatch),
-        hasCurrentSession: true
-      })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
@@ -480,11 +477,7 @@ export class Phase1TelegramFacade {
         ...invitationLines,
         snapshot.activeMatch ? 'Além disso, existe um jogo vivo em andamento pedindo sua atenção imediata no estádio.' : 'Sem jogo ao vivo bloqueando novas oportunidades agora.'
       ].join('\n\n'),
-      actions: this.buildWorldActions({
-        isProfessional: snapshot.player.careerStatus === CareerStatus.Professional,
-        hasActiveMatch: Boolean(snapshot.activeMatch),
-        hasCurrentSession: Boolean(snapshot.currentSession)
-      })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
@@ -498,6 +491,7 @@ export class Phase1TelegramFacade {
       botFallbackEligibleSlots: 2,
       minimumHumansToStart: 2
     });
+    const snapshot = await this.getWorldSnapshot(telegramId);
 
     return {
       text: [
@@ -507,12 +501,13 @@ export class Phase1TelegramFacade {
         'A convocação do confronto foi aberta dentro do mesmo mundo da sua carreira.',
         `Código da convocação: ${result.session.code}. Compartilhe esse código com outros profissionais para formar o confronto.`
       ].join('\n\n'),
-      actions: this.buildWorldActions({ isProfessional: true, hasCurrentSession: true })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
   async handleCurrentSession(telegramId: string, sessionCode?: string): Promise<BotReply> {
     const session = await this.getMultiplayerSessionService.execute(telegramId, sessionCode);
+    const snapshot = await this.getWorldSnapshot(telegramId);
     return {
       text: [
         this.renderer.renderMultiplayerSessionCard(session),
@@ -520,7 +515,7 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSquadCard(session, MultiplayerTeamSide.Away),
         this.renderer.renderMultiplayerPreparationCard(session)
       ].join('\n\n'),
-      actions: this.buildWorldActions({ isProfessional: true, hasCurrentSession: true })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
@@ -531,6 +526,7 @@ export class Phase1TelegramFacade {
     preferredRole?: MultiplayerSquadRole
   ): Promise<BotReply> {
     const result = await this.joinMultiplayerSessionService.execute(telegramId, sessionCode, { preferredSide, preferredRole });
+    const snapshot = await this.getWorldSnapshot(telegramId);
     return {
       text: [
         `✅ Convocação aceita na sala ${result.session.code}.`,
@@ -540,12 +536,13 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
       ].join('\n\n'),
-      actions: this.buildWorldActions({ isProfessional: true, hasCurrentSession: true })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
   async handlePrepareSession(telegramId: string, sessionCode?: string): Promise<BotReply> {
     const result = await this.prepareMultiplayerSessionService.execute(telegramId, sessionCode);
+    const snapshot = await this.getWorldSnapshot(telegramId);
     const botSummary = result.botsAdded.length > 0
       ? `O aquecimento ganhou ${result.botsAdded.length} apoio(s) automático(s) novo(s) nas vagas elegíveis.`
       : 'Nenhum apoio automático novo foi necessário neste aquecimento; a convocação permaneceu com prioridade humana.';
@@ -557,7 +554,7 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
       ].join('\n\n'),
-      actions: this.buildWorldActions({ isProfessional: true, hasCurrentSession: true })
+      actions: this.buildWorldActionsFromSnapshot(snapshot)
     };
   }
 
@@ -601,14 +598,30 @@ export class Phase1TelegramFacade {
     ];
   }
 
-  private toMatchReply(match: Awaited<ReturnType<GetActiveMatchService['execute']>>, leadText: string): BotReply {
+  private buildWorldActionsFromSnapshot(snapshot: {
+    player: { careerStatus: CareerStatus };
+    activeMatch: Awaited<ReturnType<GetActiveMatchService['executeOptional']>> | null;
+    currentSession: Awaited<ReturnType<GetMultiplayerSessionService['getOptionalCurrentSession']>> | null;
+  }): string[] {
+    return this.buildWorldActions({
+      isProfessional: snapshot.player.careerStatus === CareerStatus.Professional,
+      hasActiveMatch: Boolean(snapshot.activeMatch),
+      hasCurrentSession: Boolean(snapshot.currentSession)
+    });
+  }
+
+  private toMatchReply(
+    match: Awaited<ReturnType<GetActiveMatchService['execute']>>,
+    leadText: string,
+    worldActions: string[]
+  ): BotReply {
     const turn = match.activeTurn;
 
     return {
       text: [leadText, this.renderer.renderMatchCard(match)].join('\n\n'),
       actions:
         match.status === MatchStatus.Finished || !turn
-          ? this.buildWorldActions({ isProfessional: true })
+          ? worldActions
           : [
               ...turn.availableActions.map((action) => matchActionLabels[action.key]),
               phase1BotActions.resolveTimeout,
@@ -627,15 +640,11 @@ export class Phase1TelegramFacade {
       typeof this.getMultiplayerSessionService.getOptionalCurrentSession === 'function'
         ? await this.getMultiplayerSessionService.getOptionalCurrentSession(telegramId)
         : null;
-    let activeMatch = null as Awaited<ReturnType<GetActiveMatchService['execute']>> | null;
-
-    try {
-      activeMatch = await this.getActiveMatchService.execute(telegramId);
-    } catch (error) {
-      if (!(error instanceof DomainError)) {
-        throw error;
-      }
-    }
+    const activeMatch =
+      'executeOptional' in this.getActiveMatchService &&
+      typeof this.getActiveMatchService.executeOptional === 'function'
+        ? await this.getActiveMatchService.executeOptional(telegramId)
+        : null;
 
     return { player, status, currentSession, activeMatch };
   }

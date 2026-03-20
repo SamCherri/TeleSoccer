@@ -483,7 +483,19 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
   const hubReply = await facade.handleMultiplayerHub('host');
   assert.match(hubReply.text, /VIDA NO FUTEBOL/);
   assert.match(hubReply.text, /mundo contínuo de futebol/);
-  assert.ok(hubReply.actions.includes(phase1BotActions.weekAgenda));
+  assert.deepEqual(
+    hubReply.actions,
+    [
+      phase1BotActions.mainMenu,
+      phase1BotActions.careerStatus,
+      phase1BotActions.weekAgenda,
+      phase1BotActions.weeklyTraining,
+      phase1BotActions.startMatch,
+      phase1BotActions.createSession,
+      phase1BotActions.lockerRoom,
+      phase1BotActions.invitations
+    ]
+  );
 
   const createdReply = await facade.handleCreateSession('host');
   assert.match(createdReply.text, /convocação do confronto/);
@@ -496,6 +508,8 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
 
   const prepReply = await facade.handlePrepareSession('host');
   assert.match(prepReply.text, /apoio\(s\) automático\(s\)|prioridade humana/);
+  assert.ok(prepReply.actions.includes(phase1BotActions.currentSession));
+  assert.ok(prepReply.actions.includes(phase1BotActions.lockerRoom));
 });
 
 test('consulta /sala CODIGO permite leitura por profissional com o código mesmo sem participar', async () => {
@@ -542,4 +556,75 @@ test('dispatcher valida comando multiplayer inválido com orientação clara', a
 
   const invalidRole = await dispatcher.dispatch({ telegramId: 'host', text: '/entrar-sala ABC123 HOME BANCO' });
   assert.match(invalidRole.text, /Papel inválido/);
+});
+
+test('compatibilidade com /mmorpg e /multiplayer leva ao mesmo mundo do jogador', async () => {
+  const { getService } = createServices();
+  const renderer = new GameCardRenderer();
+  const noop = { execute: async () => { throw new DomainError('not used'); } };
+  const facade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Host FC', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ name: 'Host FC', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' }) },
+    { execute: async () => ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', walletBalance: 100, currentWeekNumber: 12, trainingAvailableThisWeek: true, totalTrainings: 1, totalTryouts: 1, latestTryout: null, recentHistory: [] }) },
+    { execute: async () => ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Host FC', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'PROFESSIONAL' }) },
+    noop,
+    noop,
+    noop,
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    undefined,
+    getService,
+    undefined,
+    undefined,
+    renderer
+  );
+  const creationFlow = {
+    expireIfNeeded: async () => null,
+    isActive: async () => false,
+    cancel: async () => ({ text: 'cancel', actions: [] }),
+    remindCurrentStep: async () => ({ text: 'remind', actions: [] }),
+    handleInput: async () => ({ kind: 'reply', reply: { text: 'reply', actions: [] } }),
+    start: async () => ({ text: 'start', actions: [] })
+  };
+  const dispatcher = new Phase1TelegramDispatcher(facade, creationFlow);
+
+  const mmorpgReply = await dispatcher.dispatch({ telegramId: 'host', text: '/mmorpg' });
+  const multiplayerReply = await dispatcher.dispatch({ telegramId: 'host', text: '/multiplayer' });
+
+  assert.match(mmorpgReply.text, /MUNDO DO JOGADOR/);
+  assert.equal(multiplayerReply.text, mmorpgReply.text);
+  assert.deepEqual(multiplayerReply.actions, mmorpgReply.actions);
+});
+
+test('buildWorldActions permanece contextual e não força caminhos profissionais para jogador de base', async () => {
+  const facade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Base Kid', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ name: 'Base Kid', age: 14, position: 'MIDFIELDER', dominantFoot: 'RIGHT', currentClubName: null, walletBalance: 100, attributes: { PASSING: 20 }, careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ playerName: 'Base Kid', careerStatus: 'YOUTH', currentClubName: null, walletBalance: 100, currentWeekNumber: 1, trainingAvailableThisWeek: true, totalTrainings: 0, totalTryouts: 0, latestTryout: null, recentHistory: [] }) },
+    { execute: async () => ({ playerName: 'Base Kid', careerStatus: 'YOUTH', currentClubName: null, entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Base Kid', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ newValue: 21, walletBalance: 80 }) },
+    { execute: async () => ({ status: 'FAILED', score: 1, requiredScore: 2 }) }
+  );
+
+  assert.deepEqual(facade.buildWorldActions({ isProfessional: false, hasActiveMatch: false, hasCurrentSession: false }), [
+    phase1BotActions.mainMenu,
+    phase1BotActions.careerStatus,
+    phase1BotActions.weekAgenda,
+    phase1BotActions.weeklyTraining,
+    phase1BotActions.tryout,
+    phase1BotActions.invitations,
+    phase1BotActions.playerCard,
+    phase1BotActions.walletStatement
+  ]);
+  assert.deepEqual(facade.buildWorldActions({ isProfessional: true, hasActiveMatch: true, hasCurrentSession: true }), [
+    phase1BotActions.mainMenu,
+    phase1BotActions.careerStatus,
+    phase1BotActions.weekAgenda,
+    phase1BotActions.weeklyTraining,
+    phase1BotActions.currentMatch,
+    phase1BotActions.currentSession,
+    phase1BotActions.lockerRoom,
+    phase1BotActions.invitations
+  ]);
 });

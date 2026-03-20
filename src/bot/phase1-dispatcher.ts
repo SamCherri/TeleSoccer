@@ -28,8 +28,8 @@ const commandToAction = new Map<string, string>([
   ['/agenda', phase1BotActions.weekAgenda],
   ['/vestiario', phase1BotActions.lockerRoom],
   ['/convocacoes', phase1BotActions.invitations],
-  ['/multiplayer', phase1BotActions.mmorpgHub],
-  ['/mmorpg', phase1BotActions.mmorpgHub],
+  ['/multiplayer', phase1BotActions.mainMenu],
+  ['/mmorpg', phase1BotActions.mainMenu],
   ['/criar-sala', phase1BotActions.createSession],
   ['/sala', phase1BotActions.currentSession],
   ['/preparar-sala', phase1BotActions.prepareSession],
@@ -122,14 +122,14 @@ export class Phase1TelegramDispatcher {
         if (!code) {
           return {
             text: 'Use /entrar-sala CODIGO [HOME|AWAY] [TITULAR|RESERVA]. Se omitir lado/papel, o sistema tenta encaixar a próxima vaga disponível.',
-            actions: [phase1BotActions.mmorpgHub, phase1BotActions.currentSession, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu, phase1BotActions.currentSession]
           };
         }
 
         if (parts.length > 4) {
           return {
             text: 'Formato inválido. Exemplo válido: /entrar-sala ABC123 AWAY TITULAR',
-            actions: [phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu]
           };
         }
 
@@ -138,13 +138,13 @@ export class Phase1TelegramDispatcher {
         if (sideToken && !parsedSide) {
           return {
             text: 'Lado inválido. Use HOME ou AWAY ao entrar na sala.',
-            actions: [phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu]
           };
         }
         if (roleToken && !parsedRole) {
           return {
             text: 'Papel inválido. Use TITULAR ou RESERVA ao entrar na sala.',
-            actions: [phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu]
           };
         }
 
@@ -215,9 +215,6 @@ export class Phase1TelegramDispatcher {
       }
       if (action === phase1BotActions.resolveTimeout) {
         return await this.facade.handleMatchAction(request.telegramId);
-      }
-      if (action === phase1BotActions.mmorpgHub) {
-        return await this.facade.handleMultiplayerHub(request.telegramId);
       }
       if (action === phase1BotActions.createSession) {
         return await this.facade.handleCreateSession(request.telegramId);

@@ -61,6 +61,15 @@ export class GetActiveMatchService {
   ) {}
 
   async execute(telegramId: string, now = new Date()) {
+    const optional = await this.executeOptional(telegramId, now);
+    if (optional) {
+      return optional;
+    }
+
+    throw new DomainError('Nenhuma partida ativa ou finalizada encontrada para este jogador.');
+  }
+
+  async executeOptional(telegramId: string, now = new Date()) {
     const activeMatch = await this.matchRepository.getActiveMatchByTelegramId(telegramId);
     if (activeMatch) {
       return this.resolveExpiredTurnIfNeeded(telegramId, activeMatch, now);
@@ -71,7 +80,7 @@ export class GetActiveMatchService {
       return latestMatch;
     }
 
-    throw new DomainError('Nenhuma partida ativa ou finalizada encontrada para este jogador.');
+    return null;
   }
 
   private async resolveExpiredTurnIfNeeded(telegramId: string, match: MatchSummary, now: Date): Promise<MatchSummary> {

@@ -350,6 +350,13 @@ test('GetActiveMatchService retorna a última finalizada quando não há partida
   assert.equal(result.activeTurn, undefined);
 });
 
+test('GetActiveMatchService.executeOptional retorna null quando não há partida disponível', async () => {
+  const service = new GetActiveMatchService(new StaticMatchRepository(null, null), new MatchEngine());
+
+  const result = await service.executeOptional('telegram-1');
+  assert.equal(result, null);
+});
+
 test('consulta resolve timeout expirado automaticamente antes de retornar a partida', async () => {
   const playerRepo = await createProfessionalPlayer('307');
   const matchRepo = new InMemoryMatchRepository(playerRepo);
