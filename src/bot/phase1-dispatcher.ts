@@ -244,6 +244,9 @@ export class Phase1TelegramDispatcher {
           phase1BotActions.weekAgenda,
           phase1BotActions.weeklyTraining,
           phase1BotActions.invitations,
+          phase1BotActions.playerCard,
+          phase1BotActions.careerHistory,
+          phase1BotActions.walletStatement,
           phase1BotActions.startMatch
         ]
       };
@@ -257,6 +260,9 @@ export class Phase1TelegramDispatcher {
             phase1BotActions.weekAgenda,
             phase1BotActions.weeklyTraining,
             phase1BotActions.invitations,
+            phase1BotActions.playerCard,
+            phase1BotActions.careerHistory,
+            phase1BotActions.walletStatement,
             phase1BotActions.startMatch
           ]
         };

@@ -640,6 +640,9 @@ test('dispatcher abre menu principal e roteia comandos reais do bot', async () =
   assert.match(startReply.text, /MUNDO DO JOGADOR/);
   assert.ok(startReply.actions.includes(phase1BotActions.weeklyTraining));
   assert.ok(startReply.actions.includes(phase1BotActions.weekAgenda));
+  assert.ok(startReply.actions.includes(phase1BotActions.playerCard));
+  assert.ok(startReply.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(startReply.actions.includes(phase1BotActions.walletStatement));
 
   const trainingMenuReply = await dispatcher.dispatch({ telegramId: '111', text: '/treino' });
   assert.match(trainingMenuReply.text, /Cada treino custa 20 moedas/);

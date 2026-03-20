@@ -583,8 +583,8 @@ export class Phase1TelegramFacade {
       options.isProfessional
         ? (hasCurrentSession ? phase1BotActions.currentSession : phase1BotActions.createSession)
         : phase1BotActions.invitations,
-      options.isProfessional ? phase1BotActions.lockerRoom : phase1BotActions.playerCard,
-      options.isProfessional ? phase1BotActions.invitations : phase1BotActions.walletStatement
+      ...(options.isProfessional ? [phase1BotActions.lockerRoom, phase1BotActions.invitations] : [phase1BotActions.playerCard, phase1BotActions.careerHistory]),
+      ...this.buildPersonalAreaActions(options.isProfessional)
     ];
   }
 
@@ -602,6 +602,18 @@ export class Phase1TelegramFacade {
       phase1BotActions.cancel,
       phase1BotActions.mainMenu
     ];
+  }
+
+  private buildPersonalAreaActions(isProfessional: boolean): string[] {
+    if (isProfessional) {
+      return [
+        phase1BotActions.playerCard,
+        phase1BotActions.careerHistory,
+        phase1BotActions.walletStatement
+      ];
+    }
+
+    return [phase1BotActions.walletStatement];
   }
 
   private buildWorldActionsFromSnapshot(snapshot: {
@@ -629,7 +641,8 @@ export class Phase1TelegramFacade {
       phase1BotActions.mainMenu,
       phase1BotActions.weekAgenda,
       snapshot.currentSession ? phase1BotActions.currentSession : phase1BotActions.createSession,
-      phase1BotActions.invitations
+      phase1BotActions.invitations,
+      ...this.buildPersonalAreaActions(true)
     ];
   }
 
@@ -656,18 +669,23 @@ export class Phase1TelegramFacade {
   }
 
   private async getWorldSnapshot(telegramId: string) {
-    const player = await this.getPlayerCardService.execute(telegramId);
-    const status = await this.getCareerStatusService.execute(telegramId);
-    const currentSession =
+    const currentSessionPromise =
       'getOptionalCurrentSession' in this.getMultiplayerSessionService &&
       typeof this.getMultiplayerSessionService.getOptionalCurrentSession === 'function'
-        ? await this.getMultiplayerSessionService.getOptionalCurrentSession(telegramId)
-        : null;
-    const activeMatch =
+        ? this.getMultiplayerSessionService.getOptionalCurrentSession(telegramId)
+        : Promise.resolve(null);
+    const activeMatchPromise =
       'executeOptional' in this.getActiveMatchService &&
       typeof this.getActiveMatchService.executeOptional === 'function'
-        ? await this.getActiveMatchService.executeOptional(telegramId)
-        : null;
+        ? this.getActiveMatchService.executeOptional(telegramId)
+        : Promise.resolve(null);
+
+    const [player, status, currentSession, activeMatch] = await Promise.all([
+      this.getPlayerCardService.execute(telegramId),
+      this.getCareerStatusService.execute(telegramId),
+      currentSessionPromise,
+      activeMatchPromise
+    ]);
 
     return { player, status, currentSession, activeMatch };
   }

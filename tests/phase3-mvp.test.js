@@ -493,7 +493,10 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
       phase1BotActions.startMatch,
       phase1BotActions.createSession,
       phase1BotActions.lockerRoom,
-      phase1BotActions.invitations
+      phase1BotActions.invitations,
+      phase1BotActions.playerCard,
+      phase1BotActions.careerHistory,
+      phase1BotActions.walletStatement
     ]
   );
 
@@ -596,7 +599,10 @@ test('handleCurrentSession distingue sessão própria de consulta externa ao mon
     phase1BotActions.mainMenu,
     phase1BotActions.weekAgenda,
     phase1BotActions.createSession,
-    phase1BotActions.invitations
+    phase1BotActions.invitations,
+    phase1BotActions.playerCard,
+    phase1BotActions.careerHistory,
+    phase1BotActions.walletStatement
   ]);
 });
 
@@ -676,6 +682,41 @@ test('compatibilidade com /mmorpg e /multiplayer leva ao mesmo mundo do jogador'
   assert.deepEqual(multiplayerReply.actions, mmorpgReply.actions);
 });
 
+
+
+test('hub do mundo mantém acessos pessoais explícitos para base e profissional', async () => {
+  const facade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Base Kid', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async (telegramId) => telegramId === 'pro'
+      ? ({ name: 'Host FC', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' })
+      : ({ name: 'Base Kid', age: 14, position: 'MIDFIELDER', dominantFoot: 'RIGHT', currentClubName: null, walletBalance: 100, attributes: { PASSING: 20 }, careerStatus: 'YOUTH' }) },
+    { execute: async (telegramId) => telegramId === 'pro'
+      ? ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', walletBalance: 100, currentWeekNumber: 12, trainingAvailableThisWeek: true, totalTrainings: 1, totalTryouts: 1, latestTryout: null, recentHistory: [] })
+      : ({ playerName: 'Base Kid', careerStatus: 'YOUTH', currentClubName: null, walletBalance: 100, currentWeekNumber: 1, trainingAvailableThisWeek: true, totalTrainings: 0, totalTryouts: 0, latestTryout: null, recentHistory: [] }) },
+    { execute: async (telegramId) => ({ playerName: telegramId === 'pro' ? 'Host FC' : 'Base Kid', careerStatus: telegramId === 'pro' ? 'PROFESSIONAL' : 'YOUTH', currentClubName: telegramId === 'pro' ? 'Porto Azul FC' : null, entries: [], totalEntries: 0 }) },
+    { execute: async (telegramId) => ({ playerName: telegramId === 'pro' ? 'Host FC' : 'Base Kid', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: telegramId === 'pro' ? 'PROFESSIONAL' : 'YOUTH' }) },
+    { execute: async () => ({ newValue: 21, walletBalance: 80 }) },
+    { execute: async () => ({ status: 'FAILED', score: 1, requiredScore: 2 }) },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); }, getOptionalCurrentSession: async () => null },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); } }
+  );
+
+  const youthHub = await facade.handleWorldHub('base');
+  assert.ok(youthHub.actions.includes(phase1BotActions.playerCard));
+  assert.ok(youthHub.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(youthHub.actions.includes(phase1BotActions.walletStatement));
+
+  const professionalHub = await facade.handleWorldHub('pro');
+  assert.ok(professionalHub.actions.includes(phase1BotActions.playerCard));
+  assert.ok(professionalHub.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(professionalHub.actions.includes(phase1BotActions.walletStatement));
+});
+
 test('buildWorldActions permanece contextual e não força caminhos profissionais para jogador de base', async () => {
   const facade = new Phase1TelegramFacade(
     { execute: async () => ({ name: 'Base Kid', walletBalance: 100, careerStatus: 'YOUTH' }) },
@@ -695,6 +736,7 @@ test('buildWorldActions permanece contextual e não força caminhos profissionai
     phase1BotActions.tryout,
     phase1BotActions.invitations,
     phase1BotActions.playerCard,
+    phase1BotActions.careerHistory,
     phase1BotActions.walletStatement
   ]);
   assert.deepEqual(facade.buildWorldActions({ isProfessional: true, hasActiveMatch: true, hasCurrentSession: true }), [
@@ -705,6 +747,9 @@ test('buildWorldActions permanece contextual e não força caminhos profissionai
     phase1BotActions.currentMatch,
     phase1BotActions.currentSession,
     phase1BotActions.lockerRoom,
-    phase1BotActions.invitations
+    phase1BotActions.invitations,
+    phase1BotActions.playerCard,
+    phase1BotActions.careerHistory,
+    phase1BotActions.walletStatement
   ]);
 });
