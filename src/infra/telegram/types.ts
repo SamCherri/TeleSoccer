@@ -28,10 +28,20 @@ export interface TelegramReplyKeyboardMarkup {
   resize_keyboard: boolean;
 }
 
+export interface TelegramScenePayload {
+  key: string;
+  title: string;
+  hud: string;
+  phrase: string;
+  svg: string;
+  fallbackText: string;
+}
+
 export interface TelegramSendMessagePayload {
   chat_id: number | string;
   text: string;
   reply_markup?: TelegramReplyKeyboardMarkup;
+  scene?: TelegramScenePayload;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;

@@ -11,6 +11,20 @@ const chunkActions = (actions: string[], columns = 2): TelegramKeyboardButton[][
   return rows;
 };
 
+const appendSceneFallback = (reply: BotReply): string => {
+  if (!reply.scene) {
+    return reply.text;
+  }
+
+  return [
+    reply.text,
+    '🖼️ CENA VISUAL PREPARADA',
+    `${reply.scene.title} • HUD ${reply.scene.hud}`,
+    reply.scene.phrase,
+    reply.scene.fallbackText
+  ].join('\n\n');
+};
+
 export const botReplyToTelegramMessage = (chatId: number | string, reply: BotReply): TelegramSendMessagePayload => {
   const replyMarkup: TelegramReplyKeyboardMarkup | undefined =
     reply.actions.length > 0
@@ -22,7 +36,17 @@ export const botReplyToTelegramMessage = (chatId: number | string, reply: BotRep
 
   return {
     chat_id: chatId,
-    text: reply.text,
-    reply_markup: replyMarkup
+    text: appendSceneFallback(reply),
+    reply_markup: replyMarkup,
+    scene: reply.scene
+      ? {
+          key: reply.scene.key,
+          title: reply.scene.title,
+          hud: reply.scene.hud,
+          phrase: reply.scene.phrase,
+          svg: reply.scene.svg,
+          fallbackText: reply.scene.fallbackText
+        }
+      : undefined
   };
 };

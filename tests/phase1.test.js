@@ -1033,6 +1033,25 @@ test('presenter converte resposta do bot em teclado do Telegram', async () => {
   ]);
 });
 
+test('presenter inclui fallback textual e payload estruturado para cena visual', async () => {
+  const payload = botReplyToTelegramMessage(77, {
+    text: 'Painel do lance',
+    actions: [phase1BotActions.currentMatch],
+    scene: {
+      key: 'shot',
+      title: 'Chute',
+      hud: 'finalização armada',
+      phrase: 'Finalização armada mirando o gol.',
+      svg: '<svg viewBox="0 0 10 10"></svg>',
+      fallbackText: 'Arte preparada para envio futuro no Telegram.'
+    }
+  });
+
+  assert.match(payload.text, /CENA VISUAL PREPARADA/);
+  assert.equal(payload.scene.key, 'shot');
+  assert.match(payload.scene.svg, /<svg/);
+});
+
 test('runtime do Telegram despacha update real e envia mensagem formatada', async () => {
   const sentMessages = [];
   const dispatcher = {
