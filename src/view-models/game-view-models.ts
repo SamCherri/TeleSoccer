@@ -1,4 +1,6 @@
 import { MatchHalf, MatchSummary, MatchTurnView } from '../domain/match/types';
+import { MatchSceneAsset } from '../assets/scenes/match-scene-art';
+import { resolveMatchScene } from '../presentation/match-scene-resolver';
 import { MultiplayerParticipantKind, MultiplayerSessionStatus, MultiplayerSessionSummary, MultiplayerSquadRole, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
 const halfLabelMap: Record<MatchHalf, string> = {
@@ -26,12 +28,21 @@ const sessionStatusLabelMap: Record<MultiplayerSessionStatus, string> = {
   [MultiplayerSessionStatus.Closed]: 'Encerrada'
 };
 
+export interface MatchSceneViewModel {
+  title: string;
+  hud: string;
+  phrase: string;
+  fallback: string;
+  asset: MatchSceneAsset;
+}
+
 export interface MatchCardViewModel {
   headline: string;
   scoreboard: string;
   details: string[];
   events: string[];
   currentPlay?: string[];
+  scene: MatchSceneViewModel;
 }
 
 export interface MultiplayerParticipantViewModel {
@@ -221,18 +232,29 @@ const turnText = (turn: MatchTurnView): string[] => [
   `Prazo do turno: ${turn.deadlineAt.toISOString()}`
 ];
 
-export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel => ({
-  headline: '🏟️ ESTÁDIO | PARTIDA EM ANDAMENTO',
-  scoreboard: `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
-  details: [
-    `⏱️ ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]} • status ${match.scoreboard.status}`,
-    `⚡ Energia ${match.energy} • 🟨 ${match.yellowCards} • 🟥 ${match.redCards} • suspensão ${match.suspensionMatchesRemaining}`,
-    match.injury
-      ? `🩺 Lesão ativa: ${match.injury.description} (${match.injury.matchesRemaining} partida(s) restantes)`
-      : '🩺 Lesão ativa: nenhuma registrada.'
-  ],
-  events: match.recentEvents.slice(0, 5).map((event) => `${event.minute}' ${event.description}`),
-  currentPlay: match.activeTurn ? turnText(match.activeTurn) : undefined
-});
+export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel => {
+  const scene = resolveMatchScene(match);
+
+  return {
+    headline: '🏟️ ESTÁDIO | PARTIDA EM ANDAMENTO',
+    scoreboard: `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
+    details: [
+      `⏱️ ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]} • status ${match.scoreboard.status}`,
+      `⚡ Energia ${match.energy} • 🟨 ${match.yellowCards} • 🟥 ${match.redCards} • suspensão ${match.suspensionMatchesRemaining}`,
+      match.injury
+        ? `🩺 Lesão ativa: ${match.injury.description} (${match.injury.matchesRemaining} partida(s) restantes)`
+        : '🩺 Lesão ativa: nenhuma registrada.'
+    ],
+    events: match.recentEvents.slice(0, 5).map((event) => `${event.minute}' ${event.description}`),
+    currentPlay: match.activeTurn ? turnText(match.activeTurn) : undefined,
+    scene: {
+      title: scene.asset.title,
+      hud: scene.asset.hudLabel,
+      phrase: scene.shortPhrase,
+      fallback: scene.fallbackLine,
+      asset: scene.asset
+    }
+  };
+};
 
 export const squadSectionTitle = roleLabelMap;
