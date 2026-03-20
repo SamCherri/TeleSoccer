@@ -20,18 +20,30 @@ const roleLabelMap: Record<MultiplayerSquadRole, string> = {
 
 const sessionStatusLabelMap: Record<MultiplayerSessionStatus, string> = {
   [MultiplayerSessionStatus.WaitingForPlayers]: 'Aguardando mais humanos',
-  [MultiplayerSessionStatus.ReadyForFallback]: 'Pronta para fallback controlado',
-  [MultiplayerSessionStatus.ReadyToPrepare]: 'Pronta para preparar confronto',
-  [MultiplayerSessionStatus.PreparingMatch]: 'Preparando confronto',
+  [MultiplayerSessionStatus.ReadyForFallback]: 'Cobertura liberada',
+  [MultiplayerSessionStatus.ReadyToPrepare]: 'Pronta para aquecer',
+  [MultiplayerSessionStatus.PreparingMatch]: 'Aquecendo elenco',
   [MultiplayerSessionStatus.Closed]: 'Encerrada'
 };
 
 export interface MatchCardViewModel {
+  artwork: string;
   headline: string;
   scoreboard: string;
-  details: string[];
+  clockLine: string;
+  hudLine: string;
+  injuryLine: string;
+  playLine: string;
+  promptLine: string;
+  detailsHint: string;
+}
+
+export interface MatchDetailsCardViewModel {
+  title: string;
+  summary: string;
+  deadlineLine: string;
+  history: string[];
   events: string[];
-  currentPlay?: string[];
 }
 
 export interface MultiplayerParticipantViewModel {
@@ -63,8 +75,26 @@ export interface MultiplayerPreparationCardViewModel {
   notes: string[];
 }
 
+export interface OnlineWorldCardViewModel {
+  artwork: string;
+  headline: string;
+  identityLine: string;
+  clubLine: string;
+  progressLine: string;
+  liveLine: string;
+  socialLine: string;
+  focusLine: string;
+}
+
+export interface WeeklyAgendaCardViewModel {
+  artwork: string;
+  title: string;
+  summary: string;
+  commitments: string[];
+}
+
 const formatParticipant = (name: string, kind: MultiplayerParticipantKind, isHost: boolean, isCaptain: boolean, slotNumber: number): string => {
-  const badges = [kind === MultiplayerParticipantKind.Human ? '🧑 HUM' : '🤖 BOT'];
+  const badges = [kind === MultiplayerParticipantKind.Human ? '🧑' : '🤖'];
   if (isHost) {
     badges.push('HOST');
   }
@@ -75,13 +105,67 @@ const formatParticipant = (name: string, kind: MultiplayerParticipantKind, isHos
   return `${slotNumber}. ${name} [${badges.join(' • ')}]`;
 };
 
+const summarizeInjury = (match: MatchSummary): string => {
+  if (!match.injury) {
+    return '🩺 Sem lesão';
+  }
+
+  if (match.injury.matchesRemaining > 0) {
+    return `🩺 ${match.injury.description} • ${match.injury.matchesRemaining} jogo(s)`;
+  }
+
+  return `🩺 ${match.injury.description}`;
+};
+
+const compactSentence = (text: string, limit: number): string => {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(limit - 1, 1)).trimEnd()}…`;
+};
+
+const currentPlayLine = (turn?: MatchTurnView): string => {
+  if (!turn) {
+    return '🎯 Sem lance pendente agora.';
+  }
+
+  return `🎯 ${compactSentence(turn.contextText, 80)}`;
+};
+
+const promptLine = (turn?: MatchTurnView): string => {
+  if (!turn) {
+    return '📡 Acompanhe o próximo momento do jogo.';
+  }
+
+  if (turn.isGoalkeeperContext) {
+    return '🧤 Defesa sob pressão: escolha sua resposta.';
+  }
+
+  return '⚽ Lance decisivo: escolha sua jogada.';
+};
+
+const turnHistory = (turn?: MatchTurnView): string[] => {
+  if (!turn) {
+    return ['Sem turno ativo no momento.'];
+  }
+
+  return [
+    `Lance ${turn.sequence} • ${halfLabelMap[turn.half]} • ${turn.minute}'.`,
+    `Contexto: ${turn.contextText}`,
+    turn.previousOutcome ? `Último desfecho: ${turn.previousOutcome}` : 'Último desfecho: nova jogada aberta pelo jogo.',
+    `Prazo real do turno: ${turn.deadlineAt.toISOString()}`
+  ];
+};
+
 export const buildMultiplayerSquadCardViewModel = (session: MultiplayerSessionSummary, side: MultiplayerTeamSide): MultiplayerSquadCardViewModel => {
   const summary = side === MultiplayerTeamSide.Home ? session.home : session.away;
 
   return {
-    title: `${sideIconMap[side]} ${side} | Elenco`,
-    subtitle: `${summary.humanCount} humano(s) • ${summary.botCount} bot(s) • fallback aberto ${summary.botFallbackEligibleOpenSlots}`,
-    openSlots: `Vagas: titulares ${summary.remainingStarterSlots} • reservas ${summary.remainingSubstituteSlots}`,
+    title: `${sideIconMap[side]} ${side} | Vestiário`,
+    subtitle: `${summary.humanCount} humano(s) • ${summary.botCount} apoio(s) • cobertura ${summary.botFallbackEligibleOpenSlots}`,
+    openSlots: `Vagas abertas: titulares ${summary.remainingStarterSlots} • reservas ${summary.remainingSubstituteSlots}`,
     starters: summary.starters.map((participant) => ({
       label: formatParticipant(participant.playerName, participant.kind, participant.isHost, participant.isCaptain, participant.slotNumber)
     })),
@@ -92,65 +176,132 @@ export const buildMultiplayerSquadCardViewModel = (session: MultiplayerSessionSu
 };
 
 export const buildMultiplayerSessionCardViewModel = (session: MultiplayerSessionSummary): MultiplayerSessionCardViewModel => ({
-  headline: '🏟️ TELESOCCER ONLINE | SALA MULTIPLAYER',
+  headline: '🏟️ CONFRONTO ONLINE',
   sessionCode: session.code,
-  status: `Status: ${sessionStatusLabelMap[session.status]}`,
-  policy: `Política: ${session.fillPolicy === 'HUMAN_ONLY' ? 'Somente humanos' : 'Humanos primeiro, bot só no fallback'}`,
+  status: `Momento: ${sessionStatusLabelMap[session.status]}`,
+  policy: `Convocação: ${session.fillPolicy === 'HUMAN_ONLY' ? 'somente humanos' : 'humanos primeiro, bots só na cobertura'}`,
   readiness: session.canPrepareMatch
-    ? 'Prontidão: base humana fechada e sessão pronta para preparação do confronto.'
+    ? 'Elenco pronto para seguir ao aquecimento.'
     : session.canUseBotFallbackNow
-      ? 'Prontidão: humanos mínimos confirmados; fallback elegível pode completar as vagas marcadas.'
-      : `Prontidão: faltam ${session.missingHumansToStart} humano(s) para liberar a preparação ou o fallback.`,
+      ? 'Base humana mínima confirmada; a cobertura pode entrar.'
+      : `Faltam ${session.missingHumansToStart} humano(s) para liberar o aquecimento.`,
   matchup: `HOME ${session.home.startersCount + session.home.substitutesCount} x ${session.away.startersCount + session.away.substitutesCount} AWAY`,
   sideSummaries: [
-    `HOME | humanos ${session.home.humanCount} | bots ${session.home.botCount} | titulares ${session.home.startersCount}/${session.maxStartersPerSide} | reservas ${session.home.substitutesCount}/${session.maxSubstitutesPerSide} | fallback aberto ${session.home.botFallbackEligibleOpenSlots}`,
-    `AWAY | humanos ${session.away.humanCount} | bots ${session.away.botCount} | titulares ${session.away.startersCount}/${session.maxStartersPerSide} | reservas ${session.away.substitutesCount}/${session.maxSubstitutesPerSide} | fallback aberto ${session.away.botFallbackEligibleOpenSlots}`
+    `HOME | humanos ${session.home.humanCount} | bots ${session.home.botCount} | titulares ${session.home.startersCount}/${session.maxStartersPerSide} | reservas ${session.home.substitutesCount}/${session.maxSubstitutesPerSide}`,
+    `AWAY | humanos ${session.away.humanCount} | bots ${session.away.botCount} | titulares ${session.away.startersCount}/${session.maxStartersPerSide} | reservas ${session.away.substitutesCount}/${session.maxSubstitutesPerSide}`
   ],
   fallback: session.fallbackEligibleOpenSlots > 0
-    ? `Fallback total aberto: ${session.fallbackEligibleOpenSlots} slot(s) marcados para bot.`
-    : 'Fallback total aberto: nenhum slot elegível pendente.'
+    ? `Cobertura aberta: ${session.fallbackEligibleOpenSlots} vaga(s) elegível(is).`
+    : 'Cobertura aberta: nenhuma vaga elegível pendente.'
 });
 
 export const buildMultiplayerPreparationCardViewModel = (session: MultiplayerSessionSummary): MultiplayerPreparationCardViewModel => ({
-  title: `⚔️ PREPARAÇÃO DE CONFRONTO | HOME vs AWAY | sala ${session.code}`,
+  title: `⚔️ AQUECIMENTO | sala ${session.code}`,
   readiness: session.canPrepareMatch
-    ? 'Confronto pronto para a próxima etapa: há base humana mínima, titulares humanos em ambos os lados e nenhuma vaga elegível de fallback pendente.'
+    ? 'Confronto pronto para a próxima etapa.'
     : session.canUseBotFallbackNow
-      ? 'Sessão apta a aplicar fallback controlado antes de seguir para o confronto.'
-      : 'Sessão ainda bloqueada: faltam humanos ou titulares humanos em um dos lados.',
+      ? 'A cobertura automática já pode completar as vagas marcadas.'
+      : 'A convocação ainda depende de mais base humana.',
   notes: [
-    `HOME: ${session.home.humanCount} humano(s), ${session.home.botCount} bot(s), ${session.home.startersCount} titular(es), ${session.home.substitutesCount} reserva(s).`,
-    `AWAY: ${session.away.humanCount} humano(s), ${session.away.botCount} bot(s), ${session.away.startersCount} titular(es), ${session.away.substitutesCount} reserva(s).`,
+    `HOME: ${session.home.humanCount} humano(s), ${session.home.botCount} apoio(s), ${session.home.startersCount} titular(es), ${session.home.substitutesCount} reserva(s).`,
+    `AWAY: ${session.away.humanCount} humano(s), ${session.away.botCount} apoio(s), ${session.away.startersCount} titular(es), ${session.away.substitutesCount} reserva(s).`,
     session.hasHumanStarterOnEachSide
       ? 'Cada lado já tem ao menos um titular humano.'
       : 'Ainda falta titular humano em um dos lados.',
     session.canUseBotFallbackNow
-      ? `Há ${session.fallbackEligibleOpenSlots} vaga(s) elegível(is) para fallback controlado.`
-      : 'Nenhuma vaga de fallback pode ser preenchida agora.',
+      ? `Há ${session.fallbackEligibleOpenSlots} vaga(s) elegível(is) para cobertura automática.`
+      : 'Nenhuma vaga automática pode ser preenchida agora.',
     session.missingHumansToStart > 0
-      ? `Faltam ${session.missingHumansToStart} humano(s) para atingir o mínimo configurado.`
+      ? `Faltam ${session.missingHumansToStart} humano(s) para atingir o mínimo da sala.`
       : 'Mínimo humano atingido para esta sala.'
   ]
 });
 
-const turnText = (turn: MatchTurnView): string[] => [
-  `🎯 Lance ${turn.sequence}: ${turn.contextText}`,
-  turn.previousOutcome ? `Último desfecho: ${turn.previousOutcome}` : 'Último desfecho: abertura de nova jogada.',
-  `Prazo do turno: ${turn.deadlineAt.toISOString()}`
-];
+export const buildOnlineWorldCardViewModel = (input: {
+  playerName: string;
+  age: number;
+  position: string;
+  careerStatus: string;
+  currentClubName?: string;
+  walletBalance: number;
+  currentWeekNumber: number;
+  trainingAvailableThisWeek: boolean;
+  activeMatch?: MatchSummary | null;
+  currentSession?: MultiplayerSessionSummary | null;
+  canTryout: boolean;
+}): OnlineWorldCardViewModel => {
+  const activeMatch = input.activeMatch ?? null;
+  const currentSession = input.currentSession ?? null;
+
+  return {
+    artwork: activeMatch ? '🌃⚽🏟️' : currentSession ? '🌆👥⚽' : '🌍⚽✨',
+    headline: '🌍 JORNADA NO FUTEBOL',
+    identityLine: `${input.playerName} • ${input.age} anos • ${input.position}`,
+    clubLine: `🏠 ${input.currentClubName ?? 'Base amadora'} • ${input.careerStatus.toLowerCase()} • 💰 ${input.walletBalance}`,
+    progressLine: `🗓️ Semana ${input.currentWeekNumber} • ${input.trainingAvailableThisWeek ? 'treino livre' : 'treino feito'}`,
+    liveLine: activeMatch
+      ? `🏟️ Jogo ao vivo: ${activeMatch.scoreboard.homeClubName} ${activeMatch.scoreboard.homeScore} x ${activeMatch.scoreboard.awayScore} ${activeMatch.scoreboard.awayClubName}`
+      : input.canTryout
+        ? '🥅 Sua próxima chance está na peneira regional.'
+        : '🏟️ Sem jogo ao vivo agora; a rotina segue aberta.',
+    socialLine: currentSession
+      ? `👥 Sala ${currentSession.code} ativa • ${sessionStatusLabelMap[currentSession.status].toLowerCase()}`
+      : '👥 Nenhuma convocação ativa neste momento.',
+    focusLine: activeMatch
+      ? '🎯 Foco do momento: voltar ao estádio.'
+      : currentSession
+        ? '🎯 Foco do momento: alinhar o elenco no vestiário.'
+        : input.canTryout
+          ? '🎯 Foco do momento: evoluir e buscar espaço no profissional.'
+          : '🎯 Foco do momento: manter a rotina e preparar o próximo confronto.'
+  };
+};
+
+export const buildWeeklyAgendaCardViewModel = (input: {
+  playerName: string;
+  currentWeekNumber: number;
+  trainingAvailableThisWeek: boolean;
+  careerStatus: string;
+  hasActiveMatch: boolean;
+  hasCurrentSession: boolean;
+  canTryout: boolean;
+}): WeeklyAgendaCardViewModel => ({
+  artwork: '🗓️⚽📍',
+  title: `🗓️ AGENDA | ${input.playerName}`,
+  summary: `Semana ${input.currentWeekNumber} • ${input.trainingAvailableThisWeek ? 'treino livre' : 'treino feito'} • ${input.careerStatus.toLowerCase()}`,
+  commitments: [
+    input.hasActiveMatch
+      ? '🏟️ Jogo ao vivo pedindo retorno imediato.'
+      : '🌤️ Sem jogo ao vivo travando sua agenda.',
+    input.hasCurrentSession
+      ? '👥 Seu elenco compartilhado já está montado.'
+      : '📣 Ainda não há convocação assumida nesta semana.',
+    input.canTryout
+      ? '🥅 Você pode buscar a peneira regional.'
+      : '💼 Sua carreira profissional já pode focar em confronto, treino e rotina.'
+  ]
+});
 
 export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel => ({
-  headline: '🎮 TELESOCCER MATCH CENTER',
+  artwork: '🏟️🔥⚽',
+  headline: '🏟️ ESTÁDIO',
   scoreboard: `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
-  details: [
-    `⏱️ ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]} • status ${match.scoreboard.status}`,
-    `⚡ Energia ${match.energy} • 🟨 ${match.yellowCards} • 🟥 ${match.redCards} • suspensão ${match.suspensionMatchesRemaining}`,
-    match.injury
-      ? `🩺 Lesão ativa: ${match.injury.description} (${match.injury.matchesRemaining} partida(s) restantes)`
-      : '🩺 Lesão ativa: nenhuma registrada.'
-  ],
-  events: match.recentEvents.slice(0, 5).map((event) => `${event.minute}' ${event.description}`),
-  currentPlay: match.activeTurn ? turnText(match.activeTurn) : undefined
+  clockLine: `⏱️ ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]}`,
+  hudLine: `⚡ ${match.energy}   🟨 ${match.yellowCards}   🟥 ${match.redCards}`,
+  injuryLine: summarizeInjury(match),
+  playLine: currentPlayLine(match.activeTurn),
+  promptLine: promptLine(match.activeTurn),
+  detailsHint: '📖 Abra os detalhes para prazo, histórico e eventos recentes.'
+});
+
+export const buildMatchDetailsCardViewModel = (match: MatchSummary): MatchDetailsCardViewModel => ({
+  title: '📖 DETALHES DO JOGO',
+  summary: `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName} • ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]}`,
+  deadlineLine: match.activeTurn ? `⏳ Prazo do turno: ${match.activeTurn.deadlineAt.toISOString()}` : '⏳ Sem turno ativo no momento.',
+  history: turnHistory(match.activeTurn),
+  events: match.recentEvents.length > 0
+    ? match.recentEvents.slice(0, 5).map((event) => `${event.minute}' • ${event.description}`)
+    : ['Sem eventos recentes no jogo.']
 });
 
 export const squadSectionTitle = roleLabelMap;

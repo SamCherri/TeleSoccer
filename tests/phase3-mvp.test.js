@@ -17,12 +17,15 @@ const {
 const { CareerStatus } = require('../dist/domain/shared/enums.js');
 const { GameCardRenderer } = require('../dist/presentation/game-card-renderer.js');
 const {
+  buildOnlineWorldCardViewModel,
+  buildWeeklyAgendaCardViewModel,
   buildMultiplayerSessionCardViewModel,
   buildMultiplayerSquadCardViewModel,
   buildMultiplayerPreparationCardViewModel,
-  buildMatchCardViewModel
+  buildMatchCardViewModel,
+  buildMatchDetailsCardViewModel
 } = require('../dist/view-models/game-view-models.js');
-const { Phase1TelegramFacade } = require('../dist/bot/phase1-bot.js');
+const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchActionKey } = require('../dist/domain/match/types.js');
 const { DomainError } = require('../dist/shared/errors.js');
@@ -415,15 +418,44 @@ test('view models e renderers principais produzem cards visuais coerentes', asyn
   const squadVm = buildMultiplayerSquadCardViewModel(prepared.session, MultiplayerTeamSide.Home);
   const prepVm = buildMultiplayerPreparationCardViewModel(prepared.session);
   const matchVm = buildMatchCardViewModel(createMatchSummary());
+  const matchDetailsVm = buildMatchDetailsCardViewModel(createMatchSummary());
+  const onlineVm = buildOnlineWorldCardViewModel({
+    playerName: 'Host FC',
+    age: 18,
+    position: 'FORWARD',
+    careerStatus: 'PROFESSIONAL',
+    currentClubName: 'Porto Azul FC',
+    walletBalance: 100,
+    currentWeekNumber: 12,
+    trainingAvailableThisWeek: true,
+    activeMatch: createMatchSummary(),
+    currentSession: prepared.session,
+    canTryout: false
+  });
+  const agendaVm = buildWeeklyAgendaCardViewModel({
+    playerName: 'Host FC',
+    currentWeekNumber: 12,
+    trainingAvailableThisWeek: true,
+    careerStatus: 'PROFESSIONAL',
+    hasActiveMatch: true,
+    hasCurrentSession: true,
+    canTryout: false
+  });
 
-  assert.match(renderer.renderMultiplayerSessionCard(prepared.session), /SALA MULTIPLAYER/);
+  assert.match(renderer.renderMultiplayerSessionCard(prepared.session), /CONFRONTO ONLINE/);
   assert.match(renderer.renderMultiplayerSquadCard(prepared.session, MultiplayerTeamSide.Home), /TITULARES/);
-  assert.match(renderer.renderMultiplayerPreparationCard(prepared.session), /PREPARAÇÃO DE CONFRONTO/);
-  assert.match(renderer.renderMatchCard(createMatchSummary()), /MATCH CENTER/);
+  assert.match(renderer.renderMultiplayerPreparationCard(prepared.session), /AQUECIMENTO/);
+  assert.match(renderer.renderMatchCard(createMatchSummary()), /ESTÁDIO/);
+  assert.match(renderer.renderOnlineWorldCard({ playerName: 'Host FC', age: 18, position: 'FORWARD', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', walletBalance: 100, currentWeekNumber: 12, trainingAvailableThisWeek: true, activeMatch: createMatchSummary(), currentSession: prepared.session, canTryout: false }), /JORNADA NO FUTEBOL/);
+  assert.match(renderer.renderWeeklyAgendaCard({ playerName: 'Host FC', currentWeekNumber: 12, trainingAvailableThisWeek: true, careerStatus: 'PROFESSIONAL', hasActiveMatch: true, hasCurrentSession: true, canTryout: false }), /AGENDA \| Host FC/);
   assert.match(sessionVm.matchup, /HOME/);
   assert.ok(squadVm.starters.length >= 1);
   assert.ok(prepVm.notes.length >= 4);
-  assert.equal(matchVm.events.length, 2);
+  assert.match(matchVm.clockLine, /2º tempo/);
+  assert.match(matchVm.promptLine, /escolha sua/);
+  assert.equal(matchDetailsVm.events.length, 2);
+  assert.match(onlineVm.progressLine, /Semana 12/);
+  assert.equal(agendaVm.commitments.length, 3);
 });
 
 test('facade multiplayer entrega resposta visual, reforça humano-first e respeita host-only prepare', async () => {
@@ -452,17 +484,39 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
     renderer
   );
 
+  const hubReply = await facade.handleMultiplayerHub('host');
+  assert.match(hubReply.text, /JORNADA NO FUTEBOL/);
+  assert.match(hubReply.text, /atalho mais quente|próximo passo natural|mundo está livre/);
+  assert.deepEqual(
+    hubReply.actions,
+    [
+      phase1BotActions.mainMenu,
+      phase1BotActions.careerStatus,
+      phase1BotActions.weekAgenda,
+      phase1BotActions.weeklyTraining,
+      phase1BotActions.startMatch,
+      phase1BotActions.createSession,
+      phase1BotActions.lockerRoom,
+      phase1BotActions.invitations,
+      phase1BotActions.playerCard,
+      phase1BotActions.careerHistory,
+      phase1BotActions.walletStatement
+    ]
+  );
+
   const createdReply = await facade.handleCreateSession('host');
-  assert.match(createdReply.text, /prioridade humana/);
+  assert.match(createdReply.text, /convocação do confronto/);
   assert.match(createdReply.text, /HOME/);
 
-  const code = /Código: (\w+)/.exec(createdReply.text)[1];
+  const code = /Código da convocação: (\w+)/.exec(createdReply.text)[1];
   const joinReply = await facade.handleJoinSession('p2', code, MultiplayerTeamSide.Away, MultiplayerSquadRole.Starter);
-  assert.match(joinReply.text, /Humano continua sendo prioridade/);
+  assert.match(joinReply.text, /Convocação aceita/);
   assert.match(joinReply.text, /AWAY/);
 
   const prepReply = await facade.handlePrepareSession('host');
-  assert.match(prepReply.text, /Fallback aplicado agora/);
+  assert.match(prepReply.text, /apoio\(s\) automático\(s\)|prioridade humana/);
+  assert.ok(prepReply.actions.includes(phase1BotActions.currentSession));
+  assert.ok(prepReply.actions.includes(phase1BotActions.lockerRoom));
 });
 
 test('consulta /sala CODIGO permite leitura por profissional com o código mesmo sem participar', async () => {
@@ -471,6 +525,106 @@ test('consulta /sala CODIGO permite leitura por profissional com o código mesmo
   const outsiderView = await getService.execute('p5', created.session.code);
   assert.equal(outsiderView.code, created.session.code);
   assert.equal(outsiderView.totalParticipants, 1);
+});
+
+test('handleCurrentSession distingue sessão própria de consulta externa ao montar ações', async () => {
+  const { createService, getService } = createServices();
+  const renderer = new GameCardRenderer();
+  const noop = { execute: async () => { throw new DomainError('not used'); } };
+  const playerLookup = (telegramId) => ({
+    execute: async () => {
+      if (telegramId === 'host') {
+        return { name: 'Host FC', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' };
+      }
+      return { name: 'Ivo Sul', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' };
+    }
+  });
+  const statusLookup = (telegramId) => ({
+    execute: async () => ({
+      playerName: telegramId === 'host' ? 'Host FC' : 'Ivo Sul',
+      careerStatus: 'PROFESSIONAL',
+      currentClubName: 'Porto Azul FC',
+      walletBalance: 100,
+      currentWeekNumber: 12,
+      trainingAvailableThisWeek: true,
+      totalTrainings: 1,
+      totalTryouts: 1,
+      latestTryout: null,
+      recentHistory: []
+    })
+  });
+
+  const created = await createService.execute('host');
+
+  const hostFacade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Host FC', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => playerLookup('host').execute() },
+    { execute: async () => statusLookup('host').execute() },
+    { execute: async () => ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Host FC', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'PROFESSIONAL' }) },
+    noop,
+    noop,
+    noop,
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    noop,
+    undefined,
+    getService,
+    undefined,
+    undefined,
+    renderer
+  );
+
+  const outsiderFacade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Ivo Sul', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => playerLookup('p5').execute() },
+    { execute: async () => statusLookup('p5').execute() },
+    { execute: async () => ({ playerName: 'Ivo Sul', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Ivo Sul', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'PROFESSIONAL' }) },
+    noop,
+    noop,
+    noop,
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    noop,
+    undefined,
+    getService,
+    undefined,
+    undefined,
+    renderer
+  );
+
+  const ownReply = await hostFacade.handleCurrentSession('host', created.session.code);
+  assert.match(ownReply.text, /faz parte da sua jornada atual/);
+  assert.ok(ownReply.actions.includes(phase1BotActions.currentSession));
+  assert.ok(ownReply.actions.includes(phase1BotActions.lockerRoom));
+
+  const outsiderReply = await outsiderFacade.handleCurrentSession('p5', created.session.code);
+  assert.match(outsiderReply.text, /apenas observando uma convocação externa/);
+  assert.deepEqual(outsiderReply.actions, [
+    phase1BotActions.mainMenu,
+    phase1BotActions.weekAgenda,
+    phase1BotActions.createSession,
+    phase1BotActions.invitations,
+    phase1BotActions.playerCard,
+    phase1BotActions.careerHistory,
+    phase1BotActions.walletStatement
+  ]);
+});
+
+
+
+test('partida principal fica compacta e detalhes longos migram para tela separada', async () => {
+  const renderer = new GameCardRenderer();
+  const match = createMatchSummary();
+  const compact = renderer.renderMatchCard(match);
+  const details = renderer.renderMatchDetailsCard(match);
+
+  assert.match(compact, /🏟️ ESTÁDIO/);
+  assert.match(compact, /📖 Abra os detalhes/);
+  assert.doesNotMatch(compact, /IN_PROGRESS/);
+  assert.doesNotMatch(compact, /EVENTOS RECENTES/);
+  assert.match(details, /DETALHES DO JOGO/);
+  assert.match(details, /Prazo do turno/);
+  assert.match(details, /EVENTOS RECENTES/);
 });
 
 test('dispatcher valida comando multiplayer inválido com orientação clara', async () => {
@@ -509,4 +663,114 @@ test('dispatcher valida comando multiplayer inválido com orientação clara', a
 
   const invalidRole = await dispatcher.dispatch({ telegramId: 'host', text: '/entrar-sala ABC123 HOME BANCO' });
   assert.match(invalidRole.text, /Papel inválido/);
+});
+
+test('compatibilidade com /mmorpg e /multiplayer leva ao mesmo mundo do jogador', async () => {
+  const { getService } = createServices();
+  const renderer = new GameCardRenderer();
+  const noop = { execute: async () => { throw new DomainError('not used'); } };
+  const facade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Host FC', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ name: 'Host FC', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' }) },
+    { execute: async () => ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', walletBalance: 100, currentWeekNumber: 12, trainingAvailableThisWeek: true, totalTrainings: 1, totalTryouts: 1, latestTryout: null, recentHistory: [] }) },
+    { execute: async () => ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Host FC', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'PROFESSIONAL' }) },
+    noop,
+    noop,
+    noop,
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    undefined,
+    getService,
+    undefined,
+    undefined,
+    renderer
+  );
+  const creationFlow = {
+    expireIfNeeded: async () => null,
+    isActive: async () => false,
+    cancel: async () => ({ text: 'cancel', actions: [] }),
+    remindCurrentStep: async () => ({ text: 'remind', actions: [] }),
+    handleInput: async () => ({ kind: 'reply', reply: { text: 'reply', actions: [] } }),
+    start: async () => ({ text: 'start', actions: [] })
+  };
+  const dispatcher = new Phase1TelegramDispatcher(facade, creationFlow);
+
+  const mmorpgReply = await dispatcher.dispatch({ telegramId: 'host', text: '/mmorpg' });
+  const multiplayerReply = await dispatcher.dispatch({ telegramId: 'host', text: '/multiplayer' });
+
+  assert.match(mmorpgReply.text, /JORNADA NO FUTEBOL/);
+  assert.equal(multiplayerReply.text, mmorpgReply.text);
+  assert.deepEqual(multiplayerReply.actions, mmorpgReply.actions);
+});
+
+
+
+test('hub do mundo mantém acessos pessoais explícitos para base e profissional', async () => {
+  const facade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Base Kid', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async (telegramId) => telegramId === 'pro'
+      ? ({ name: 'Host FC', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' })
+      : ({ name: 'Base Kid', age: 14, position: 'MIDFIELDER', dominantFoot: 'RIGHT', currentClubName: null, walletBalance: 100, attributes: { PASSING: 20 }, careerStatus: 'YOUTH' }) },
+    { execute: async (telegramId) => telegramId === 'pro'
+      ? ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', walletBalance: 100, currentWeekNumber: 12, trainingAvailableThisWeek: true, totalTrainings: 1, totalTryouts: 1, latestTryout: null, recentHistory: [] })
+      : ({ playerName: 'Base Kid', careerStatus: 'YOUTH', currentClubName: null, walletBalance: 100, currentWeekNumber: 1, trainingAvailableThisWeek: true, totalTrainings: 0, totalTryouts: 0, latestTryout: null, recentHistory: [] }) },
+    { execute: async (telegramId) => ({ playerName: telegramId === 'pro' ? 'Host FC' : 'Base Kid', careerStatus: telegramId === 'pro' ? 'PROFESSIONAL' : 'YOUTH', currentClubName: telegramId === 'pro' ? 'Porto Azul FC' : null, entries: [], totalEntries: 0 }) },
+    { execute: async (telegramId) => ({ playerName: telegramId === 'pro' ? 'Host FC' : 'Base Kid', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: telegramId === 'pro' ? 'PROFESSIONAL' : 'YOUTH' }) },
+    { execute: async () => ({ newValue: 21, walletBalance: 80 }) },
+    { execute: async () => ({ status: 'FAILED', score: 1, requiredScore: 2 }) },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); }, getOptionalCurrentSession: async () => null },
+    { execute: async () => { throw new DomainError('not used'); } },
+    { execute: async () => { throw new DomainError('not used'); } }
+  );
+
+  const youthHub = await facade.handleWorldHub('base');
+  assert.ok(youthHub.actions.includes(phase1BotActions.playerCard));
+  assert.ok(youthHub.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(youthHub.actions.includes(phase1BotActions.walletStatement));
+
+  const professionalHub = await facade.handleWorldHub('pro');
+  assert.ok(professionalHub.actions.includes(phase1BotActions.playerCard));
+  assert.ok(professionalHub.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(professionalHub.actions.includes(phase1BotActions.walletStatement));
+});
+
+test('buildWorldActions permanece contextual e não força caminhos profissionais para jogador de base', async () => {
+  const facade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Base Kid', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ name: 'Base Kid', age: 14, position: 'MIDFIELDER', dominantFoot: 'RIGHT', currentClubName: null, walletBalance: 100, attributes: { PASSING: 20 }, careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ playerName: 'Base Kid', careerStatus: 'YOUTH', currentClubName: null, walletBalance: 100, currentWeekNumber: 1, trainingAvailableThisWeek: true, totalTrainings: 0, totalTryouts: 0, latestTryout: null, recentHistory: [] }) },
+    { execute: async () => ({ playerName: 'Base Kid', careerStatus: 'YOUTH', currentClubName: null, entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Base Kid', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'YOUTH' }) },
+    { execute: async () => ({ newValue: 21, walletBalance: 80 }) },
+    { execute: async () => ({ status: 'FAILED', score: 1, requiredScore: 2 }) }
+  );
+
+  assert.deepEqual(facade.buildWorldActions({ isProfessional: false, hasActiveMatch: false, hasCurrentSession: false }), [
+    phase1BotActions.mainMenu,
+    phase1BotActions.careerStatus,
+    phase1BotActions.weekAgenda,
+    phase1BotActions.weeklyTraining,
+    phase1BotActions.tryout,
+    phase1BotActions.invitations,
+    phase1BotActions.playerCard,
+    phase1BotActions.careerHistory,
+    phase1BotActions.walletStatement
+  ]);
+  assert.deepEqual(facade.buildWorldActions({ isProfessional: true, hasActiveMatch: true, hasCurrentSession: true }), [
+    phase1BotActions.mainMenu,
+    phase1BotActions.careerStatus,
+    phase1BotActions.weekAgenda,
+    phase1BotActions.weeklyTraining,
+    phase1BotActions.currentMatch,
+    phase1BotActions.currentSession,
+    phase1BotActions.lockerRoom,
+    phase1BotActions.invitations,
+    phase1BotActions.playerCard,
+    phase1BotActions.careerHistory,
+    phase1BotActions.walletStatement
+  ]);
 });

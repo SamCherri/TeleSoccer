@@ -12,6 +12,23 @@ Sempre que a regra entrega um novo estado jogável, a camada visual corresponden
 
 ## 3. Componentes visuais textuais atuais
 
+### Card de mundo MMORPG
+Mostra:
+- identidade do mundo online unificado
+- resumo do jogador
+- ambiente atual
+- rotina da semana
+- status da partida ativa
+- status da sessão compartilhada
+- sinais do momento dentro do mesmo fluxo
+
+### Card de agenda da semana
+Mostra:
+- semana atual
+- situação da rotina
+- compromissos vivos
+- pendências esportivas e sociais
+
 ### Card de sessão multiplayer
 Mostra:
 - modo online

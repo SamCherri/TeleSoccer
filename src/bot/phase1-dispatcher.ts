@@ -24,8 +24,13 @@ const commandToAction = new Map<string, string>([
   ['/confirmar-peneira', phase1BotActions.confirmTryout],
   ['/partida', phase1BotActions.startMatch],
   ['/lance', phase1BotActions.currentMatch],
+  ['/detalhes-jogo', phase1BotActions.matchDetails],
   ['/perder-lance', phase1BotActions.resolveTimeout],
-  ['/multiplayer', phase1BotActions.multiplayerHub],
+  ['/agenda', phase1BotActions.weekAgenda],
+  ['/vestiario', phase1BotActions.lockerRoom],
+  ['/convocacoes', phase1BotActions.invitations],
+  ['/multiplayer', phase1BotActions.mainMenu],
+  ['/mmorpg', phase1BotActions.mainMenu],
   ['/criar-sala', phase1BotActions.createSession],
   ['/sala', phase1BotActions.currentSession],
   ['/preparar-sala', phase1BotActions.prepareSession],
@@ -118,14 +123,14 @@ export class Phase1TelegramDispatcher {
         if (!code) {
           return {
             text: 'Use /entrar-sala CODIGO [HOME|AWAY] [TITULAR|RESERVA]. Se omitir lado/papel, o sistema tenta encaixar a próxima vaga disponível.',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.currentSession, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu, phase1BotActions.currentSession]
           };
         }
 
         if (parts.length > 4) {
           return {
             text: 'Formato inválido. Exemplo válido: /entrar-sala ABC123 AWAY TITULAR',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu]
           };
         }
 
@@ -134,13 +139,13 @@ export class Phase1TelegramDispatcher {
         if (sideToken && !parsedSide) {
           return {
             text: 'Lado inválido. Use HOME ou AWAY ao entrar na sala.',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu]
           };
         }
         if (roleToken && !parsedRole) {
           return {
             text: 'Papel inválido. Use TITULAR ou RESERVA ao entrar na sala.',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mainMenu]
           };
         }
 
@@ -188,6 +193,15 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.weeklyTraining) {
         return await this.facade.handleTrainingMenu(request.telegramId);
       }
+      if (action === phase1BotActions.weekAgenda) {
+        return await this.facade.handleWeekAgenda(request.telegramId);
+      }
+      if (action === phase1BotActions.lockerRoom) {
+        return await this.facade.handleLockerRoom(request.telegramId);
+      }
+      if (action === phase1BotActions.invitations) {
+        return await this.facade.handleInvitations(request.telegramId);
+      }
       if (action === phase1BotActions.tryout) {
         return await this.facade.handleTryoutPrompt(request.telegramId);
       }
@@ -200,11 +214,11 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.currentMatch) {
         return await this.facade.handleCurrentMatch(request.telegramId);
       }
+      if (action === phase1BotActions.matchDetails) {
+        return await this.facade.handleCurrentMatchDetails(request.telegramId);
+      }
       if (action === phase1BotActions.resolveTimeout) {
         return await this.facade.handleMatchAction(request.telegramId);
-      }
-      if (action === phase1BotActions.multiplayerHub) {
-        return await this.facade.handleMultiplayerHub(request.telegramId);
       }
       if (action === phase1BotActions.createSession) {
         return await this.facade.handleCreateSession(request.telegramId);
@@ -227,15 +241,17 @@ export class Phase1TelegramDispatcher {
       }
 
       return {
-        text: 'Comando não reconhecido nesta fase. Use o menu principal ou /multiplayer para continuar sua carreira.',
+        text: 'Não entendi esse atalho. Volte para sua jornada principal ou use /mmorpg apenas como compatibilidade.',
         actions: [
           phase1BotActions.mainMenu,
-          phase1BotActions.playerCard,
           phase1BotActions.careerStatus,
-          phase1BotActions.careerHistory,
+          phase1BotActions.weekAgenda,
           phase1BotActions.weeklyTraining,
-          phase1BotActions.startMatch,
-          phase1BotActions.multiplayerHub
+          phase1BotActions.invitations,
+          phase1BotActions.playerCard,
+          phase1BotActions.careerHistory,
+          phase1BotActions.walletStatement,
+          phase1BotActions.startMatch
         ]
       };
     } catch (error) {
@@ -244,13 +260,14 @@ export class Phase1TelegramDispatcher {
           text: `Não foi possível concluir a ação: ${error.message}`,
           actions: [
             phase1BotActions.mainMenu,
-            phase1BotActions.playerCard,
             phase1BotActions.careerStatus,
-            phase1BotActions.careerHistory,
+            phase1BotActions.weekAgenda,
             phase1BotActions.weeklyTraining,
-            phase1BotActions.tryout,
-            phase1BotActions.startMatch,
-            phase1BotActions.multiplayerHub
+            phase1BotActions.invitations,
+            phase1BotActions.playerCard,
+            phase1BotActions.careerHistory,
+            phase1BotActions.walletStatement,
+            phase1BotActions.startMatch
           ]
         };
       }

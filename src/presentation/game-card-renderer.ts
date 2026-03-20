@@ -1,8 +1,11 @@
 import {
   buildMatchCardViewModel,
+  buildMatchDetailsCardViewModel,
   buildMultiplayerPreparationCardViewModel,
   buildMultiplayerSessionCardViewModel,
   buildMultiplayerSquadCardViewModel,
+  buildOnlineWorldCardViewModel,
+  buildWeeklyAgendaCardViewModel,
   squadSectionTitle
 } from '../view-models/game-view-models';
 import { MatchSummary } from '../domain/match/types';
@@ -13,15 +16,77 @@ const renderBlock = (title: string, lines: string[]): string => [title, ...lines
 const renderList = (lines: string[], emptyLine: string): string[] => (lines.length > 0 ? lines.map((line) => `• ${line}`) : [`• ${emptyLine}`]);
 
 export class GameCardRenderer {
+  renderOnlineWorldCard(input: {
+    playerName: string;
+    age: number;
+    position: string;
+    careerStatus: string;
+    currentClubName?: string;
+    walletBalance: number;
+    currentWeekNumber: number;
+    trainingAvailableThisWeek: boolean;
+    activeMatch?: MatchSummary | null;
+    currentSession?: MultiplayerSessionSummary | null;
+    canTryout: boolean;
+  }): string {
+    const viewModel = buildOnlineWorldCardViewModel(input);
+    return [
+      viewModel.artwork,
+      viewModel.headline,
+      divider,
+      viewModel.identityLine,
+      viewModel.clubLine,
+      viewModel.progressLine,
+      viewModel.liveLine,
+      viewModel.socialLine,
+      viewModel.focusLine
+    ].join('\n');
+  }
+
+  renderWeeklyAgendaCard(input: {
+    playerName: string;
+    currentWeekNumber: number;
+    trainingAvailableThisWeek: boolean;
+    careerStatus: string;
+    hasActiveMatch: boolean;
+    hasCurrentSession: boolean;
+    canTryout: boolean;
+  }): string {
+    const viewModel = buildWeeklyAgendaCardViewModel(input);
+    return [
+      viewModel.artwork,
+      viewModel.title,
+      divider,
+      viewModel.summary,
+      ...renderList(viewModel.commitments, 'Nenhum compromisso pendente.')
+    ].join('\n');
+  }
+
   renderMatchCard(match: MatchSummary): string {
     const viewModel = buildMatchCardViewModel(match);
     return [
+      viewModel.artwork,
       viewModel.headline,
       divider,
       viewModel.scoreboard,
-      ...viewModel.details,
-      viewModel.currentPlay ? renderBlock('LANCE ATUAL', viewModel.currentPlay) : 'LANCE ATUAL\nSem lance pendente.',
-      viewModel.events.length > 0 ? renderBlock('EVENTOS RECENTES', viewModel.events.map((line) => `• ${line}`)) : 'EVENTOS RECENTES\n• Sem eventos.'
+      viewModel.clockLine,
+      viewModel.hudLine,
+      viewModel.injuryLine,
+      viewModel.playLine,
+      viewModel.promptLine,
+      viewModel.detailsHint
+    ].join('\n');
+  }
+
+  renderMatchDetailsCard(match: MatchSummary): string {
+    const viewModel = buildMatchDetailsCardViewModel(match);
+    return [
+      viewModel.title,
+      divider,
+      viewModel.summary,
+      viewModel.deadlineLine,
+      renderBlock('HISTÓRICO DO LANCE', renderList(viewModel.history, 'Sem histórico disponível.')),
+      renderBlock('EVENTOS RECENTES', renderList(viewModel.events, 'Sem eventos recentes.'))
     ].join('\n');
   }
 
