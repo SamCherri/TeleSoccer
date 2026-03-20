@@ -520,6 +520,86 @@ test('consulta /sala CODIGO permite leitura por profissional com o código mesmo
   assert.equal(outsiderView.totalParticipants, 1);
 });
 
+test('handleCurrentSession distingue sessão própria de consulta externa ao montar ações', async () => {
+  const { createService, getService } = createServices();
+  const renderer = new GameCardRenderer();
+  const noop = { execute: async () => { throw new DomainError('not used'); } };
+  const playerLookup = (telegramId) => ({
+    execute: async () => {
+      if (telegramId === 'host') {
+        return { name: 'Host FC', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' };
+      }
+      return { name: 'Ivo Sul', age: 18, position: 'FORWARD', dominantFoot: 'RIGHT', currentClubName: 'Porto Azul FC', walletBalance: 100, attributes: { PASSING: 50 }, careerStatus: 'PROFESSIONAL' };
+    }
+  });
+  const statusLookup = (telegramId) => ({
+    execute: async () => ({
+      playerName: telegramId === 'host' ? 'Host FC' : 'Ivo Sul',
+      careerStatus: 'PROFESSIONAL',
+      currentClubName: 'Porto Azul FC',
+      walletBalance: 100,
+      currentWeekNumber: 12,
+      trainingAvailableThisWeek: true,
+      totalTrainings: 1,
+      totalTryouts: 1,
+      latestTryout: null,
+      recentHistory: []
+    })
+  });
+
+  const created = await createService.execute('host');
+
+  const hostFacade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Host FC', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => playerLookup('host').execute() },
+    { execute: async () => statusLookup('host').execute() },
+    { execute: async () => ({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Host FC', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'PROFESSIONAL' }) },
+    noop,
+    noop,
+    noop,
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    noop,
+    undefined,
+    getService,
+    undefined,
+    undefined,
+    renderer
+  );
+
+  const outsiderFacade = new Phase1TelegramFacade(
+    { execute: async () => ({ name: 'Ivo Sul', walletBalance: 100, careerStatus: 'YOUTH' }) },
+    { execute: async () => playerLookup('p5').execute() },
+    { execute: async () => statusLookup('p5').execute() },
+    { execute: async () => ({ playerName: 'Ivo Sul', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Ivo Sul', walletBalance: 100, transactionCount: 0, recentTransactions: [], careerStatus: 'PROFESSIONAL' }) },
+    noop,
+    noop,
+    noop,
+    { execute: async () => { throw new DomainError('not used'); }, executeOptional: async () => null },
+    noop,
+    undefined,
+    getService,
+    undefined,
+    undefined,
+    renderer
+  );
+
+  const ownReply = await hostFacade.handleCurrentSession('host', created.session.code);
+  assert.match(ownReply.text, /faz parte da sua jornada atual/);
+  assert.ok(ownReply.actions.includes(phase1BotActions.currentSession));
+  assert.ok(ownReply.actions.includes(phase1BotActions.lockerRoom));
+
+  const outsiderReply = await outsiderFacade.handleCurrentSession('p5', created.session.code);
+  assert.match(outsiderReply.text, /apenas observando uma convocação externa/);
+  assert.deepEqual(outsiderReply.actions, [
+    phase1BotActions.mainMenu,
+    phase1BotActions.weekAgenda,
+    phase1BotActions.createSession,
+    phase1BotActions.invitations
+  ]);
+});
+
 test('dispatcher valida comando multiplayer inválido com orientação clara', async () => {
   const { createService, getService, joinService, prepareService } = createServices();
   const renderer = new GameCardRenderer();

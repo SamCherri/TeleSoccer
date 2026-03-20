@@ -400,6 +400,7 @@ export class Phase1TelegramFacade {
   }
 
   async handleMultiplayerHub(telegramId: string): Promise<BotReply> {
+    // Compatibilidade interna para chamadas antigas de testes/integrações.
     return this.handleWorldHub(telegramId);
   }
 
@@ -459,7 +460,8 @@ export class Phase1TelegramFacade {
     const invitationLines = snapshot.player.careerStatus !== CareerStatus.Professional
       ? [
           'Seu mundo social ainda começa pela primeira oportunidade profissional.',
-          'A principal porta aberta agora é a peneira regional.'
+          'Aqui, suas oportunidades ainda são de entrada: peneira regional, rotina e progresso rumo ao ambiente profissional.',
+          'Ainda não existe convocação de elenco profissional vinculada ao seu momento atual.'
         ]
       : snapshot.currentSession
         ? [
@@ -508,14 +510,18 @@ export class Phase1TelegramFacade {
   async handleCurrentSession(telegramId: string, sessionCode?: string): Promise<BotReply> {
     const session = await this.getMultiplayerSessionService.execute(telegramId, sessionCode);
     const snapshot = await this.getWorldSnapshot(telegramId);
+    const isOwnCurrentSession = !sessionCode || snapshot.currentSession?.code === session.code;
     return {
       text: [
         this.renderer.renderMultiplayerSessionCard(session),
         this.renderer.renderMultiplayerSquadCard(session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(session, MultiplayerTeamSide.Away),
-        this.renderer.renderMultiplayerPreparationCard(session)
+        this.renderer.renderMultiplayerPreparationCard(session),
+        isOwnCurrentSession
+          ? 'Este ambiente faz parte da sua jornada atual no mundo do jogador.'
+          : 'Você está apenas observando uma convocação externa pelo código, sem vínculo direto dela com a sua rotina atual.'
       ].join('\n\n'),
-      actions: this.buildWorldActionsFromSnapshot(snapshot)
+      actions: isOwnCurrentSession ? this.buildWorldActionsFromSnapshot(snapshot) : this.buildExternalSessionActions(snapshot)
     };
   }
 
@@ -608,6 +614,23 @@ export class Phase1TelegramFacade {
       hasActiveMatch: Boolean(snapshot.activeMatch),
       hasCurrentSession: Boolean(snapshot.currentSession)
     });
+  }
+
+  private buildExternalSessionActions(snapshot: {
+    player: { careerStatus: CareerStatus };
+    activeMatch: Awaited<ReturnType<GetActiveMatchService['executeOptional']>> | null;
+    currentSession: Awaited<ReturnType<GetMultiplayerSessionService['getOptionalCurrentSession']>> | null;
+  }): string[] {
+    if (snapshot.player.careerStatus !== CareerStatus.Professional) {
+      return this.buildWorldActionsFromSnapshot(snapshot);
+    }
+
+    return [
+      phase1BotActions.mainMenu,
+      phase1BotActions.weekAgenda,
+      snapshot.currentSession ? phase1BotActions.currentSession : phase1BotActions.createSession,
+      phase1BotActions.invitations
+    ];
   }
 
   private toMatchReply(

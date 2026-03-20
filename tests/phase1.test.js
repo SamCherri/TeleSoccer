@@ -604,6 +604,12 @@ test('dispatcher abre prompt de criação no /start quando ainda não existe jog
   assert.deepEqual(reply.actions, [phase1BotActions.createPlayer]);
 });
 
+test('phase1BotActions está disponível no topo do teste para as navegações do mundo', async () => {
+  assert.equal(typeof phase1BotActions.mainMenu, 'string');
+  assert.equal(phase1BotActions.mainMenu, 'Continuar jornada');
+  assert.equal(phase1BotActions.weekAgenda, 'Ver agenda da semana');
+});
+
 test('dispatcher abre menu principal e roteia comandos reais do bot', async () => {
   const repo = new InMemoryPlayerRepository();
   const clubs = new InMemoryClubRepository();
