@@ -588,3 +588,59 @@ test('bloqueia nova partida quando há suspensão pendente a cumprir', async () 
     return true;
   });
 });
+
+
+test('fachada da partida expõe cena visual simples com svg e fallback textual', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+
+  await createPlayerService.execute({
+    telegramId: 'scene-1',
+    name: 'Leo Cena',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 180,
+    weightKg: 74,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  const player = await repo.findByTelegramId('scene-1');
+  player.careerStatus = CareerStatus.Professional;
+  player.currentClubId = 'club-1';
+  player.currentClubName = 'Porto Azul FC';
+
+  const matchRepository = new InMemoryMatchRepository(repo);
+  const matchEngine = new MatchEngine();
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    { execute: async (telegramId) => ({
+      playerName: (await repo.findByTelegramId(telegramId)).name,
+      careerStatus: CareerStatus.Professional,
+      currentClubName: 'Porto Azul FC',
+      walletBalance: 100,
+      currentWeekNumber: 1,
+      trainingAvailableThisWeek: true,
+      totalTrainings: 0,
+      totalTryouts: 0,
+      latestTryout: null,
+      recentHistory: []
+    }) },
+    { execute: async () => ({ playerName: 'Leo Cena', careerStatus: CareerStatus.Professional, currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Leo Cena', careerStatus: CareerStatus.Professional, walletBalance: 100, transactionCount: 0, recentTransactions: [] }) },
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs),
+    new StartMatchService(matchRepository, matchEngine),
+    new GetActiveMatchService(matchRepository, matchEngine),
+    new ResolveMatchTurnService(matchRepository, matchEngine)
+  );
+
+  const reply = await facade.handleStartMatch('scene-1');
+
+  assert.ok(reply.scene);
+  assert.match(reply.scene.svg, /<svg/);
+  assert.match(reply.text, /CENA DO LANCE/);
+  assert.match(reply.scene.fallbackText, /Arte preparada/);
+});
