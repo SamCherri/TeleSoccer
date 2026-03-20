@@ -20,6 +20,8 @@ Regras de negócio puras.
 - `match/`: motor da partida solo por turnos
 - `multiplayer/`: sessão pré-jogo com dois elencos, múltiplos humanos, slots persistidos, reservas e fallback
 
+Esses módulos continuam separados por responsabilidade de domínio, mas a experiência entregue no bot agora é unificada como um hub MMORPG.
+
 ### `src/infra/`
 Adaptadores de persistência e integrações.
 
@@ -63,14 +65,20 @@ O projeto saiu de uma estrutura implícita de “host + segundo participante” 
 - `linkedMatchId`
 - `status`
 
-## 4. Partida e futura convergência
+## 4. Partida, sessão e convergência de experiência
 
-A Fase 2 permanece focada em partida solo por turnos, mas a modelagem de sessão agora deixa explícita a direção futura para:
+A Fase 2 permanece focada em partida por turnos, mas a modelagem de sessão agora deixa explícita a direção futura para:
 
 - lineups híbridos humano + bot
 - múltiplos humanos por lado
 - reaproveitamento de participantes persistidos em `Match`
 - expansão gradual até 11x11 + banco de reservas
+
+No bot, isso agora aparece como um único fluxo:
+
+- `/mmorpg` é o hub principal
+- `/multiplayer` é apenas alias de compatibilidade
+- o hub agrega estado de carreira, partida ativa e sessão compartilhada
 
 ## 5. Camada visual integrada à lógica
 

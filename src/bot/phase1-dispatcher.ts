@@ -25,7 +25,8 @@ const commandToAction = new Map<string, string>([
   ['/partida', phase1BotActions.startMatch],
   ['/lance', phase1BotActions.currentMatch],
   ['/perder-lance', phase1BotActions.resolveTimeout],
-  ['/multiplayer', phase1BotActions.multiplayerHub],
+  ['/multiplayer', phase1BotActions.mmorpgHub],
+  ['/mmorpg', phase1BotActions.mmorpgHub],
   ['/criar-sala', phase1BotActions.createSession],
   ['/sala', phase1BotActions.currentSession],
   ['/preparar-sala', phase1BotActions.prepareSession],
@@ -118,14 +119,14 @@ export class Phase1TelegramDispatcher {
         if (!code) {
           return {
             text: 'Use /entrar-sala CODIGO [HOME|AWAY] [TITULAR|RESERVA]. Se omitir lado/papel, o sistema tenta encaixar a próxima vaga disponível.',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.currentSession, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mmorpgHub, phase1BotActions.currentSession, phase1BotActions.mainMenu]
           };
         }
 
         if (parts.length > 4) {
           return {
             text: 'Formato inválido. Exemplo válido: /entrar-sala ABC123 AWAY TITULAR',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
           };
         }
 
@@ -134,13 +135,13 @@ export class Phase1TelegramDispatcher {
         if (sideToken && !parsedSide) {
           return {
             text: 'Lado inválido. Use HOME ou AWAY ao entrar na sala.',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
           };
         }
         if (roleToken && !parsedRole) {
           return {
             text: 'Papel inválido. Use TITULAR ou RESERVA ao entrar na sala.',
-            actions: [phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+            actions: [phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
           };
         }
 
@@ -203,7 +204,7 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.resolveTimeout) {
         return await this.facade.handleMatchAction(request.telegramId);
       }
-      if (action === phase1BotActions.multiplayerHub) {
+      if (action === phase1BotActions.mmorpgHub) {
         return await this.facade.handleMultiplayerHub(request.telegramId);
       }
       if (action === phase1BotActions.createSession) {
@@ -227,7 +228,7 @@ export class Phase1TelegramDispatcher {
       }
 
       return {
-        text: 'Comando não reconhecido nesta fase. Use o menu principal ou /multiplayer para continuar sua carreira.',
+        text: 'Comando não reconhecido nesta fase. Use o menu principal ou /mmorpg para continuar sua carreira.',
         actions: [
           phase1BotActions.mainMenu,
           phase1BotActions.playerCard,
@@ -235,7 +236,7 @@ export class Phase1TelegramDispatcher {
           phase1BotActions.careerHistory,
           phase1BotActions.weeklyTraining,
           phase1BotActions.startMatch,
-          phase1BotActions.multiplayerHub
+          phase1BotActions.mmorpgHub
         ]
       };
     } catch (error) {
@@ -250,7 +251,7 @@ export class Phase1TelegramDispatcher {
             phase1BotActions.weeklyTraining,
             phase1BotActions.tryout,
             phase1BotActions.startMatch,
-            phase1BotActions.multiplayerHub
+            phase1BotActions.mmorpgHub
           ]
         };
       }

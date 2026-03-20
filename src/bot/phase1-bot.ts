@@ -44,10 +44,10 @@ export const phase1BotActions = {
   startMatch: 'Entrar em partida',
   currentMatch: 'Ver partida atual',
   resolveTimeout: 'Forçar perda do lance',
-  multiplayerHub: '/multiplayer',
-  createSession: '/criar-sala',
-  currentSession: '/sala',
-  prepareSession: '/preparar-sala',
+  mmorpgHub: '/mmorpg',
+  createSession: 'Criar sessão online',
+  currentSession: 'Ver sessão atual',
+  prepareSession: 'Preparar confronto online',
   joinSessionGuide: '/entrar-sala CODIGO HOME TITULAR',
   trainingPassing: 'Treinar passe',
   trainingShooting: 'Treinar finalização',
@@ -217,7 +217,7 @@ export class Phase1TelegramFacade {
         `Clube: ${player.currentClubName ?? 'Base amadora'}`,
         `Status: ${player.careerStatus}`,
         `Saldo: ${player.walletBalance} moedas`,
-        'Modo online: use /multiplayer para ver ou criar uma sessão humano-first.'
+        'Mundo MMORPG: carreira, partida e sessão online ficam no mesmo fluxo. Use /mmorpg para entrar.'
       ].join('\n'),
       actions: this.buildMainMenuActions(player.careerStatus === CareerStatus.Professional)
     };
@@ -366,22 +366,45 @@ export class Phase1TelegramFacade {
   }
 
   async handleMultiplayerHub(telegramId: string): Promise<BotReply> {
+    const player = await this.getPlayerCardService.execute(telegramId);
     const optionalSession = await this.getMultiplayerSessionService.getOptionalCurrentSession(telegramId);
+    let activeMatch = null;
+    try {
+      activeMatch = await this.getActiveMatchService.execute(telegramId);
+    } catch (error) {
+      if (!(error instanceof DomainError)) {
+        throw error;
+      }
+    }
     const sessionText = optionalSession
       ? this.renderer.renderMultiplayerSessionCard(optionalSession)
-      : 'Nenhuma sala ativa encontrada para o seu usuário profissional.';
+      : 'Nenhuma sessão compartilhada ativa encontrada para o seu usuário profissional.';
 
     return {
       text: [
-        '🌐 TeleSoccer Online Multiplayer',
+        this.renderer.renderOnlineWorldCard({
+          playerName: player.name,
+          careerStatus: player.careerStatus,
+          currentClubName: player.currentClubName ?? undefined,
+          activeMatch,
+          currentSession: optionalSession
+        }),
+        '🌐 TeleSoccer MMORPG Online',
+        'A experiência online não é separada da carreira solo: a mesma progressão leva você para partidas e sessões compartilhadas.',
         'Arquitetura humano-first: dois lados, muitos humanos por sessão, titulares e reservas.',
         'Bots não são o padrão. Eles entram apenas como fallback elegível e controlado.',
-        'Nesta etapa, criar, entrar, consultar e preparar sala exige jogador profissional.',
-        'Somente o host prepara a sala antes da futura convergência com a partida compartilhada.',
+        'Nesta etapa, criar, entrar, consultar e preparar sessão exige jogador profissional.',
+        'Somente o host prepara a sessão antes da futura convergência com a partida compartilhada.',
         sessionText,
         `Para entrar em uma sala existente use: /entrar-sala CODIGO ${sideExample} ${roleExample}`
       ].join('\n\n'),
-      actions: [phase1BotActions.createSession, phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.mainMenu]
+      actions: [
+        phase1BotActions.startMatch,
+        phase1BotActions.createSession,
+        phase1BotActions.currentSession,
+        phase1BotActions.prepareSession,
+        phase1BotActions.mainMenu
+      ]
     };
   }
 
@@ -401,10 +424,10 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSessionCard(result.session),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away),
-        'Sala criada com prioridade humana e fallback controlado apenas em slots marcados.',
+        'Sessão online criada dentro do mesmo fluxo MMORPG da carreira, com prioridade humana e fallback controlado apenas em slots marcados.',
         `Exemplo de entrada: /entrar-sala ${result.session.code} AWAY TITULAR`
       ].join('\n\n'),
-      actions: [phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+      actions: [phase1BotActions.startMatch, phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
     };
   }
 
@@ -417,7 +440,7 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSquadCard(session, MultiplayerTeamSide.Away),
         this.renderer.renderMultiplayerPreparationCard(session)
       ].join('\n\n'),
-      actions: [phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+      actions: [phase1BotActions.startMatch, phase1BotActions.prepareSession, phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
     };
   }
 
@@ -432,12 +455,12 @@ export class Phase1TelegramFacade {
       text: [
         `✅ Entrada confirmada na sala ${result.session.code}.`,
         `Você ocupou ${result.participant.side} | ${result.participant.squadRole} | slot ${result.participant.slotNumber}.`,
-        'Humano continua sendo prioridade; bots só entram depois, se o host preparar a sala e houver slot elegível.',
+        'Você continua no mesmo mundo MMORPG da carreira; humano segue sendo prioridade e bots só entram depois, se o host preparar a sala e houver slot elegível.',
         this.renderer.renderMultiplayerSessionCard(result.session),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
       ].join('\n\n'),
-      actions: [phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+      actions: [phase1BotActions.startMatch, phase1BotActions.currentSession, phase1BotActions.prepareSession, phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
     };
   }
 
@@ -454,7 +477,7 @@ export class Phase1TelegramFacade {
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Home),
         this.renderer.renderMultiplayerSquadCard(result.session, MultiplayerTeamSide.Away)
       ].join('\n\n'),
-      actions: [phase1BotActions.currentSession, phase1BotActions.multiplayerHub, phase1BotActions.mainMenu]
+      actions: [phase1BotActions.startMatch, phase1BotActions.currentSession, phase1BotActions.mmorpgHub, phase1BotActions.mainMenu]
     };
   }
 
@@ -465,7 +488,7 @@ export class Phase1TelegramFacade {
       phase1BotActions.careerHistory,
       phase1BotActions.walletStatement,
       phase1BotActions.weeklyTraining,
-      phase1BotActions.multiplayerHub,
+      phase1BotActions.mmorpgHub,
       ...(isProfessional ? [phase1BotActions.startMatch, phase1BotActions.currentMatch] : [phase1BotActions.tryout])
     ];
   }
@@ -493,12 +516,12 @@ export class Phase1TelegramFacade {
       text: [leadText, this.renderer.renderMatchCard(match)].join('\n\n'),
       actions:
         match.status === MatchStatus.Finished || !turn
-          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch, phase1BotActions.multiplayerHub]
+          ? [phase1BotActions.mainMenu, phase1BotActions.startMatch, phase1BotActions.mmorpgHub]
           : [
               ...turn.availableActions.map((action) => matchActionLabels[action.key]),
               phase1BotActions.resolveTimeout,
               phase1BotActions.currentMatch,
-              phase1BotActions.multiplayerHub,
+              phase1BotActions.mmorpgHub,
               phase1BotActions.mainMenu
             ]
     };

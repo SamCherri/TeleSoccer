@@ -155,6 +155,7 @@ Posição: ...
 Clube: ...
 Status: ...
 Dinheiro: ...
+Mundo: use /mmorpg para entrar no hub online unificado
 Botões
 Ver ficha
 Treinar
@@ -163,6 +164,21 @@ Ver carreira
 Ver histórico
 Ver contrato
 Voltar
+
+## 6.2 Hub MMORPG unificado
+
+### Objetivo
+Reunir carreira, partida ativa e sessão compartilhada em um único ponto de navegação.
+
+### Comandos
+- `/mmorpg` como hub principal
+- `/multiplayer` como alias compatível
+
+### Conteúdo esperado
+- resumo do jogador
+- status da partida ativa, se existir
+- status da sessão compartilhada, se existir
+- atalhos para entrar em partida, criar sessão e consultar sessão atual
 7. Fluxo de ficha do jogador
 7.1 Objetivo
 Exibir os dados principais do personagem.

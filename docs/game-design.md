@@ -6,6 +6,17 @@ TeleSoccer é um jogo de futebol online via bot do Telegram com foco em jogadore
 
 A progressão começa pela carreira de um jogador, mas o produto já precisa comunicar que existe um universo de jogo online, e não apenas uma automação textual administrativa.
 
+## 1.1 Direção de experiência
+
+Solo e multiplayer não devem aparecer como produtos separados.
+
+O TeleSoccer deve se comportar como um **MMORPG de futebol**, em que:
+
+- a carreira individual é a porta de entrada do mesmo mundo online
+- a partida por turnos é uma atividade desse mundo
+- a sessão compartilhada com outros humanos é outra atividade do mesmo mundo
+- a navegação do bot precisa refletir essa união
+
 ## 2. Princípio humano-first
 
 O multiplayer segue estas regras:
@@ -22,6 +33,7 @@ O multiplayer segue estas regras:
 Mesmo dentro do Telegram, a apresentação precisa reforçar fantasia de jogo.
 
 ### Cards oficiais do MVP
+- mundo MMORPG
 - sessão multiplayer
 - elenco por lado
 - preparação do confronto

@@ -63,6 +63,15 @@ export interface MultiplayerPreparationCardViewModel {
   notes: string[];
 }
 
+export interface OnlineWorldCardViewModel {
+  headline: string;
+  playerLine: string;
+  worldLine: string;
+  matchLine: string;
+  sessionLine: string;
+  guidance: string[];
+}
+
 const formatParticipant = (name: string, kind: MultiplayerParticipantKind, isHost: boolean, isCaptain: boolean, slotNumber: number): string => {
   const badges = [kind === MultiplayerParticipantKind.Human ? '🧑 HUM' : '🤖 BOT'];
   if (isHost) {
@@ -132,6 +141,39 @@ export const buildMultiplayerPreparationCardViewModel = (session: MultiplayerSes
       : 'Mínimo humano atingido para esta sala.'
   ]
 });
+
+export const buildOnlineWorldCardViewModel = (input: {
+  playerName: string;
+  careerStatus: string;
+  currentClubName?: string;
+  activeMatch?: MatchSummary | null;
+  currentSession?: MultiplayerSessionSummary | null;
+}): OnlineWorldCardViewModel => {
+  const activeMatch = input.activeMatch ?? null;
+  const currentSession = input.currentSession ?? null;
+
+  return {
+    headline: '🌍 TELESOCCER MMORPG | MUNDO DO JOGADOR',
+    playerLine: `Jogador: ${input.playerName} • status ${input.careerStatus} • clube ${input.currentClubName ?? 'Base amadora'}`,
+    worldLine: activeMatch || currentSession
+      ? 'Mundo online unificado: sua carreira, suas partidas e sua sessão compartilhada convivem no mesmo fluxo.'
+      : 'Mundo online unificado: avance a carreira para entrar em partidas e sessões compartilhadas sem trocar de modo.',
+    matchLine: activeMatch
+      ? `Partida ativa: ${activeMatch.scoreboard.homeClubName} ${activeMatch.scoreboard.homeScore} x ${activeMatch.scoreboard.awayScore} ${activeMatch.scoreboard.awayClubName} aos ${activeMatch.scoreboard.minute}'.`
+      : 'Partida ativa: nenhuma partida em andamento para este jogador agora.',
+    sessionLine: currentSession
+      ? `Sessão compartilhada: sala ${currentSession.code} • status ${sessionStatusLabelMap[currentSession.status]} • HOME ${currentSession.home.startersCount + currentSession.home.substitutesCount} x ${currentSession.away.startersCount + currentSession.away.substitutesCount} AWAY.`
+      : 'Sessão compartilhada: você ainda não participa de uma sala ativa.',
+    guidance: [
+      activeMatch
+        ? 'Use Entrar em partida para voltar ao lance atual quando quiser.'
+        : 'Use Entrar em partida para jogar sua carreira imediatamente quando estiver profissional.',
+      currentSession
+        ? 'Use Ver sessão atual para acompanhar o elenco e preparar o confronto compartilhado.'
+        : 'Use Criar sessão online para abrir uma sala MMORPG compartilhada com outros humanos.'
+    ]
+  };
+};
 
 const turnText = (turn: MatchTurnView): string[] => [
   `🎯 Lance ${turn.sequence}: ${turn.contextText}`,

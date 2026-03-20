@@ -17,6 +17,7 @@ const {
 const { CareerStatus } = require('../dist/domain/shared/enums.js');
 const { GameCardRenderer } = require('../dist/presentation/game-card-renderer.js');
 const {
+  buildOnlineWorldCardViewModel,
   buildMultiplayerSessionCardViewModel,
   buildMultiplayerSquadCardViewModel,
   buildMultiplayerPreparationCardViewModel,
@@ -415,15 +416,24 @@ test('view models e renderers principais produzem cards visuais coerentes', asyn
   const squadVm = buildMultiplayerSquadCardViewModel(prepared.session, MultiplayerTeamSide.Home);
   const prepVm = buildMultiplayerPreparationCardViewModel(prepared.session);
   const matchVm = buildMatchCardViewModel(createMatchSummary());
+  const onlineVm = buildOnlineWorldCardViewModel({
+    playerName: 'Host FC',
+    careerStatus: 'PROFESSIONAL',
+    currentClubName: 'Porto Azul FC',
+    activeMatch: createMatchSummary(),
+    currentSession: prepared.session
+  });
 
   assert.match(renderer.renderMultiplayerSessionCard(prepared.session), /SALA MULTIPLAYER/);
   assert.match(renderer.renderMultiplayerSquadCard(prepared.session, MultiplayerTeamSide.Home), /TITULARES/);
   assert.match(renderer.renderMultiplayerPreparationCard(prepared.session), /PREPARAÇÃO DE CONFRONTO/);
   assert.match(renderer.renderMatchCard(createMatchSummary()), /MATCH CENTER/);
+  assert.match(renderer.renderOnlineWorldCard({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', activeMatch: createMatchSummary(), currentSession: prepared.session }), /MMORPG/);
   assert.match(sessionVm.matchup, /HOME/);
   assert.ok(squadVm.starters.length >= 1);
   assert.ok(prepVm.notes.length >= 4);
   assert.equal(matchVm.events.length, 2);
+  assert.match(onlineVm.worldLine, /Mundo online unificado/);
 });
 
 test('facade multiplayer entrega resposta visual, reforça humano-first e respeita host-only prepare', async () => {
@@ -452,13 +462,17 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
     renderer
   );
 
+  const hubReply = await facade.handleMultiplayerHub('host');
+  assert.match(hubReply.text, /TELESOCCER MMORPG/);
+  assert.match(hubReply.text, /não é separada da carreira solo/);
+
   const createdReply = await facade.handleCreateSession('host');
-  assert.match(createdReply.text, /prioridade humana/);
+  assert.match(createdReply.text, /fluxo MMORPG/);
   assert.match(createdReply.text, /HOME/);
 
   const code = /Código: (\w+)/.exec(createdReply.text)[1];
   const joinReply = await facade.handleJoinSession('p2', code, MultiplayerTeamSide.Away, MultiplayerSquadRole.Starter);
-  assert.match(joinReply.text, /Humano continua sendo prioridade/);
+  assert.match(joinReply.text, /mesmo mundo MMORPG/);
   assert.match(joinReply.text, /AWAY/);
 
   const prepReply = await facade.handlePrepareSession('host');

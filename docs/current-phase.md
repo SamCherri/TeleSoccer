@@ -1,7 +1,7 @@
 # TeleSoccer - Fase Atual
 
 ## Fase atual
-**Fase 2 consolidada + MVP estrutural pré-Fase 3**
+**Fase 2 consolidada + MVP estrutural pré-Fase 3 com fluxo MMORPG unificado**
 
 ---
 
@@ -9,7 +9,8 @@
 
 Consolidar a Fase 2 e corrigir a direção do multiplayer antes da Fase 3, deixando o TeleSoccer com:
 
-- partida solo por turnos preservada
+- carreira, partida e sessão compartilhada no mesmo fluxo MMORPG
+- partida por turnos preservada como parte desse mesmo mundo
 - base multiplayer humano-first com múltiplos jogadores por sessão
 - dois lados persistidos (`HOME` e `AWAY`)
 - titulares e reservas por lado
@@ -36,11 +37,17 @@ Consolidar a Fase 2 e corrigir a direção do multiplayer antes da Fase 3, deixa
 - slots persistidos por lado/papel, com marcação explícita de fallback
 - leitura de prontidão, permissão de preparação e transição para estado real de preparação da sessão
 
-### 2.3 Camada visual MVP oficial
+### 2.3 Convergência de experiência no bot
+- o usuário não navega mais como se existissem “modo solo” e “modo multiplayer” separados
+- `/mmorpg` vira o hub oficial do mundo online
+- `/multiplayer` permanece como alias compatível
+- o hub mostra carreira, partida ativa e sessão compartilhada no mesmo ponto de entrada
+### 2.4 Camada visual MVP oficial
 - card forte de sessão multiplayer
 - card de elenco por lado
 - card de preparação do confronto
 - card de partida com identidade visual mais forte
+- card de mundo MMORPG unificando carreira, partida e sessão
 - separação entre domínio, view models e renderers
 
 ---
@@ -81,3 +88,4 @@ O estado atual só é válido porque:
 4. a sessão diferencia lados, papéis de elenco e tipo do participante
 5. a apresentação visual acompanha a regra implementada
 6. a documentação oficial já reflete a direção humano-first
+7. o bot apresenta solo e sessão compartilhada como partes do mesmo MMORPG

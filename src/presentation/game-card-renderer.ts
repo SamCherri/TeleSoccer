@@ -1,4 +1,5 @@
 import {
+  buildOnlineWorldCardViewModel,
   buildMatchCardViewModel,
   buildMultiplayerPreparationCardViewModel,
   buildMultiplayerSessionCardViewModel,
@@ -13,6 +14,25 @@ const renderBlock = (title: string, lines: string[]): string => [title, ...lines
 const renderList = (lines: string[], emptyLine: string): string[] => (lines.length > 0 ? lines.map((line) => `• ${line}`) : [`• ${emptyLine}`]);
 
 export class GameCardRenderer {
+  renderOnlineWorldCard(input: {
+    playerName: string;
+    careerStatus: string;
+    currentClubName?: string;
+    activeMatch?: MatchSummary | null;
+    currentSession?: MultiplayerSessionSummary | null;
+  }): string {
+    const viewModel = buildOnlineWorldCardViewModel(input);
+    return [
+      viewModel.headline,
+      divider,
+      viewModel.playerLine,
+      viewModel.worldLine,
+      viewModel.matchLine,
+      viewModel.sessionLine,
+      renderBlock('PRÓXIMOS PASSOS', renderList(viewModel.guidance, 'Sem orientação disponível.'))
+    ].join('\n');
+  }
+
   renderMatchCard(match: MatchSummary): string {
     const viewModel = buildMatchCardViewModel(match);
     return [
