@@ -25,10 +25,21 @@ import {
   MultiplayerTeamSide
 } from '../domain/multiplayer/types';
 import { GameCardRenderer } from '../presentation/game-card-renderer';
+import { buildMatchCardViewModel } from '../view-models/game-view-models';
+
+export interface BotReplyScene {
+  key: string;
+  title: string;
+  hud: string;
+  phrase: string;
+  svg: string;
+  fallbackText: string;
+}
 
 export interface BotReply {
   text: string;
   actions: string[];
+  scene?: BotReplyScene;
 }
 
 export const phase1BotActions = {
@@ -652,9 +663,19 @@ export class Phase1TelegramFacade {
     worldActions: string[]
   ): BotReply {
     const turn = match.activeTurn;
+    const matchCard = this.renderer.renderMatchCard(match);
+    const sceneViewModel = buildMatchCardViewModel(match).scene;
 
     return {
-      text: [leadText, this.renderer.renderMatchCard(match)].join('\n\n'),
+      text: [leadText, matchCard].join('\n\n'),
+      scene: {
+        key: sceneViewModel.asset.key,
+        title: sceneViewModel.title,
+        hud: sceneViewModel.hud,
+        phrase: sceneViewModel.phrase,
+        svg: this.renderer.renderMatchSceneSvg(match),
+        fallbackText: sceneViewModel.fallback
+      },
       actions:
         match.status === MatchStatus.Finished || !turn
           ? worldActions

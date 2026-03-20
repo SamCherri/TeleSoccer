@@ -13,6 +13,7 @@ import { MultiplayerSessionSummary, MultiplayerTeamSide } from '../domain/multip
 const divider = '━━━━━━━━━━━━━━━━━━━━';
 const renderBlock = (title: string, lines: string[]): string => [title, ...lines].join('\n');
 const renderList = (lines: string[], emptyLine: string): string[] => (lines.length > 0 ? lines.map((line) => `• ${line}`) : [`• ${emptyLine}`]);
+const renderSceneMood = (mood: 'calm' | 'warning' | 'danger' | 'success'): string => ({ calm: '🟢', warning: '🟡', danger: '🔴', success: '🟣' }[mood]);
 
 export class GameCardRenderer {
   renderOnlineWorldCard(input: {
@@ -66,9 +67,19 @@ export class GameCardRenderer {
       divider,
       viewModel.scoreboard,
       ...viewModel.details,
+      renderBlock('CENA DO LANCE', [
+        `${renderSceneMood(viewModel.scene.asset.mood)} ${viewModel.scene.title.toUpperCase()} • HUD ${viewModel.scene.hud}`,
+        viewModel.scene.phrase,
+        viewModel.scene.fallback
+      ]),
       viewModel.currentPlay ? renderBlock('LANCE ATUAL', viewModel.currentPlay) : 'LANCE ATUAL\nSem lance pendente.',
       viewModel.events.length > 0 ? renderBlock('EVENTOS RECENTES', viewModel.events.map((line) => `• ${line}`)) : 'EVENTOS RECENTES\n• Sem eventos.'
     ].join('\n');
+  }
+
+  renderMatchSceneSvg(match: MatchSummary): string {
+    const viewModel = buildMatchCardViewModel(match);
+    return viewModel.scene.asset.svg;
   }
 
   renderMultiplayerSessionCard(session: MultiplayerSessionSummary): string {
