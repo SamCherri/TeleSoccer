@@ -449,7 +449,7 @@ test('a facade do bot entrega texto de status de carreira coerente com o fluxo a
   const reply = await facade.handleCareerStatus('108');
   assert.match(reply.text, /Status da carreira de Cadu Melo/);
   assert.match(reply.text, /Treino da semana: disponível/);
-  assert.ok(reply.actions.includes('Extrato da carteira'));
+  assert.ok(reply.actions.includes(phase1BotActions.weekAgenda));
 });
 
 test('a facade do bot entrega extrato da carteira com labels legíveis', async () => {
@@ -487,7 +487,7 @@ test('a facade do bot entrega extrato da carteira com labels legíveis', async (
   const reply = await facade.handleWalletStatement('109');
   assert.match(reply.text, /Extrato da carteira de Igor Reis/);
   assert.match(reply.text, /Custo de treino: -20/);
-  assert.ok(reply.actions.includes('Status da carreira'));
+  assert.ok(reply.actions.includes(phase1BotActions.careerStatus));
 });
 
 test('o payload de persistência do treino contém apenas campos válidos da tabela', async () => {
@@ -604,6 +604,12 @@ test('dispatcher abre prompt de criação no /start quando ainda não existe jog
   assert.deepEqual(reply.actions, [phase1BotActions.createPlayer]);
 });
 
+test('phase1BotActions está disponível no topo do teste para as navegações do mundo', async () => {
+  assert.equal(typeof phase1BotActions.mainMenu, 'string');
+  assert.equal(phase1BotActions.mainMenu, 'Continuar jornada');
+  assert.equal(phase1BotActions.weekAgenda, 'Ver agenda da semana');
+});
+
 test('dispatcher abre menu principal e roteia comandos reais do bot', async () => {
   const repo = new InMemoryPlayerRepository();
   const clubs = new InMemoryClubRepository();
@@ -631,8 +637,12 @@ test('dispatcher abre menu principal e roteia comandos reais do bot', async () =
   });
 
   const startReply = await dispatcher.dispatch({ telegramId: '111', text: '/start' });
-  assert.match(startReply.text, /Painel do jogador/);
+  assert.match(startReply.text, /MUNDO DO JOGADOR/);
   assert.ok(startReply.actions.includes(phase1BotActions.weeklyTraining));
+  assert.ok(startReply.actions.includes(phase1BotActions.weekAgenda));
+  assert.ok(startReply.actions.includes(phase1BotActions.playerCard));
+  assert.ok(startReply.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(startReply.actions.includes(phase1BotActions.walletStatement));
 
   const trainingMenuReply = await dispatcher.dispatch({ telegramId: '111', text: '/treino' });
   assert.match(trainingMenuReply.text, /Cada treino custa 20 moedas/);
@@ -680,6 +690,7 @@ test('dispatcher trata erro de domínio com retorno consistente para o bot', asy
 
   assert.match(errorReply.text, /Não foi possível concluir a ação/);
   assert.ok(errorReply.actions.includes(phase1BotActions.mainMenu));
+  assert.ok(errorReply.actions.includes(phase1BotActions.invitations));
 });
 
 
@@ -963,7 +974,7 @@ test('serviço e facade expõem histórico detalhado da carreira', async () => {
   const reply = await facade.handleCareerHistory('116');
   assert.match(reply.text, /Histórico da carreira de Sergio Vale/);
   assert.match(reply.text, /Eventos exibidos: 4\/4/);
-  assert.ok(reply.actions.includes(phase1BotActions.careerHistory));
+  assert.ok(reply.actions.includes(phase1BotActions.weekAgenda));
 });
 
 test('extrato da carteira e histórico ocultam peneira após promoção ao profissional', async () => {
