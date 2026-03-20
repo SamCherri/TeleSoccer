@@ -65,11 +65,18 @@ export interface MultiplayerPreparationCardViewModel {
 
 export interface OnlineWorldCardViewModel {
   headline: string;
-  playerLine: string;
-  worldLine: string;
-  matchLine: string;
-  sessionLine: string;
-  guidance: string[];
+  identityLine: string;
+  environmentLine: string;
+  routineLine: string;
+  liveMomentLine: string;
+  socialLine: string;
+  alerts: string[];
+}
+
+export interface WeeklyAgendaCardViewModel {
+  title: string;
+  summary: string;
+  commitments: string[];
 }
 
 const formatParticipant = (name: string, kind: MultiplayerParticipantKind, isHost: boolean, isCaptain: boolean, slotNumber: number): string => {
@@ -88,9 +95,9 @@ export const buildMultiplayerSquadCardViewModel = (session: MultiplayerSessionSu
   const summary = side === MultiplayerTeamSide.Home ? session.home : session.away;
 
   return {
-    title: `${sideIconMap[side]} ${side} | Elenco`,
-    subtitle: `${summary.humanCount} humano(s) • ${summary.botCount} bot(s) • fallback aberto ${summary.botFallbackEligibleOpenSlots}`,
-    openSlots: `Vagas: titulares ${summary.remainingStarterSlots} • reservas ${summary.remainingSubstituteSlots}`,
+    title: `${sideIconMap[side]} ${side} | Vestiário`,
+    subtitle: `${summary.humanCount} humano(s) • ${summary.botCount} apoio(s) automático(s) • cobertura aberta ${summary.botFallbackEligibleOpenSlots}`,
+    openSlots: `Lugares abertos: titulares ${summary.remainingStarterSlots} • reservas ${summary.remainingSubstituteSlots}`,
     starters: summary.starters.map((participant) => ({
       label: formatParticipant(participant.playerName, participant.kind, participant.isHost, participant.isCaptain, participant.slotNumber)
     })),
@@ -101,41 +108,41 @@ export const buildMultiplayerSquadCardViewModel = (session: MultiplayerSessionSu
 };
 
 export const buildMultiplayerSessionCardViewModel = (session: MultiplayerSessionSummary): MultiplayerSessionCardViewModel => ({
-  headline: '🏟️ TELESOCCER ONLINE | SALA MULTIPLAYER',
+  headline: '🏟️ SALA DE CONVOCAÇÃO | CONFRONTO ONLINE',
   sessionCode: session.code,
-  status: `Status: ${sessionStatusLabelMap[session.status]}`,
-  policy: `Política: ${session.fillPolicy === 'HUMAN_ONLY' ? 'Somente humanos' : 'Humanos primeiro, bot só no fallback'}`,
+  status: `Momento: ${sessionStatusLabelMap[session.status]}`,
+  policy: `Formação do confronto: ${session.fillPolicy === 'HUMAN_ONLY' ? 'somente humanos' : 'humanos primeiro, apoio automático só na cobertura'}`,
   readiness: session.canPrepareMatch
-    ? 'Prontidão: base humana fechada e sessão pronta para preparação do confronto.'
+    ? 'Situação do elenco: base humana fechada e confronto pronto para o aquecimento.'
     : session.canUseBotFallbackNow
-      ? 'Prontidão: humanos mínimos confirmados; fallback elegível pode completar as vagas marcadas.'
-      : `Prontidão: faltam ${session.missingHumansToStart} humano(s) para liberar a preparação ou o fallback.`,
+      ? 'Situação do elenco: base humana mínima confirmada; a cobertura automática pode completar as vagas marcadas.'
+      : `Situação do elenco: faltam ${session.missingHumansToStart} humano(s) para liberar o aquecimento ou a cobertura.`,
   matchup: `HOME ${session.home.startersCount + session.home.substitutesCount} x ${session.away.startersCount + session.away.substitutesCount} AWAY`,
   sideSummaries: [
-    `HOME | humanos ${session.home.humanCount} | bots ${session.home.botCount} | titulares ${session.home.startersCount}/${session.maxStartersPerSide} | reservas ${session.home.substitutesCount}/${session.maxSubstitutesPerSide} | fallback aberto ${session.home.botFallbackEligibleOpenSlots}`,
-    `AWAY | humanos ${session.away.humanCount} | bots ${session.away.botCount} | titulares ${session.away.startersCount}/${session.maxStartersPerSide} | reservas ${session.away.substitutesCount}/${session.maxSubstitutesPerSide} | fallback aberto ${session.away.botFallbackEligibleOpenSlots}`
+    `HOME | humanos ${session.home.humanCount} | apoio automático ${session.home.botCount} | titulares ${session.home.startersCount}/${session.maxStartersPerSide} | reservas ${session.home.substitutesCount}/${session.maxSubstitutesPerSide} | cobertura aberta ${session.home.botFallbackEligibleOpenSlots}`,
+    `AWAY | humanos ${session.away.humanCount} | apoio automático ${session.away.botCount} | titulares ${session.away.startersCount}/${session.maxStartersPerSide} | reservas ${session.away.substitutesCount}/${session.maxSubstitutesPerSide} | cobertura aberta ${session.away.botFallbackEligibleOpenSlots}`
   ],
   fallback: session.fallbackEligibleOpenSlots > 0
-    ? `Fallback total aberto: ${session.fallbackEligibleOpenSlots} slot(s) marcados para bot.`
-    : 'Fallback total aberto: nenhum slot elegível pendente.'
+    ? `Cobertura automática aberta: ${session.fallbackEligibleOpenSlots} vaga(s) marcadas para apoio automático.`
+    : 'Cobertura automática aberta: nenhuma vaga elegível pendente.'
 });
 
 export const buildMultiplayerPreparationCardViewModel = (session: MultiplayerSessionSummary): MultiplayerPreparationCardViewModel => ({
-  title: `⚔️ PREPARAÇÃO DE CONFRONTO | HOME vs AWAY | sala ${session.code}`,
+  title: `⚔️ AQUECIMENTO DO CONFRONTO | HOME vs AWAY | sala ${session.code}`,
   readiness: session.canPrepareMatch
-    ? 'Confronto pronto para a próxima etapa: há base humana mínima, titulares humanos em ambos os lados e nenhuma vaga elegível de fallback pendente.'
+    ? 'Confronto pronto para a próxima etapa: há base humana mínima, titulares humanos em ambos os lados e nenhuma vaga elegível de cobertura pendente.'
     : session.canUseBotFallbackNow
-      ? 'Sessão apta a aplicar fallback controlado antes de seguir para o confronto.'
-      : 'Sessão ainda bloqueada: faltam humanos ou titulares humanos em um dos lados.',
+      ? 'A convocação já pode aplicar cobertura automática controlada antes de seguir para o confronto.'
+      : 'A convocação ainda está bloqueada: faltam humanos ou titulares humanos em um dos lados.',
   notes: [
-    `HOME: ${session.home.humanCount} humano(s), ${session.home.botCount} bot(s), ${session.home.startersCount} titular(es), ${session.home.substitutesCount} reserva(s).`,
-    `AWAY: ${session.away.humanCount} humano(s), ${session.away.botCount} bot(s), ${session.away.startersCount} titular(es), ${session.away.substitutesCount} reserva(s).`,
+    `HOME: ${session.home.humanCount} humano(s), ${session.home.botCount} apoio(s) automático(s), ${session.home.startersCount} titular(es), ${session.home.substitutesCount} reserva(s).`,
+    `AWAY: ${session.away.humanCount} humano(s), ${session.away.botCount} apoio(s) automático(s), ${session.away.startersCount} titular(es), ${session.away.substitutesCount} reserva(s).`,
     session.hasHumanStarterOnEachSide
       ? 'Cada lado já tem ao menos um titular humano.'
       : 'Ainda falta titular humano em um dos lados.',
     session.canUseBotFallbackNow
-      ? `Há ${session.fallbackEligibleOpenSlots} vaga(s) elegível(is) para fallback controlado.`
-      : 'Nenhuma vaga de fallback pode ser preenchida agora.',
+      ? `Há ${session.fallbackEligibleOpenSlots} vaga(s) elegível(is) para cobertura automática controlada.`
+      : 'Nenhuma vaga de cobertura automática pode ser preenchida agora.',
     session.missingHumansToStart > 0
       ? `Faltam ${session.missingHumansToStart} humano(s) para atingir o mínimo configurado.`
       : 'Mínimo humano atingido para esta sala.'
@@ -144,36 +151,69 @@ export const buildMultiplayerPreparationCardViewModel = (session: MultiplayerSes
 
 export const buildOnlineWorldCardViewModel = (input: {
   playerName: string;
+  age: number;
+  position: string;
   careerStatus: string;
   currentClubName?: string;
+  walletBalance: number;
+  currentWeekNumber: number;
+  trainingAvailableThisWeek: boolean;
   activeMatch?: MatchSummary | null;
   currentSession?: MultiplayerSessionSummary | null;
+  canTryout: boolean;
 }): OnlineWorldCardViewModel => {
   const activeMatch = input.activeMatch ?? null;
   const currentSession = input.currentSession ?? null;
 
   return {
-    headline: '🌍 TELESOCCER MMORPG | MUNDO DO JOGADOR',
-    playerLine: `Jogador: ${input.playerName} • status ${input.careerStatus} • clube ${input.currentClubName ?? 'Base amadora'}`,
-    worldLine: activeMatch || currentSession
-      ? 'Mundo online unificado: sua carreira, suas partidas e sua sessão compartilhada convivem no mesmo fluxo.'
-      : 'Mundo online unificado: avance a carreira para entrar em partidas e sessões compartilhadas sem trocar de modo.',
-    matchLine: activeMatch
-      ? `Partida ativa: ${activeMatch.scoreboard.homeClubName} ${activeMatch.scoreboard.homeScore} x ${activeMatch.scoreboard.awayScore} ${activeMatch.scoreboard.awayClubName} aos ${activeMatch.scoreboard.minute}'.`
-      : 'Partida ativa: nenhuma partida em andamento para este jogador agora.',
-    sessionLine: currentSession
-      ? `Sessão compartilhada: sala ${currentSession.code} • status ${sessionStatusLabelMap[currentSession.status]} • HOME ${currentSession.home.startersCount + currentSession.home.substitutesCount} x ${currentSession.away.startersCount + currentSession.away.substitutesCount} AWAY.`
-      : 'Sessão compartilhada: você ainda não participa de uma sala ativa.',
-    guidance: [
+    headline: '🌍 MUNDO DO JOGADOR | VIDA NO FUTEBOL',
+    identityLine: `${input.playerName} • ${input.age} anos • ${input.position} • ${input.careerStatus}`,
+    environmentLine: `Ambiente atual: ${input.currentClubName ?? 'Base amadora'} • semana ${input.currentWeekNumber} • saldo ${input.walletBalance} moedas.`,
+    routineLine: input.trainingAvailableThisWeek
+      ? 'Rotina da semana: seu trabalho individual ainda está disponível no centro de treinamento.'
+      : 'Rotina da semana: seu trabalho individual já foi concluído e sua rotina segue para os próximos compromissos.',
+    liveMomentLine: activeMatch
+      ? `O que está acontecendo agora: há jogo em andamento entre ${activeMatch.scoreboard.homeClubName} e ${activeMatch.scoreboard.awayClubName}, aos ${activeMatch.scoreboard.minute}'.`
+      : input.canTryout
+        ? 'O que está acontecendo agora: sua próxima grande chance está nas peneiras regionais.'
+        : 'O que está acontecendo agora: não há partida viva no momento, então sua rotina segue aberta para preparação e compromissos.',
+    socialLine: currentSession
+      ? `Ambiente social: você já está em uma convocação compartilhada na sala ${currentSession.code}, com confronto ${sessionStatusLabelMap[currentSession.status].toLowerCase()}.`
+      : 'Ambiente social: nenhuma convocação ativa foi assumida por você neste momento.',
+    alerts: [
       activeMatch
-        ? 'Use Entrar em partida para voltar ao lance atual quando quiser.'
-        : 'Use Entrar em partida para jogar sua carreira imediatamente quando estiver profissional.',
+        ? 'Seu jogo está vivo e pode ser retomado imediatamente pelo estádio.'
+        : 'Nenhum jogo ao vivo bloqueando sua rotina agora.',
       currentSession
-        ? 'Use Ver sessão atual para acompanhar o elenco e preparar o confronto compartilhado.'
-        : 'Use Criar sessão online para abrir uma sala MMORPG compartilhada com outros humanos.'
+        ? 'Seu elenco compartilhado já existe e pode seguir para o vestiário ou para o aquecimento.'
+        : 'Seu próximo passo social pode ser abrir uma convocação ou responder a uma chamada do elenco.'
     ]
   };
 };
+
+export const buildWeeklyAgendaCardViewModel = (input: {
+  playerName: string;
+  currentWeekNumber: number;
+  trainingAvailableThisWeek: boolean;
+  careerStatus: string;
+  hasActiveMatch: boolean;
+  hasCurrentSession: boolean;
+  canTryout: boolean;
+}): WeeklyAgendaCardViewModel => ({
+  title: `🗓️ AGENDA DA SEMANA | ${input.playerName}`,
+  summary: `Semana ${input.currentWeekNumber} • momento ${input.careerStatus.toLowerCase()} • rotina ${input.trainingAvailableThisWeek ? 'com treino individual em aberto' : 'com treino individual já concluído'}.`,
+  commitments: [
+    input.hasActiveMatch
+      ? 'Há um jogo ativo pedindo retorno imediato ao estádio.'
+      : 'Nenhum jogo ao vivo está travando sua agenda neste momento.',
+    input.hasCurrentSession
+      ? 'Seu elenco compartilhado já está montado e pode seguir pelo vestiário.'
+      : 'Ainda não há convocação compartilhada assumida para esta semana.',
+    input.canTryout
+      ? 'Você pode buscar uma peneira regional para tentar entrar no profissional.'
+      : 'Sua carreira profissional já está ativa e a agenda pode priorizar confronto, treino e rotina.'
+  ]
+});
 
 const turnText = (turn: MatchTurnView): string[] => [
   `🎯 Lance ${turn.sequence}: ${turn.contextText}`,
@@ -182,7 +222,7 @@ const turnText = (turn: MatchTurnView): string[] => [
 ];
 
 export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel => ({
-  headline: '🎮 TELESOCCER MATCH CENTER',
+  headline: '🏟️ ESTÁDIO | PARTIDA EM ANDAMENTO',
   scoreboard: `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore} x ${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`,
   details: [
     `⏱️ ${match.scoreboard.minute}' • ${halfLabelMap[match.scoreboard.half]} • status ${match.scoreboard.status}`,

@@ -1,5 +1,6 @@
 import {
   buildOnlineWorldCardViewModel,
+  buildWeeklyAgendaCardViewModel,
   buildMatchCardViewModel,
   buildMultiplayerPreparationCardViewModel,
   buildMultiplayerSessionCardViewModel,
@@ -16,20 +17,45 @@ const renderList = (lines: string[], emptyLine: string): string[] => (lines.leng
 export class GameCardRenderer {
   renderOnlineWorldCard(input: {
     playerName: string;
+    age: number;
+    position: string;
     careerStatus: string;
     currentClubName?: string;
+    walletBalance: number;
+    currentWeekNumber: number;
+    trainingAvailableThisWeek: boolean;
     activeMatch?: MatchSummary | null;
     currentSession?: MultiplayerSessionSummary | null;
+    canTryout: boolean;
   }): string {
     const viewModel = buildOnlineWorldCardViewModel(input);
     return [
       viewModel.headline,
       divider,
-      viewModel.playerLine,
-      viewModel.worldLine,
-      viewModel.matchLine,
-      viewModel.sessionLine,
-      renderBlock('PRÓXIMOS PASSOS', renderList(viewModel.guidance, 'Sem orientação disponível.'))
+      viewModel.identityLine,
+      viewModel.environmentLine,
+      viewModel.routineLine,
+      viewModel.liveMomentLine,
+      viewModel.socialLine,
+      renderBlock('SINAIS DO MOMENTO', renderList(viewModel.alerts, 'Sem sinais urgentes agora.'))
+    ].join('\n');
+  }
+
+  renderWeeklyAgendaCard(input: {
+    playerName: string;
+    currentWeekNumber: number;
+    trainingAvailableThisWeek: boolean;
+    careerStatus: string;
+    hasActiveMatch: boolean;
+    hasCurrentSession: boolean;
+    canTryout: boolean;
+  }): string {
+    const viewModel = buildWeeklyAgendaCardViewModel(input);
+    return [
+      viewModel.title,
+      divider,
+      viewModel.summary,
+      renderBlock('COMPROMISSOS', renderList(viewModel.commitments, 'Nenhum compromisso pendente.'))
     ].join('\n');
   }
 

@@ -18,12 +18,13 @@ const { CareerStatus } = require('../dist/domain/shared/enums.js');
 const { GameCardRenderer } = require('../dist/presentation/game-card-renderer.js');
 const {
   buildOnlineWorldCardViewModel,
+  buildWeeklyAgendaCardViewModel,
   buildMultiplayerSessionCardViewModel,
   buildMultiplayerSquadCardViewModel,
   buildMultiplayerPreparationCardViewModel,
   buildMatchCardViewModel
 } = require('../dist/view-models/game-view-models.js');
-const { Phase1TelegramFacade } = require('../dist/bot/phase1-bot.js');
+const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchActionKey } = require('../dist/domain/match/types.js');
 const { DomainError } = require('../dist/shared/errors.js');
@@ -418,22 +419,39 @@ test('view models e renderers principais produzem cards visuais coerentes', asyn
   const matchVm = buildMatchCardViewModel(createMatchSummary());
   const onlineVm = buildOnlineWorldCardViewModel({
     playerName: 'Host FC',
+    age: 18,
+    position: 'FORWARD',
     careerStatus: 'PROFESSIONAL',
     currentClubName: 'Porto Azul FC',
+    walletBalance: 100,
+    currentWeekNumber: 12,
+    trainingAvailableThisWeek: true,
     activeMatch: createMatchSummary(),
-    currentSession: prepared.session
+    currentSession: prepared.session,
+    canTryout: false
+  });
+  const agendaVm = buildWeeklyAgendaCardViewModel({
+    playerName: 'Host FC',
+    currentWeekNumber: 12,
+    trainingAvailableThisWeek: true,
+    careerStatus: 'PROFESSIONAL',
+    hasActiveMatch: true,
+    hasCurrentSession: true,
+    canTryout: false
   });
 
-  assert.match(renderer.renderMultiplayerSessionCard(prepared.session), /SALA MULTIPLAYER/);
+  assert.match(renderer.renderMultiplayerSessionCard(prepared.session), /SALA DE CONVOCAÇÃO/);
   assert.match(renderer.renderMultiplayerSquadCard(prepared.session, MultiplayerTeamSide.Home), /TITULARES/);
-  assert.match(renderer.renderMultiplayerPreparationCard(prepared.session), /PREPARAÇÃO DE CONFRONTO/);
-  assert.match(renderer.renderMatchCard(createMatchSummary()), /MATCH CENTER/);
-  assert.match(renderer.renderOnlineWorldCard({ playerName: 'Host FC', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', activeMatch: createMatchSummary(), currentSession: prepared.session }), /MMORPG/);
+  assert.match(renderer.renderMultiplayerPreparationCard(prepared.session), /AQUECIMENTO DO CONFRONTO/);
+  assert.match(renderer.renderMatchCard(createMatchSummary()), /ESTÁDIO/);
+  assert.match(renderer.renderOnlineWorldCard({ playerName: 'Host FC', age: 18, position: 'FORWARD', careerStatus: 'PROFESSIONAL', currentClubName: 'Porto Azul FC', walletBalance: 100, currentWeekNumber: 12, trainingAvailableThisWeek: true, activeMatch: createMatchSummary(), currentSession: prepared.session, canTryout: false }), /VIDA NO FUTEBOL/);
+  assert.match(renderer.renderWeeklyAgendaCard({ playerName: 'Host FC', currentWeekNumber: 12, trainingAvailableThisWeek: true, careerStatus: 'PROFESSIONAL', hasActiveMatch: true, hasCurrentSession: true, canTryout: false }), /AGENDA DA SEMANA/);
   assert.match(sessionVm.matchup, /HOME/);
   assert.ok(squadVm.starters.length >= 1);
   assert.ok(prepVm.notes.length >= 4);
   assert.equal(matchVm.events.length, 2);
-  assert.match(onlineVm.worldLine, /Mundo online unificado/);
+  assert.match(onlineVm.routineLine, /Rotina da semana/);
+  assert.equal(agendaVm.commitments.length, 3);
 });
 
 test('facade multiplayer entrega resposta visual, reforça humano-first e respeita host-only prepare', async () => {
@@ -463,20 +481,21 @@ test('facade multiplayer entrega resposta visual, reforça humano-first e respei
   );
 
   const hubReply = await facade.handleMultiplayerHub('host');
-  assert.match(hubReply.text, /TELESOCCER MMORPG/);
-  assert.match(hubReply.text, /não é separada da carreira solo/);
+  assert.match(hubReply.text, /VIDA NO FUTEBOL/);
+  assert.match(hubReply.text, /mundo contínuo de futebol/);
+  assert.ok(hubReply.actions.includes(phase1BotActions.weekAgenda));
 
   const createdReply = await facade.handleCreateSession('host');
-  assert.match(createdReply.text, /fluxo MMORPG/);
+  assert.match(createdReply.text, /convocação do confronto/);
   assert.match(createdReply.text, /HOME/);
 
-  const code = /Código: (\w+)/.exec(createdReply.text)[1];
+  const code = /Código da convocação: (\w+)/.exec(createdReply.text)[1];
   const joinReply = await facade.handleJoinSession('p2', code, MultiplayerTeamSide.Away, MultiplayerSquadRole.Starter);
-  assert.match(joinReply.text, /mesmo mundo MMORPG/);
+  assert.match(joinReply.text, /Convocação aceita/);
   assert.match(joinReply.text, /AWAY/);
 
   const prepReply = await facade.handlePrepareSession('host');
-  assert.match(prepReply.text, /Fallback aplicado agora/);
+  assert.match(prepReply.text, /apoio\(s\) automático\(s\)|prioridade humana/);
 });
 
 test('consulta /sala CODIGO permite leitura por profissional com o código mesmo sem participar', async () => {

@@ -25,6 +25,9 @@ const commandToAction = new Map<string, string>([
   ['/partida', phase1BotActions.startMatch],
   ['/lance', phase1BotActions.currentMatch],
   ['/perder-lance', phase1BotActions.resolveTimeout],
+  ['/agenda', phase1BotActions.weekAgenda],
+  ['/vestiario', phase1BotActions.lockerRoom],
+  ['/convocacoes', phase1BotActions.invitations],
   ['/multiplayer', phase1BotActions.mmorpgHub],
   ['/mmorpg', phase1BotActions.mmorpgHub],
   ['/criar-sala', phase1BotActions.createSession],
@@ -189,6 +192,15 @@ export class Phase1TelegramDispatcher {
       if (action === phase1BotActions.weeklyTraining) {
         return await this.facade.handleTrainingMenu(request.telegramId);
       }
+      if (action === phase1BotActions.weekAgenda) {
+        return await this.facade.handleWeekAgenda(request.telegramId);
+      }
+      if (action === phase1BotActions.lockerRoom) {
+        return await this.facade.handleLockerRoom(request.telegramId);
+      }
+      if (action === phase1BotActions.invitations) {
+        return await this.facade.handleInvitations(request.telegramId);
+      }
       if (action === phase1BotActions.tryout) {
         return await this.facade.handleTryoutPrompt(request.telegramId);
       }
@@ -228,15 +240,14 @@ export class Phase1TelegramDispatcher {
       }
 
       return {
-        text: 'Comando não reconhecido nesta fase. Use o menu principal ou /mmorpg para continuar sua carreira.',
+        text: 'Não entendi esse atalho. Volte para sua jornada principal ou use /mmorpg apenas como compatibilidade.',
         actions: [
           phase1BotActions.mainMenu,
-          phase1BotActions.playerCard,
           phase1BotActions.careerStatus,
-          phase1BotActions.careerHistory,
+          phase1BotActions.weekAgenda,
           phase1BotActions.weeklyTraining,
-          phase1BotActions.startMatch,
-          phase1BotActions.mmorpgHub
+          phase1BotActions.invitations,
+          phase1BotActions.startMatch
         ]
       };
     } catch (error) {
@@ -245,13 +256,11 @@ export class Phase1TelegramDispatcher {
           text: `Não foi possível concluir a ação: ${error.message}`,
           actions: [
             phase1BotActions.mainMenu,
-            phase1BotActions.playerCard,
             phase1BotActions.careerStatus,
-            phase1BotActions.careerHistory,
+            phase1BotActions.weekAgenda,
             phase1BotActions.weeklyTraining,
-            phase1BotActions.tryout,
-            phase1BotActions.startMatch,
-            phase1BotActions.mmorpgHub
+            phase1BotActions.invitations,
+            phase1BotActions.startMatch
           ]
         };
       }

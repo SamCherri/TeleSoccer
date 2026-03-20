@@ -17,6 +17,19 @@ O TeleSoccer deve se comportar como um **MMORPG de futebol**, em que:
 - a sessão compartilhada com outros humanos é outra atividade do mesmo mundo
 - a navegação do bot precisa refletir essa união
 
+## 1.2 Navegação principal
+
+A navegação principal não deve começar por slash commands.
+
+Ela deve começar por:
+
+- hub de mundo do jogador
+- agenda da semana
+- centro de treinamento
+- vestiário
+- convites e oportunidades
+- estádio quando houver jogo vivo
+
 ## 2. Princípio humano-first
 
 O multiplayer segue estas regras:
@@ -41,6 +54,7 @@ Mesmo dentro do Telegram, a apresentação precisa reforçar fantasia de jogo.
 
 ### Objetivo desses cards
 - comunicar estado rapidamente
+- reforçar rotina, ambiente e continuidade temporal
 - reforçar HOME vs AWAY
 - diferenciar humano e bot
 - diferenciar titular e reserva

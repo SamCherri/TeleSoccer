@@ -148,37 +148,43 @@ Apresentar os acessos principais depois da criação.
 Estrutura sugerida
 Mensagem:
 Plain text
-Painel do jogador
+Mundo do jogador
 Nome: ...
 Idade: ...
 Posição: ...
 Clube: ...
-Status: ...
+Momento: ...
 Dinheiro: ...
-Mundo: use /mmorpg para entrar no hub online unificado
+Ambiente atual: ...
 Botões
-Ver ficha
-Treinar
-Tentar peneira
-Ver carreira
-Ver histórico
-Ver contrato
-Voltar
+Continuar jornada
+Ver agenda da semana
+Ir ao centro de treinamento
+Entrar no vestiário
+Convites e oportunidades
+Entrar no estádio
 
 ## 6.2 Hub MMORPG unificado
 
 ### Objetivo
 Reunir carreira, partida ativa e sessão compartilhada em um único ponto de navegação.
 
-### Comandos
-- `/mmorpg` como hub principal
+### Navegação principal
+- botões contextuais
+- cards de ambiente
+- recomendações de próximo passo
+
+### Compatibilidade
+- `/mmorpg` como atalho operacional
 - `/multiplayer` como alias compatível
 
 ### Conteúdo esperado
 - resumo do jogador
+- ambiente atual
+- rotina da semana
 - status da partida ativa, se existir
 - status da sessão compartilhada, se existir
-- atalhos para entrar em partida, criar sessão e consultar sessão atual
+- atalhos naturais para estádio, centro de treinamento, vestiário e convites
 7. Fluxo de ficha do jogador
 7.1 Objetivo
 Exibir os dados principais do personagem.
