@@ -235,14 +235,14 @@ export class PrismaMultiplayerRepository implements MultiplayerRepository {
 
       await tx.multiplayerSessionParticipant.create({
         data: {
-          sessionId: createdSession.id,
-          slotId: hostSlot.id,
+          session: { connect: { id: createdSession.id } },
+          slot: { connect: { id: hostSlot.id } },
           side: input.preferredSide,
           slotNumber: 1,
           squadRole: input.preferredRole,
           kind: MultiplayerParticipantKind.Human,
-          userId: input.hostUserId,
-          playerId: input.hostPlayerId,
+          user: { connect: { id: input.hostUserId } },
+          ...(input.hostPlayerId ? { player: { connect: { id: input.hostPlayerId } } } : {}),
           playerName: input.hostPlayerName,
           isHost: true,
           isCaptain: input.preferredRole === MultiplayerSquadRole.Starter
@@ -304,14 +304,14 @@ export class PrismaMultiplayerRepository implements MultiplayerRepository {
           try {
             participant = await tx.multiplayerSessionParticipant.create({
               data: {
-                sessionId: session.id,
-                slotId: selectedSlot.id,
+                session: { connect: { id: session.id } },
+                slot: { connect: { id: selectedSlot.id } },
                 side: selectedSlot.side,
                 slotNumber: selectedSlot.slotNumber,
                 squadRole: selectedSlot.squadRole,
                 kind: MultiplayerParticipantKind.Human,
-                userId: input.userId,
-                playerId: input.playerId,
+                user: { connect: { id: input.userId } },
+                ...(input.playerId ? { player: { connect: { id: input.playerId } } } : {}),
                 playerName: input.playerName,
                 isHost: false,
                 isCaptain: shouldBeCaptain(session.participants, selectedSlot.side, selectedSlot.squadRole)
@@ -368,8 +368,8 @@ export class PrismaMultiplayerRepository implements MultiplayerRepository {
         try {
           const created = await tx.multiplayerSessionParticipant.create({
             data: {
-              sessionId: input.sessionId,
-              slotId: bot.slotId,
+              session: { connect: { id: input.sessionId } },
+              slot: { connect: { id: bot.slotId } },
               side: bot.side,
               slotNumber: bot.slotNumber,
               squadRole: bot.squadRole,

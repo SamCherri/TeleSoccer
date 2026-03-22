@@ -20,6 +20,8 @@ const { PrismaPlayerCreationConversationStore } = require('../dist/infra/prisma/
 const { PrismaPlayerRepository, buildTrainingSessionCreateData } = require('../dist/infra/prisma/player-repository.js');
 const { setPrismaClientForTests } = require('../dist/infra/prisma/client.js');
 const { TelegramBotApiClient } = require('../dist/infra/telegram/client.js');
+const { PrismaMatchRepository } = require('../dist/infra/prisma/match-repository.js');
+const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchTurnState, MatchActionKey } = require('../dist/domain/match/types.js');
 const { botReplyToTelegramMessage } = require('../dist/infra/telegram/presenter.js');
 const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
 const { createRailwayTelegramServer } = require('../dist/infra/http/railway-telegram-server.js');
@@ -695,6 +697,42 @@ test('dispatcher normaliza slash commands sem afetar botões textuais', async ()
   assert.deepEqual(capsReply.actions, lowerReply.actions);
 });
 
+
+test('dispatcher normaliza slash commands com casing misto e menção ao bot', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade, new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore()));
+
+  await createPlayerService.execute({
+    telegramId: '111-mention',
+    name: 'Nando Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 176,
+    weightKg: 70,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  const baseline = await dispatcher.dispatch({ telegramId: '111-mention', text: '/start' });
+  const mentioned = await dispatcher.dispatch({ telegramId: '111-mention', text: '/START@TeleSoccerBot' });
+  const mentionedWithArg = await dispatcher.dispatch({ telegramId: '111-mention', text: '/Sala@TeleSoccerBot abc123' });
+
+  assert.equal(mentioned.text, baseline.text);
+  assert.deepEqual(mentioned.actions, baseline.actions);
+  assert.match(mentionedWithArg.text, /Multiplayer ainda não configurado neste ambiente de teste/);
+});
+
 test('dispatcher trata erro de domínio com retorno consistente para o bot', async () => {
   const repo = new InMemoryPlayerRepository();
   const clubs = new InMemoryClubRepository();
@@ -1245,6 +1283,148 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
   await server.stop();
 });
 
+
+
+test('repositório Prisma usa connect explícito ao criar próximo turno e eventos relacionais da partida', async () => {
+  const calls = { matchTurn: [], matchEvent: [], disciplinary: [], injury: [], suspension: [] };
+
+  setPrismaClientForTests({
+    $transaction: async (callback) => callback({
+      match: {
+        findUnique: async (args) => {
+          if (!args.include) {
+            return { id: 'match-1', playerId: 'player-1' };
+          }
+          return {
+            id: 'match-1',
+            playerId: 'player-1',
+            status: MatchStatus.InProgress,
+            homeScore: 1,
+            awayScore: 0,
+            currentMinute: 16,
+            currentHalf: MatchHalf.First,
+            possessionSide: MatchPossessionSide.Home,
+            stoppageMinutes: 0,
+            userEnergy: 88,
+            yellowCards: 1,
+            redCards: 0,
+            homeClub: { name: 'Porto Azul FC' },
+            awayClub: { name: 'Real Aurora' },
+            lineups: [],
+            turns: [{
+              id: 'turn-2',
+              sequence: 2,
+              minute: 16,
+              half: MatchHalf.First,
+              possessionSide: MatchPossessionSide.Home,
+              contextType: MatchContextType.ReceivedFree,
+              contextText: 'Novo lance',
+              availableActions: [MatchActionKey.Pass],
+              deadlineAt: new Date('2026-03-22T12:01:00.000Z'),
+              state: MatchTurnState.Pending,
+              isGoalkeeperContext: false,
+              previousOutcome: 'Passe certo',
+              events: [{ metadata: { visualEvent: { kind: 'duel' } } }]
+            }],
+            events: [],
+            injuries: [],
+            suspensions: []
+          };
+        },
+        update: async () => ({})
+      },
+      matchTurn: {
+        update: async () => ({}),
+        create: async (args) => {
+          calls.matchTurn.push(args);
+          return { id: 'turn-2' };
+        }
+      },
+      matchEvent: {
+        create: async (args) => {
+          calls.matchEvent.push(args);
+          return { id: 'event-1' };
+        }
+      },
+      matchDisciplinaryEvent: {
+        create: async (args) => {
+          calls.disciplinary.push(args);
+          return { id: 'discipline-1' };
+        }
+      },
+      injuryRecord: {
+        updateMany: async () => ({ count: 0 }),
+        create: async (args) => {
+          calls.injury.push(args);
+          return { id: 'injury-1' };
+        }
+      },
+      suspensionRecord: {
+        create: async (args) => {
+          calls.suspension.push(args);
+          return { id: 'suspension-1' };
+        }
+      }
+    }),
+    club: {},
+    player: {},
+    match: {},
+    matchTurn: {},
+    matchEvent: {},
+    matchDisciplinaryEvent: {},
+    injuryRecord: {},
+    suspensionRecord: {}
+  });
+
+  const repository = new PrismaMatchRepository();
+  await repository.resolveTurn('match-1', {
+    turnId: 'turn-1',
+    action: MatchActionKey.Pass,
+    turnState: MatchTurnState.Resolved,
+    outcomeText: 'Passe certo',
+    homeScore: 1,
+    awayScore: 0,
+    minute: 16,
+    half: MatchHalf.First,
+    possessionSide: MatchPossessionSide.Home,
+    status: MatchStatus.InProgress,
+    energy: 88,
+    stoppageMinutes: 0,
+    yellowCardsDelta: 1,
+    suspensionMatchesToAdd: 1,
+    redCardIssued: false,
+    injury: { severity: 2, matchesRemaining: 1, description: 'Pancada no tornozelo' },
+    events: [
+      { type: 'ACTION_RESOLVED', minute: 15, description: 'Passe certo', metadata: { chain: 1 } },
+      { type: 'SUSPENSION', minute: 15, description: 'Suspenso', metadata: { chain: 2 } }
+    ],
+    nextTurn: {
+      sequence: 2,
+      minute: 16,
+      half: MatchHalf.First,
+      possessionSide: MatchPossessionSide.Home,
+      contextType: MatchContextType.ReceivedFree,
+      contextText: 'Novo lance',
+      availableActions: [MatchActionKey.Pass],
+      deadlineAt: new Date('2026-03-22T12:01:00.000Z'),
+      isGoalkeeperContext: false,
+      previousOutcome: 'Passe certo',
+      visualEvent: { kind: 'duel' }
+    }
+  });
+
+  assert.deepEqual(calls.matchTurn[0].data.match, { connect: { id: 'match-1' } });
+  assert.deepEqual(calls.matchEvent[0].data.match, { connect: { id: 'match-1' } });
+  assert.deepEqual(calls.matchEvent[0].data.turn, { connect: { id: 'turn-1' } });
+  assert.deepEqual(calls.disciplinary[0].data.match, { connect: { id: 'match-1' } });
+  assert.deepEqual(calls.disciplinary[0].data.player, { connect: { id: 'player-1' } });
+  assert.deepEqual(calls.injury[0].data.match, { connect: { id: 'match-1' } });
+  assert.deepEqual(calls.injury[0].data.player, { connect: { id: 'player-1' } });
+  assert.deepEqual(calls.suspension[0].data.match, { connect: { id: 'match-1' } });
+  assert.deepEqual(calls.suspension[0].data.player, { connect: { id: 'player-1' } });
+
+  setPrismaClientForTests(null);
+});
 test('runtime propaga falha real de sendMessage para o processamento', async () => {
   const dispatcher = {
     dispatch: async () => ({

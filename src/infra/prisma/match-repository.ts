@@ -163,25 +163,61 @@ export class PrismaMatchRepository implements MatchRepository {
       await tx.match.update({ where: { id: matchId }, data: { homeScore: resolution.homeScore, awayScore: resolution.awayScore, currentMinute: resolution.minute, currentHalf: resolution.half, possessionSide: resolution.possessionSide, status: resolution.status, userEnergy: resolution.energy, stoppageMinutes: resolution.stoppageMinutes, yellowCards: { increment: resolution.yellowCardsDelta ?? 0 }, redCards: { increment: resolution.redCardIssued ? 1 : 0 } } });
 
       for (const event of resolution.events) {
-        await tx.matchEvent.create({ data: { matchId, turnId: resolution.turnId, type: event.type, minute: event.minute, description: event.description, metadata: event.metadata } });
+        await tx.matchEvent.create({
+          data: {
+            match: { connect: { id: matchId } },
+            turn: { connect: { id: resolution.turnId } },
+            type: event.type,
+            minute: event.minute,
+            description: event.description,
+            metadata: event.metadata
+          }
+        });
         if (event.type === 'YELLOW_CARD' || event.type === 'RED_CARD' || event.type === 'SUSPENSION') {
-          await tx.matchDisciplinaryEvent.create({ data: { matchId, playerId: currentMatch.playerId, type: event.type, minute: event.minute, description: event.description, suspensionMatches: event.type === 'SUSPENSION' ? resolution.suspensionMatchesToAdd ?? 0 : 0 } });
+          await tx.matchDisciplinaryEvent.create({
+            data: {
+              match: { connect: { id: matchId } },
+              player: { connect: { id: currentMatch.playerId } },
+              type: event.type,
+              minute: event.minute,
+              description: event.description,
+              suspensionMatches: event.type === 'SUSPENSION' ? resolution.suspensionMatchesToAdd ?? 0 : 0
+            }
+          });
         }
       }
 
       if (resolution.injury) {
         await tx.injuryRecord.updateMany({ where: { playerId: currentMatch.playerId, isActive: true }, data: { isActive: false } });
-        await tx.injuryRecord.create({ data: { playerId: currentMatch.playerId, matchId, description: resolution.injury.description, severity: resolution.injury.severity, matchesRemaining: resolution.injury.matchesRemaining, isActive: true } });
+        await tx.injuryRecord.create({
+          data: {
+            player: { connect: { id: currentMatch.playerId } },
+            match: { connect: { id: matchId } },
+            description: resolution.injury.description,
+            severity: resolution.injury.severity,
+            matchesRemaining: resolution.injury.matchesRemaining,
+            isActive: true
+          }
+        });
       }
 
       if ((resolution.suspensionMatchesToAdd ?? 0) > 0) {
-        await tx.suspensionRecord.create({ data: { playerId: currentMatch.playerId, matchId, reason: resolution.redCardIssued ? 'Cartão vermelho na partida.' : 'Acúmulo disciplinar na partida.', sourceEventType: resolution.redCardIssued ? 'RED_CARD' : 'SUSPENSION', matchesRemaining: resolution.suspensionMatchesToAdd ?? 0, isActive: true } });
+        await tx.suspensionRecord.create({
+          data: {
+            player: { connect: { id: currentMatch.playerId } },
+            match: { connect: { id: matchId } },
+            reason: resolution.redCardIssued ? 'Cartão vermelho na partida.' : 'Acúmulo disciplinar na partida.',
+            sourceEventType: resolution.redCardIssued ? 'RED_CARD' : 'SUSPENSION',
+            matchesRemaining: resolution.suspensionMatchesToAdd ?? 0,
+            isActive: true
+          }
+        });
       }
 
       if (resolution.nextTurn) {
         await tx.matchTurn.create({
           data: {
-            matchId,
+            match: { connect: { id: matchId } },
             sequence: resolution.nextTurn.sequence,
             minute: resolution.nextTurn.minute,
             half: resolution.nextTurn.half,
