@@ -84,12 +84,14 @@ const parseRole = (value?: string): MultiplayerSquadRole | undefined => {
 };
 
 const normalizeSlashCommand = (text: string): string => {
-  if (!text.startsWith('/')) {
-    return text;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('/')) {
+    return trimmed;
   }
 
-  const [command, ...rest] = text.split(/\s+/);
-  return [command.toLowerCase(), ...rest].join(' ');
+  const [command, ...rest] = trimmed.split(/\s+/);
+  const normalizedCommand = command.toLowerCase().replace(/@[^\s]+$/, '');
+  return [normalizedCommand, ...rest].join(' ').trim();
 };
 
 export class Phase1TelegramDispatcher {
