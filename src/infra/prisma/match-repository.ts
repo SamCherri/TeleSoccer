@@ -89,6 +89,58 @@ const logAudit = (event: string, details: Record<string, unknown>): void => {
   console.info('[prisma-match-repository]', JSON.stringify({ event, ...details }));
 };
 
+const buildTurnStartedEventData = (params: {
+  matchId: string;
+  turnId: string;
+  sequence: number;
+  minute: number;
+  description: string;
+  visualEvent?: MatchVisualEvent;
+}) => ({
+  match: { connect: { id: params.matchId } },
+  turn: { connect: { id: params.turnId } },
+  type: 'TURN_STARTED' as const,
+  minute: params.minute,
+  description: params.description,
+  metadata: { sequence: params.sequence, visualEvent: params.visualEvent }
+});
+
+const buildMatchTurnCreateData = (params: {
+  matchId: string;
+  turn: CreateMatchTurnInput;
+}) => ({
+  matchId: params.matchId,
+  sequence: params.turn.sequence,
+  minute: params.turn.minute,
+  half: params.turn.half,
+  possessionSide: params.turn.possessionSide,
+  contextType: params.turn.contextType,
+  contextText: params.turn.contextText,
+  availableActions: params.turn.availableActions,
+  deadlineAt: params.turn.deadlineAt,
+  state: MatchTurnState.Pending,
+  previousOutcome: params.turn.previousOutcome,
+  isGoalkeeperContext: params.turn.isGoalkeeperContext
+});
+
+const summarizeTurnCreateData = (data: ReturnType<typeof buildMatchTurnCreateData>) => ({
+  model: 'MatchTurn',
+  stage: 'create',
+  shape: {
+    matchId: data.matchId,
+    sequence: data.sequence,
+    minute: data.minute,
+    half: data.half,
+    possessionSide: data.possessionSide,
+    contextType: data.contextType,
+    availableActions: data.availableActions,
+    hasPreviousOutcome: Boolean(data.previousOutcome),
+    isGoalkeeperContext: data.isGoalkeeperContext,
+    deadlineAt: data.deadlineAt.toISOString(),
+    state: data.state
+  }
+});
+
 export class PrismaMatchRepository implements MatchRepository {
   async findPlayerByTelegramId(telegramId: string): Promise<MatchPlayerProfile | null> {
     const prisma = getPrismaClient();
@@ -123,43 +175,44 @@ export class PrismaMatchRepository implements MatchRepository {
       relationConnectEnabled: true
     });
 
-    const match = (await prisma.match.create({
-      data: {
-        player: { connect: { id: params.playerId } },
-        homeClub: { connect: { id: homeClub.id } },
-        awayClub: { connect: { id: awayClub.id } },
-        currentMinute: params.initialTurn.minute,
-        currentHalf: params.initialTurn.half,
-        possessionSide: params.initialTurn.possessionSide,
-        status: MatchStatus.InProgress,
-        lineups: {
-          create: params.lineups.map((lineup) => ({
-            ...(lineup.isUserControlled ? { player: { connect: { id: params.playerId } } } : {}),
-            side: lineup.side,
-            role: lineup.role === 'GOALKEEPER' ? MatchRole.Goalkeeper : lineup.isUserControlled ? params.userRole : MatchRole.CpuSupport,
-            displayName: lineup.displayName,
-            shirtNumber: lineup.shirtNumber,
-            isUserControlled: lineup.isUserControlled
-          }))
-        },
-        turns: {
-          create: {
-            sequence: params.initialTurn.sequence,
-            minute: params.initialTurn.minute,
-            half: params.initialTurn.half,
-            possessionSide: params.initialTurn.possessionSide,
-            contextType: params.initialTurn.contextType,
-            contextText: params.initialTurn.contextText,
-            availableActions: params.initialTurn.availableActions,
-            deadlineAt: params.initialTurn.deadlineAt,
-            state: MatchTurnState.Pending,
-            previousOutcome: params.initialTurn.previousOutcome,
-            isGoalkeeperContext: params.initialTurn.isGoalkeeperContext,
-            events: { create: { type: 'TURN_STARTED', minute: params.initialTurn.minute, description: 'Partida iniciada e primeiro lance liberado.', metadata: { sequence: params.initialTurn.sequence, visualEvent: params.initialTurn.visualEvent } } }
+    const match = (await prisma.$transaction(async (tx) => {
+      const createdMatch = (await tx.match.create({
+        data: {
+          player: { connect: { id: params.playerId } },
+          homeClub: { connect: { id: homeClub.id } },
+          awayClub: { connect: { id: awayClub.id } },
+          currentMinute: params.initialTurn.minute,
+          currentHalf: params.initialTurn.half,
+          possessionSide: params.initialTurn.possessionSide,
+          status: MatchStatus.InProgress,
+          lineups: {
+            create: params.lineups.map((lineup) => ({
+              ...(lineup.isUserControlled ? { player: { connect: { id: params.playerId } } } : {}),
+              side: lineup.side,
+              role: lineup.role === 'GOALKEEPER' ? MatchRole.Goalkeeper : lineup.isUserControlled ? params.userRole : MatchRole.CpuSupport,
+              displayName: lineup.displayName,
+              shirtNumber: lineup.shirtNumber,
+              isUserControlled: lineup.isUserControlled
+            }))
           }
         }
-      },
-      include: matchInclude(true)
+      })) as { id: string };
+
+      const initialTurnData = buildMatchTurnCreateData({ matchId: createdMatch.id, turn: params.initialTurn });
+      logAudit('match-turn-create-request', summarizeTurnCreateData(initialTurnData));
+      const createdTurn = (await tx.matchTurn.create({ data: initialTurnData })) as { id: string };
+      await tx.matchEvent.create({
+        data: buildTurnStartedEventData({
+          matchId: createdMatch.id,
+          turnId: createdTurn.id,
+          sequence: params.initialTurn.sequence,
+          minute: params.initialTurn.minute,
+          description: 'Partida iniciada e primeiro lance liberado.',
+          visualEvent: params.initialTurn.visualEvent
+        })
+      });
+
+      return tx.match.findUnique({ where: { id: createdMatch.id }, include: matchInclude(true) });
     })) as MatchRecord;
 
     logAudit('create-match-created', {
@@ -241,37 +294,32 @@ export class PrismaMatchRepository implements MatchRepository {
       }
 
       if (resolution.nextTurn) {
-        logAudit('next-turn-create-request', {
-          matchId,
-          turnId: resolution.turnId,
-          nextSequence: resolution.nextTurn.sequence,
-          relationConnectEnabled: true,
-          relationConnect: {
-            match: { connect: { id: matchId } }
-          }
+        const nextTurnData = buildMatchTurnCreateData({ matchId, turn: resolution.nextTurn });
+        logAudit('match-turn-create-request', {
+          flowStep: 'resolve-next-turn',
+          previousTurnId: resolution.turnId,
+          ...summarizeTurnCreateData(nextTurnData)
         });
 
-        await tx.matchTurn.create({
-          data: {
-            match: { connect: { id: matchId } },
+        const createdNextTurn = (await tx.matchTurn.create({
+          data: nextTurnData
+        })) as { id: string };
+
+        await tx.matchEvent.create({
+          data: buildTurnStartedEventData({
+            matchId,
+            turnId: createdNextTurn.id,
             sequence: resolution.nextTurn.sequence,
             minute: resolution.nextTurn.minute,
-            half: resolution.nextTurn.half,
-            possessionSide: resolution.nextTurn.possessionSide,
-            contextType: resolution.nextTurn.contextType,
-            contextText: resolution.nextTurn.contextText,
-            availableActions: resolution.nextTurn.availableActions,
-            deadlineAt: resolution.nextTurn.deadlineAt,
-            state: MatchTurnState.Pending,
-            previousOutcome: resolution.nextTurn.previousOutcome,
-            isGoalkeeperContext: resolution.nextTurn.isGoalkeeperContext,
-            events: { create: { type: 'TURN_STARTED', minute: resolution.nextTurn.minute, description: 'Novo lance liberado.', metadata: { sequence: resolution.nextTurn.sequence, visualEvent: resolution.nextTurn.visualEvent } } }
-          }
+            description: 'Novo lance liberado.',
+            visualEvent: resolution.nextTurn.visualEvent
+          })
         });
 
         logAudit('next-turn-create-created', {
           matchId,
           previousTurnId: resolution.turnId,
+          nextTurnId: createdNextTurn.id,
           nextSequence: resolution.nextTurn.sequence,
           relationConnectEnabled: true
         });

@@ -7,6 +7,8 @@ const { MatchEngine } = require('../dist/domain/match/engine.js');
 const { DominantFoot, PlayerPosition, CareerStatus } = require('../dist/domain/shared/enums.js');
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchActionKey } = require('../dist/domain/match/types.js');
 const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-bot.js');
+const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
+const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
 const { DomainError } = require('../dist/shared/errors.js');
 
 const SPECIAL_CONTEXTS = new Set([MatchContextType.FreeKick, MatchContextType.PenaltyKick, MatchContextType.CornerKick]);
@@ -646,4 +648,109 @@ test('fachada da partida expõe cena visual simples com svg e fallback textual',
   assert.match(reply.scene.svg, /<svg/);
   assert.match(reply.text, /CENA DO LANCE/);
   assert.match(reply.scene.fallbackText, /Arte preparada/);
+});
+
+const createProfessionalFacade = async (telegramId) => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+
+  await createPlayerService.execute({
+    telegramId,
+    name: 'Leo Cena',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 180,
+    weightKg: 74,
+    visual: { skinTone: 'clara', hairStyle: 'curto' }
+  });
+
+  const player = await repo.findByTelegramId(telegramId);
+  player.careerStatus = CareerStatus.Professional;
+  player.currentClubId = 'club-1';
+  player.currentClubName = 'Porto Azul FC';
+
+  const matchRepository = new InMemoryMatchRepository(repo);
+  const matchEngine = new MatchEngine();
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    { execute: async (currentTelegramId) => ({
+      playerName: (await repo.findByTelegramId(currentTelegramId)).name,
+      careerStatus: CareerStatus.Professional,
+      currentClubName: 'Porto Azul FC',
+      walletBalance: 100,
+      currentWeekNumber: 1,
+      trainingAvailableThisWeek: true,
+      totalTrainings: 0,
+      totalTryouts: 0,
+      latestTryout: null,
+      recentHistory: []
+    }) },
+    { execute: async () => ({ playerName: 'Leo Cena', careerStatus: CareerStatus.Professional, currentClubName: 'Porto Azul FC', entries: [], totalEntries: 0 }) },
+    { execute: async () => ({ playerName: 'Leo Cena', careerStatus: CareerStatus.Professional, walletBalance: 100, transactionCount: 0, recentTransactions: [] }) },
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs),
+    new StartMatchService(matchRepository, matchEngine),
+    new GetActiveMatchService(matchRepository, matchEngine),
+    new ResolveMatchTurnService(matchRepository, matchEngine)
+  );
+
+  return { facade, matchRepository };
+};
+
+test('/start continua respondendo quando existe partida expirada pendente', async () => {
+  const { facade, matchRepository } = await createProfessionalFacade('7002');
+  await facade.handleStartMatch('7002');
+  matchRepository.matchesByTelegramId.get('7002').active.activeTurn.deadlineAt = new Date('2026-03-03T12:00:01.000Z');
+
+  const dispatcher = new Phase1TelegramDispatcher(facade, {
+    expireIfNeeded: async () => null,
+    isActive: async () => false
+  });
+
+  const reply = await dispatcher.dispatch({ telegramId: '7002', text: '/start' });
+
+  assert.match(reply.text, /mundo contínuo de futebol/i);
+  assert.match(reply.text, /há jogo em andamento/i);
+  assert.ok(reply.actions.includes(phase1BotActions.currentMatch));
+  assert.ok(matchRepository.matchesByTelegramId.get('7002').active.recentEvents.some((event) => event.type === 'TIMEOUT'));
+});
+
+test('runtime envia resposta mesmo quando /start encontra partida expirada e resolve timeout', async () => {
+  const { facade, matchRepository } = await createProfessionalFacade('7003');
+  const started = await facade.handleStartMatch('7003');
+  matchRepository.matchesByTelegramId.get('7003').active.activeTurn.deadlineAt = new Date('2026-03-03T12:00:01.000Z');
+  assert.match(started.text, /Partida iniciada com sucesso/);
+
+  const dispatcher = new Phase1TelegramDispatcher(facade, {
+    expireIfNeeded: async () => null,
+    isActive: async () => false
+  });
+
+  const sentMessages = [];
+  const runtime = new Phase1TelegramRuntime(dispatcher, {
+    sendMessage: async (payload) => {
+      sentMessages.push(payload);
+    },
+    setWebhook: async () => {},
+    getWebhookInfo: async () => ({}),
+    deleteWebhook: async () => {}
+  });
+
+  const processed = await runtime.processUpdate({
+    update_id: 902,
+    message: {
+      message_id: 1,
+      text: '/start',
+      chat: { id: 7001, type: 'private' },
+      from: { id: 7003, is_bot: false, first_name: 'QA' }
+    }
+  });
+
+  assert.equal(processed, true);
+  assert.equal(sentMessages.length, 1);
+  assert.match(sentMessages[0].text, /mundo contínuo de futebol/i);
+  assert.ok(matchRepository.matchesByTelegramId.get('7003').active.recentEvents.some((event) => event.type === 'TIMEOUT'));
 });

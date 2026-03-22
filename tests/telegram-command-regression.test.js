@@ -160,3 +160,40 @@ test('debug webhook info mostra mismatch entre URL registrada e finalWebhookUrl'
   assert.equal(payload.registeredWebhookUrl, 'https://staging.tele.example.com/telegram/webhook/secret-456');
   assert.equal(payload.urlsMatch, false);
 });
+
+test('webhook mantém PrismaClientValidationError como erro interno real, sem cair em invalid-json', async (t) => {
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+      NODE_ENV: 'test',
+      PORT: 33103,
+      APP_BASE_URL: 'https://tele.example.com',
+      TELEGRAM_WEBHOOK_SECRET: 'secret-prisma',
+      TELEGRAM_BOT_TOKEN: 'token'
+    },
+    runtime: {
+      processUpdate: async () => {
+        const error = new Error('Argument "match" is missing');
+        error.name = 'PrismaClientValidationError';
+        throw error;
+      }
+    },
+    telegramClient: {
+      setWebhook: async () => {},
+      getWebhookInfo: async () => ({ url: 'https://tele.example.com/telegram/webhook/secret-prisma' }),
+      deleteWebhook: async () => {},
+      sendMessage: async () => {}
+    }
+  });
+
+  await server.start();
+  t.after(async () => { await server.stop(); });
+
+  const response = await requestJson(33103, server.webhookPath, JSON.stringify(createUpdate('/start')), {
+    'content-type': 'application/json',
+    'x-telegram-bot-api-secret-token': 'secret-prisma'
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.body, 'processing-error');
+});
