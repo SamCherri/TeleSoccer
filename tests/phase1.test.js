@@ -1292,6 +1292,8 @@ test('servidor Railway expõe diagnóstico bruto do webhook e permite resetar co
     appBaseUrl: 'https://tele.example/base///',
     webhookPath: '/telegram/webhook/diag-secret',
     finalWebhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    registeredWebhookUrl: 'https://wrong.example/telegram/webhook/diag-secret',
+    urlsMatch: false,
     webhookInfo: {
       url: 'https://wrong.example/telegram/webhook/diag-secret',
       has_custom_certificate: false,
@@ -1308,6 +1310,13 @@ test('servidor Railway expõe diagnóstico bruto do webhook e permite resetar co
     appBaseUrl: 'https://tele.example/base///',
     webhookPath: '/telegram/webhook/diag-secret',
     finalWebhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    registeredWebhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    urlsMatch: true,
+    webhookInfo: {
+      url: 'https://tele.example/base/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 0
+    },
     before: {
       url: 'https://wrong.example/telegram/webhook/diag-secret',
       has_custom_certificate: false,

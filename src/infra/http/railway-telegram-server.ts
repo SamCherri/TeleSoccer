@@ -121,6 +121,34 @@ export const buildFinalWebhookUrl = (appBaseUrl: string | undefined, webhookPath
   return `${normalizedBaseUrl}${normalizeWebhookPath(webhookPath)}`;
 };
 
+const extractRegisteredWebhookUrl = (webhookInfo: unknown): string | undefined => {
+  if (!webhookInfo || typeof webhookInfo !== 'object' || !('url' in webhookInfo)) {
+    return undefined;
+  }
+
+  const url = (webhookInfo as { url?: unknown }).url;
+  return typeof url === 'string' && url.trim().length > 0 ? url : undefined;
+};
+
+const buildWebhookDebugPayload = (
+  appBaseUrl: string | undefined,
+  webhookPath: string,
+  finalWebhookUrl: string | undefined,
+  webhookInfo: unknown
+): Record<string, unknown> => {
+  const registeredWebhookUrl = extractRegisteredWebhookUrl(webhookInfo);
+  const urlsMatch = Boolean(finalWebhookUrl && registeredWebhookUrl && registeredWebhookUrl === finalWebhookUrl);
+
+  return {
+    appBaseUrl: appBaseUrl ?? null,
+    webhookPath,
+    finalWebhookUrl: finalWebhookUrl ?? null,
+    registeredWebhookUrl: registeredWebhookUrl ?? null,
+    urlsMatch,
+    webhookInfo
+  };
+};
+
 const hasValidWebhookSecret = (request: HttpRequest, webhookSecret?: string): boolean => {
   if (!webhookSecret) {
     return true;
@@ -182,12 +210,7 @@ export const createRailwayTelegramServer = (params: {
         if (request.method === 'GET' && request.url === '/debug/telegram-webhook-info') {
           try {
             const webhookInfo = await params.telegramClient.getWebhookInfo();
-            respondJson(response, 200, {
-              appBaseUrl: params.env.APP_BASE_URL ?? null,
-              webhookPath,
-              finalWebhookUrl: finalWebhookUrl ?? null,
-              webhookInfo
-            });
+            respondJson(response, 200, buildWebhookDebugPayload(params.env.APP_BASE_URL, webhookPath, finalWebhookUrl, webhookInfo));
           } catch (error) {
             logFailure('debug-telegram-webhook-info-failed', {
               method: requestMethod,
@@ -216,9 +239,7 @@ export const createRailwayTelegramServer = (params: {
             const after = await params.telegramClient.getWebhookInfo();
 
             respondJson(response, 200, {
-              appBaseUrl: params.env.APP_BASE_URL ?? null,
-              webhookPath,
-              finalWebhookUrl,
+              ...buildWebhookDebugPayload(params.env.APP_BASE_URL, webhookPath, finalWebhookUrl, after),
               before,
               after
             });
