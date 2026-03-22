@@ -31,7 +31,8 @@ test('createSession multiplayer, joinSession e bot fallback usam connect nas rel
 
 test('applyTraining e registerTryout usam connect nas relações obrigatórias', () => {
   const source = read('player');
-  assert.match(source, /trainingSession\.create\([\s\S]*player:\s*\{\s*connect:\s*\{\s*id:\s*params\.playerId\s*\}\s*\}/);
+  assert.match(source, /buildTrainingSessionCreateData\s*=\s*\([\s\S]*player:\s*\{\s*connect:\s*\{\s*id:\s*params\.playerId\s*\}\s*\}/);
+  assert.match(source, /trainingSession\.create\([\s\S]*data:\s*buildTrainingSessionCreateData\(/);
   assert.match(source, /playerHistoryEntry\.create\([\s\S]*player:\s*\{\s*connect:\s*\{\s*id:\s*params\.playerId\s*\}\s*\}/);
   assert.match(source, /tryoutAttempt\.create\([\s\S]*player:\s*\{\s*connect:\s*\{\s*id:\s*params\.playerId\s*\}\s*\}/);
   assert.match(source, /clubMembership\.create\([\s\S]*club:\s*\{\s*connect:\s*\{\s*id:\s*params\.approvedClubId\s*\}\s*\}/);
@@ -42,7 +43,6 @@ test('auditoria textual não encontra FK crua perigosa em creates relacionais cr
     { file: sourceFiles.match, scope: /tx\.matchTurn\.create\([\s\S]*?data:\s*\{([\s\S]*?)\n\s*\}\n\s*\}\);/ },
     { file: sourceFiles.match, scope: /tx\.matchEvent\.create\([\s\S]*?data:\s*\{([\s\S]*?)\n\s*\}\n\s*\}\);/ },
     { file: sourceFiles.multiplayer, scope: /multiplayerSessionParticipant\.create\([\s\S]*?data:\s*\{([\s\S]*?)\n\s*\}\n\s*\}\);/g },
-    { file: sourceFiles.player, scope: /trainingSession\.create\([\s\S]*?data:\s*\{([\s\S]*?)\n\s*\}\n\s*\}\);/ },
     { file: sourceFiles.player, scope: /tryoutAttempt\.create\([\s\S]*?data:\s*\{([\s\S]*?)\n\s*\}\n\s*\}\);/ }
   ];
 

@@ -115,6 +115,14 @@ export class PrismaMatchRepository implements MatchRepository {
     if (!homeClub) throw new Error('Clube do jogador não encontrado para iniciar a partida.');
     const awayClub = (await ensureCpuClub(params.awayClubName, params.awayClubName)) as { id: string; name: string };
 
+    logAudit('create-match-request', {
+      telegramId: params.telegramId,
+      playerId: params.playerId,
+      homeClubId: homeClub.id,
+      awayClubId: awayClub.id,
+      relationConnectEnabled: true
+    });
+
     const match = (await prisma.match.create({
       data: {
         player: { connect: { id: params.playerId } },
@@ -154,6 +162,13 @@ export class PrismaMatchRepository implements MatchRepository {
       include: matchInclude(true)
     })) as MatchRecord;
 
+    logAudit('create-match-created', {
+      matchId: match.id,
+      playerId: match.playerId,
+      activeTurnId: match.turns[0]?.id ?? null,
+      relationConnectEnabled: true
+    });
+
     return this.toSummary(match);
   }
 
@@ -167,6 +182,13 @@ export class PrismaMatchRepository implements MatchRepository {
       await tx.match.update({ where: { id: matchId }, data: { homeScore: resolution.homeScore, awayScore: resolution.awayScore, currentMinute: resolution.minute, currentHalf: resolution.half, possessionSide: resolution.possessionSide, status: resolution.status, userEnergy: resolution.energy, stoppageMinutes: resolution.stoppageMinutes, yellowCards: { increment: resolution.yellowCardsDelta ?? 0 }, redCards: { increment: resolution.redCardIssued ? 1 : 0 } } });
 
       for (const event of resolution.events) {
+        logAudit('match-event-create-request', {
+          matchId,
+          turnId: resolution.turnId,
+          type: event.type,
+          relationConnectEnabled: true
+        });
+
         await tx.matchEvent.create({
           data: {
             match: { connect: { id: matchId } },
@@ -245,6 +267,13 @@ export class PrismaMatchRepository implements MatchRepository {
             isGoalkeeperContext: resolution.nextTurn.isGoalkeeperContext,
             events: { create: { type: 'TURN_STARTED', minute: resolution.nextTurn.minute, description: 'Novo lance liberado.', metadata: { sequence: resolution.nextTurn.sequence, visualEvent: resolution.nextTurn.visualEvent } } }
           }
+        });
+
+        logAudit('next-turn-create-created', {
+          matchId,
+          previousTurnId: resolution.turnId,
+          nextSequence: resolution.nextTurn.sequence,
+          relationConnectEnabled: true
         });
       }
 

@@ -11,9 +11,63 @@ const scriptsDir = path.join(repoRoot, 'scripts');
 const metadataPath = path.join(distDir, 'build-meta.json');
 const packageJsonPath = path.join(repoRoot, 'package.json');
 const tsconfigPath = path.join(repoRoot, 'tsconfig.json');
-const matchRepositorySrcPath = path.join(srcDir, 'infra', 'prisma', 'match-repository.ts');
-const matchRepositoryDistPath = path.join(distDir, 'infra', 'prisma', 'match-repository.js');
-const artifactNeedle = 'match: { connect: { id: matchId } }';
+const artifactChecks = [
+  {
+    key: 'matchCreateUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'match-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'match-repository.js'),
+    needle: 'player: { connect: { id: params.playerId } }'
+  },
+  {
+    key: 'matchEventUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'match-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'match-repository.js'),
+    needle: 'turn: { connect: { id: resolution.turnId } }'
+  },
+  {
+    key: 'matchTurnUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'match-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'match-repository.js'),
+    needle: 'match: { connect: { id: matchId } }'
+  },
+  {
+    key: 'multiplayerSessionUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'multiplayer-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'multiplayer-repository.js'),
+    needle: 'hostUser: { connect: { id: input.hostUserId } }'
+  },
+  {
+    key: 'multiplayerParticipantUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'multiplayer-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'multiplayer-repository.js'),
+    needle: 'session: { connect: { id: createdSession.id } }'
+  },
+  {
+    key: 'playerGenerationUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'player-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'player-repository.js'),
+    needle: 'user: { connect: { id: user.id } }'
+  },
+  {
+    key: 'trainingSessionUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'player-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'player-repository.js'),
+    needle: 'player: { connect: { id: params.playerId } }'
+  },
+  {
+    key: 'tryoutUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'player-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'player-repository.js'),
+    needle: "club: { connect: { id: params.approvedClubId } }"
+  },
+  {
+    key: 'clubMembershipUsesConnect',
+    srcPath: path.join(srcDir, 'infra', 'prisma', 'player-repository.ts'),
+    distPath: path.join(distDir, 'infra', 'prisma', 'player-repository.js'),
+    needle: 'club: { connect: { id: params.approvedClubId } }'
+  }
+];
+const artifactNeedle = artifactChecks.find((check) => check.key === 'matchTurnUsesConnect').needle;
 const requiredDistFiles = [
   path.join(distDir, 'app', 'index.js'),
   path.join(distDir, 'infra', 'http', 'railway-telegram-server.js'),
@@ -103,20 +157,34 @@ const ensureDir = (targetPath) => {
 };
 
 const getArtifactStatus = () => {
-  const srcHasFix = fs.existsSync(matchRepositorySrcPath)
-    ? fs.readFileSync(matchRepositorySrcPath, 'utf8').includes(artifactNeedle)
-    : false;
+  const checks = artifactChecks.map((check) => {
+    const srcHasSnippet = fs.existsSync(check.srcPath)
+      ? fs.readFileSync(check.srcPath, 'utf8').includes(check.needle)
+      : false;
+    const distHasSnippet = fs.existsSync(check.distPath)
+      ? fs.readFileSync(check.distPath, 'utf8').includes(check.needle)
+      : false;
 
-  const distHasFix = fs.existsSync(matchRepositoryDistPath)
-    ? fs.readFileSync(matchRepositoryDistPath, 'utf8').includes(artifactNeedle)
-    : false;
+    return {
+      key: check.key,
+      srcPath: path.relative(repoRoot, check.srcPath),
+      distPath: path.relative(repoRoot, check.distPath),
+      expectedSnippet: check.needle,
+      srcHasSnippet,
+      distHasSnippet,
+      matches: srcHasSnippet && distHasSnippet
+    };
+  });
+
+  const matchTurnCheck = checks.find((check) => check.key === 'matchTurnUsesConnect');
 
   return {
-    srcHasFix,
-    distHasFix,
-    srcPath: path.relative(repoRoot, matchRepositorySrcPath),
-    distPath: path.relative(repoRoot, matchRepositoryDistPath),
-    expectedSnippet: artifactNeedle
+    srcHasFix: Boolean(matchTurnCheck?.srcHasSnippet),
+    distHasFix: Boolean(matchTurnCheck?.distHasSnippet),
+    srcPath: matchTurnCheck?.srcPath,
+    distPath: matchTurnCheck?.distPath,
+    expectedSnippet: matchTurnCheck?.expectedSnippet ?? artifactNeedle,
+    checks
   };
 };
 
@@ -147,6 +215,9 @@ const evaluateArtifactIntegrity = () => {
   }
   if (!artifactStatus.srcHasFix || !artifactStatus.distHasFix) {
     reasons.push('prisma-match-connect-regression');
+  }
+  if (artifactStatus.checks.some((check) => !check.matches)) {
+    reasons.push('prisma-relational-create-regression');
   }
 
   return {

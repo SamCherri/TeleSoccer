@@ -21,6 +21,15 @@ interface BuildMetadata {
     srcPath?: string;
     distPath?: string;
     expectedSnippet?: string;
+    checks?: Array<{
+      key: string;
+      srcPath: string;
+      distPath: string;
+      expectedSnippet: string;
+      srcHasSnippet: boolean;
+      distHasSnippet: boolean;
+      matches: boolean;
+    }>;
   };
 }
 
