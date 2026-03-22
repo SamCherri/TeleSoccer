@@ -1,7 +1,7 @@
 import { AppEnv } from '../../config/env';
 import { Phase1TelegramRuntime } from '../telegram/runtime';
 import { TelegramBotApiClient } from '../telegram/client';
-import { isTelegramUpdate } from '../telegram/types';
+import { isTelegramUpdate, TelegramUpdate } from '../telegram/types';
 
 interface HttpRequest {
   method?: string;
@@ -27,6 +27,36 @@ const { createServer } = require('http') as {
 
 const textDecoder = new TextDecoder();
 
+class InvalidJsonError extends Error {
+  constructor(message = 'Falha ao fazer parse do JSON do webhook do Telegram.') {
+    super(message);
+    this.name = 'InvalidJsonError';
+  }
+}
+
+const serializeError = (error: unknown): Record<string, unknown> => {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    };
+  }
+
+  return {
+    message: typeof error === 'string' ? error : 'Erro não identificado',
+    value: error
+  };
+};
+
+const logAudit = (event: string, details: Record<string, unknown>): void => {
+  console.info('[railway-telegram-server]', JSON.stringify({ event, ...details }));
+};
+
+const logFailure = (event: string, details: Record<string, unknown>, error: unknown): void => {
+  console.error('[railway-telegram-server]', JSON.stringify({ event, ...details, error: serializeError(error) }));
+};
+
 const readJsonBody = async (request: HttpRequest): Promise<unknown> => {
   let raw = '';
 
@@ -36,13 +66,24 @@ const readJsonBody = async (request: HttpRequest): Promise<unknown> => {
 
   raw += textDecoder.decode();
   const normalized = raw.trim();
-  return normalized ? JSON.parse(normalized) : {};
+
+  try {
+    return normalized ? JSON.parse(normalized) : {};
+  } catch (error) {
+    throw new InvalidJsonError(error instanceof Error ? error.message : undefined);
+  }
 };
 
 const respond = (response: HttpResponse, statusCode: number, body: string): void => {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'text/plain; charset=utf-8');
   response.end(body);
+};
+
+const respondJson = (response: HttpResponse, statusCode: number, body: Record<string, unknown>): void => {
+  response.statusCode = statusCode;
+  response.setHeader('content-type', 'application/json; charset=utf-8');
+  response.end(JSON.stringify(body));
 };
 
 const normalizeHeaderValue = (value: string | string[] | undefined): string | undefined => {
@@ -81,6 +122,14 @@ export const createRailwayTelegramServer = (params: {
     webhookPath,
     async start(): Promise<void> {
       server = createServer(async (request: HttpRequest, response: HttpResponse) => {
+        const requestMethod = request.method ?? 'UNKNOWN';
+        const requestUrl = request.url ?? '';
+
+        logAudit('request-received', {
+          method: requestMethod,
+          url: requestUrl
+        });
+
         if (!request.url) {
           respond(response, 404, 'not-found');
           return;
@@ -91,23 +140,77 @@ export const createRailwayTelegramServer = (params: {
           return;
         }
 
+        if (request.method === 'GET' && request.url === '/debug/telegram-runtime') {
+          respondJson(response, 200, {
+            nodeEnv: params.env.NODE_ENV,
+            hasTelegramBotToken: Boolean(params.env.TELEGRAM_BOT_TOKEN),
+            hasAppBaseUrl: Boolean(params.env.APP_BASE_URL),
+            hasWebhookSecret: Boolean(params.env.TELEGRAM_WEBHOOK_SECRET),
+            webhookPath
+          });
+          return;
+        }
+
         if (request.method === 'POST' && request.url === webhookPath) {
-          if (!hasValidWebhookSecret(request, params.env.TELEGRAM_WEBHOOK_SECRET)) {
+          const secretIsValid = hasValidWebhookSecret(request, params.env.TELEGRAM_WEBHOOK_SECRET);
+          logAudit('webhook-secret-validated', {
+            method: requestMethod,
+            url: requestUrl,
+            secretIsValid
+          });
+
+          if (!secretIsValid) {
             respond(response, 401, 'unauthorized');
             return;
           }
 
+          let payload: unknown;
           try {
-            const payload = await readJsonBody(request);
-            if (!isTelegramUpdate(payload)) {
-              respond(response, 400, 'invalid-payload');
-              return;
-            }
-
-            const processed = await params.runtime.processUpdate(payload);
-            respond(response, processed ? 200 : 202, processed ? 'accepted' : 'ignored');
-          } catch {
+            payload = await readJsonBody(request);
+          } catch (error) {
+            logFailure('webhook-json-parse-failed', {
+              method: requestMethod,
+              url: requestUrl
+            }, error);
             respond(response, 400, 'invalid-json');
+            return;
+          }
+
+          const payloadIsValid = isTelegramUpdate(payload);
+          logAudit('webhook-payload-validated', {
+            method: requestMethod,
+            url: requestUrl,
+            payloadIsValid
+          });
+
+          if (!payloadIsValid) {
+            respond(response, 400, 'invalid-payload');
+            return;
+          }
+
+          const telegramUpdate = payload as TelegramUpdate;
+
+          try {
+            logAudit('runtime-process-update-start', {
+              method: requestMethod,
+              url: requestUrl,
+              updateId: telegramUpdate.update_id
+            });
+            const processed = await params.runtime.processUpdate(telegramUpdate);
+            logAudit('runtime-process-update-finish', {
+              method: requestMethod,
+              url: requestUrl,
+              updateId: telegramUpdate.update_id,
+              processed
+            });
+            respond(response, processed ? 200 : 202, processed ? 'accepted' : 'ignored');
+          } catch (error) {
+            logFailure('runtime-process-update-failed', {
+              method: requestMethod,
+              url: requestUrl,
+              updateId: telegramUpdate.update_id
+            }, error);
+            respond(response, 500, 'processing-error');
           }
           return;
         }

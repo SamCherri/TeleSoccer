@@ -83,6 +83,15 @@ const parseRole = (value?: string): MultiplayerSquadRole | undefined => {
   return undefined;
 };
 
+const normalizeSlashCommand = (text: string): string => {
+  if (!text.startsWith('/')) {
+    return text;
+  }
+
+  const [command, ...rest] = text.split(/\s+/);
+  return [command.toLowerCase(), ...rest].join(' ');
+};
+
 export class Phase1TelegramDispatcher {
   constructor(
     private readonly facade: Phase1TelegramFacade,
@@ -90,8 +99,9 @@ export class Phase1TelegramDispatcher {
   ) {}
 
   async dispatch(request: Phase1BotRequest): Promise<BotReply> {
-    const normalizedText = request.text?.trim() ?? '/start';
-    const action = commandToAction.get(normalizedText) ?? normalizedText;
+    const originalText = request.text?.trim() ?? '/start';
+    const normalizedText = normalizeSlashCommand(originalText);
+    const action = commandToAction.get(normalizedText) ?? originalText;
 
     try {
       const expirationReply = await this.creationFlow.expireIfNeeded(request.telegramId);
