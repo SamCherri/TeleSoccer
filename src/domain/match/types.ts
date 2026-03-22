@@ -78,6 +78,21 @@ export enum MatchEventType {
   MatchFinished = 'MATCH_FINISHED'
 }
 
+export type MatchSceneKey =
+  | 'pass-received'
+  | 'pass-intercepted'
+  | 'dribble'
+  | 'defensive-duel'
+  | 'shot'
+  | 'goalkeeper-save'
+  | 'goal'
+  | 'rebound'
+  | 'corner-kick'
+  | 'penalty-kick'
+  | 'fallback';
+
+export type MatchVisualFramePhase = 'START' | 'MIDDLE' | 'END';
+
 export interface MatchActionChoice {
   key: MatchActionKey;
   label: string;
@@ -123,6 +138,47 @@ export interface InjuryView {
   description: string;
 }
 
+export interface MatchVisualPlayerSnapshot {
+  id: string;
+  side: MatchPossessionSide;
+  role: 'GOALKEEPER' | 'DEFENDER' | 'MIDFIELDER' | 'FORWARD';
+  shirtNumber: number;
+  label: string;
+  x: number;
+  y: number;
+  hasBall?: boolean;
+  isUserControlled?: boolean;
+  isPrimaryActor?: boolean;
+}
+
+export interface MatchVisualBallSnapshot {
+  x: number;
+  y: number;
+  ownerPlayerId?: string;
+  possessionSide: MatchPossessionSide;
+}
+
+export interface MatchVisualFrame {
+  id: string;
+  phase: MatchVisualFramePhase;
+  sequence: number;
+  minute: number;
+  narration: string;
+  sceneKey: MatchSceneKey;
+  ball: MatchVisualBallSnapshot;
+  possessionSide: MatchPossessionSide;
+  ownerPlayerId?: string;
+  ownerLabel?: string;
+  players: MatchVisualPlayerSnapshot[];
+}
+
+export interface MatchVisualSequence {
+  sequence: number;
+  sceneKey: MatchSceneKey;
+  headline: string;
+  frames: MatchVisualFrame[];
+}
+
 export interface MatchSummary {
   id: string;
   playerId: string;
@@ -135,6 +191,7 @@ export interface MatchSummary {
   suspensionMatchesRemaining: number;
   energy: number;
   injury?: InjuryView;
+  visualSequence?: MatchVisualSequence;
 }
 
 export interface StartMatchResult {

@@ -16,6 +16,7 @@ const {
 } = require('../dist/domain/multiplayer/types.js');
 const { CareerStatus } = require('../dist/domain/shared/enums.js');
 const { GameCardRenderer } = require('../dist/presentation/game-card-renderer.js');
+const { buildMatchVisualSequence } = require('../dist/domain/match/visual-sequence.js');
 const {
   buildOnlineWorldCardViewModel,
   buildWeeklyAgendaCardViewModel,
@@ -450,6 +451,10 @@ test('view models e renderers principais produzem cards visuais coerentes', asyn
   assert.ok(squadVm.starters.length >= 1);
   assert.ok(prepVm.notes.length >= 4);
   assert.equal(matchVm.events.length, 2);
+  assert.ok(matchVm.scene.frames.length >= 1);
+  assert.equal(matchVm.scene.frames[0].players.length, 22);
+  assert.match(renderer.renderMatchCard(createMatchSummary()), /Frame START/);
+  assert.match(renderer.renderMatchSceneSvg(createMatchSummary()), /Sequência com/);
   assert.match(onlineVm.routineLine, /Rotina da semana/);
   assert.equal(agendaVm.commitments.length, 3);
 });
@@ -752,4 +757,18 @@ test('buildWorldActions permanece contextual e não força caminhos profissionai
     phase1BotActions.careerHistory,
     phase1BotActions.walletStatement
   ]);
+});
+
+test('sequência visual da partida gera múltiplos frames narrativos em lances de confronto', () => {
+  const match = createMatchSummary();
+  match.activeTurn.contextType = MatchContextType.ReceivedPressed;
+  match.activeTurn.previousOutcome = 'Carlos domina a bola, Samuel pressiona e tenta o bote.';
+
+  const sequence = buildMatchVisualSequence(match);
+
+  assert.equal(sequence.frames.length, 3);
+  assert.equal(sequence.frames[0].players.length, 22);
+  assert.equal(sequence.frames[1].sceneKey, sequence.sceneKey);
+  assert.match(sequence.frames[2].narration, /Fim:/);
+  assert.ok(sequence.frames.every((frame) => typeof frame.ownerLabel === 'string' && frame.ownerLabel.length > 0));
 });

@@ -1,4 +1,5 @@
-import { MatchSceneAsset, MatchSceneKey, matchSceneAssets } from '../assets/scenes/match-scene-art';
+import { MatchSceneAsset, matchSceneAssets } from '../assets/scenes/match-scene-art';
+import { MatchSceneKey } from '../domain/match/types';
 
 export interface SceneRegistry<TAsset extends { key: string }> {
   get(key: TAsset['key']): TAsset | undefined;
