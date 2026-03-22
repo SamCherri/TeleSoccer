@@ -10,7 +10,7 @@
     "build": "node scripts/build.cjs",
     "start": "node scripts/start.cjs",
     "dev": "tsx watch src/app/index.ts",
-    "test": "npm run build -- --pretty false && node --test tests/phase1.test.js tests/phase2.test.js tests/phase3-mvp.test.js",
+    "test": "npm run build -- --pretty false && node --test --test-concurrency=1 tests/*.test.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",

@@ -1,9 +1,11 @@
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 const {
+  computeDistSummary,
   computeInputSummary,
   distDir,
   ensureDir,
+  evaluateArtifactIntegrity,
   getArtifactStatus,
   getGitCommit,
   metadataPath,
@@ -22,6 +24,7 @@ execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['tsc', '-p', 'ts
   stdio: 'inherit'
 });
 
+const distSummary = computeDistSummary();
 const artifactStatus = getArtifactStatus();
 const metadata = {
   appVersion: packageJson.version,
@@ -32,13 +35,17 @@ const metadata = {
   builtAt: new Date().toISOString(),
   latestSourceMtimeMs: inputSummary.latestMtimeMs,
   inputHash: inputSummary.inputHash,
+  distHash: distSummary.distHash,
+  latestDistMtimeMs: distSummary.latestMtimeMs,
   artifactStatus
 };
 
 fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
-console.info('[build-audit]', JSON.stringify({ event: 'build-complete', metadata }));
 
-if (!artifactStatus.srcHasFix || !artifactStatus.distHasFix) {
-  console.error('[build-audit]', JSON.stringify({ event: 'artifact-validation-failed', artifactStatus }));
+const integrity = evaluateArtifactIntegrity();
+console.info('[build-audit]', JSON.stringify({ event: 'build-complete', integrity }));
+
+if (!integrity.ok) {
+  console.error('[build-audit]', JSON.stringify({ event: 'artifact-validation-failed', integrity }));
   process.exitCode = 1;
 }

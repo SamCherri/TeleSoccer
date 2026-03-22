@@ -183,7 +183,8 @@ export const createRailwayTelegramServer = (params: {
 
         logAudit('request-received', {
           method: requestMethod,
-          url: requestUrl
+          url: requestUrl,
+          finalWebhookUrl: finalWebhookUrl ?? null
         });
 
         if (!request.url) {
@@ -284,10 +285,17 @@ export const createRailwayTelegramServer = (params: {
           }
 
           const payloadIsValid = isTelegramUpdate(payload);
+          const payloadPreview = payload as Partial<TelegramUpdate>;
           logAudit('webhook-payload-validated', {
             method: requestMethod,
             url: requestUrl,
-            payloadIsValid
+            payloadIsValid,
+            updateId: payloadPreview?.update_id ?? null,
+            chatId: payloadPreview?.message?.chat?.id ?? null,
+            fromId: payloadPreview?.message?.from?.id ?? null,
+            command: typeof payloadPreview?.message?.text === 'string' && payloadPreview.message.text.startsWith('/')
+              ? payloadPreview.message.text.split(/\s+/)[0]
+              : null
           });
 
           if (!payloadIsValid) {

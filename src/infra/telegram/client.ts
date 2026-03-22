@@ -49,54 +49,70 @@ export class TelegramBotApiClient implements TelegramHttpClient {
   ) {}
 
   async sendMessage(payload: TelegramSendMessagePayload): Promise<void> {
+    const auditData = {
+      method: 'sendMessage',
+      chatId: payload.chat_id,
+      textLength: payload.text.length,
+      hasReplyMarkup: Boolean(payload.reply_markup)
+    };
+
+    logAudit('send-message-start', auditData);
     try {
       await this.callApi('sendMessage', toRecord(payload));
+      logAudit('send-message-success', auditData);
     } catch (error) {
-      logFailure('send-message-failed', {
-        method: 'sendMessage',
-        chatId: payload.chat_id
-      }, error);
+      logFailure('send-message-failed', auditData, error);
       throw error;
     }
   }
 
   async setWebhook(webhookUrl: string, secretToken?: string): Promise<void> {
+    const auditData = {
+      method: 'setWebhook',
+      webhookUrl,
+      hasSecretToken: Boolean(secretToken)
+    };
+
+    logAudit('set-webhook-start', auditData);
     try {
       await this.callApi('setWebhook', {
         url: webhookUrl,
         secret_token: secretToken
       });
+      logAudit('set-webhook-success', auditData);
     } catch (error) {
-      logFailure('set-webhook-failed', {
-        method: 'setWebhook',
-        webhookUrl,
-        hasSecretToken: Boolean(secretToken)
-      }, error);
+      logFailure('set-webhook-failed', auditData, error);
       throw error;
     }
   }
 
   async getWebhookInfo(): Promise<unknown> {
+    const auditData = { method: 'getWebhookInfo' };
+    logAudit('get-webhook-info-start', auditData);
     try {
-      return await this.callApi<unknown>('getWebhookInfo', {});
+      const result = await this.callApi<unknown>('getWebhookInfo', {});
+      logAudit('get-webhook-info-success', auditData);
+      return result;
     } catch (error) {
-      logFailure('get-webhook-info-failed', {
-        method: 'getWebhookInfo'
-      }, error);
+      logFailure('get-webhook-info-failed', auditData, error);
       throw error;
     }
   }
 
   async deleteWebhook(dropPendingUpdates = false): Promise<void> {
+    const auditData = {
+      method: 'deleteWebhook',
+      dropPendingUpdates
+    };
+
+    logAudit('delete-webhook-start', auditData);
     try {
       await this.callApi('deleteWebhook', {
         drop_pending_updates: dropPendingUpdates
       });
+      logAudit('delete-webhook-success', auditData);
     } catch (error) {
-      logFailure('delete-webhook-failed', {
-        method: 'deleteWebhook',
-        dropPendingUpdates
-      }, error);
+      logFailure('delete-webhook-failed', auditData, error);
       throw error;
     }
   }
