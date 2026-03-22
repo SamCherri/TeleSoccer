@@ -484,8 +484,10 @@ test('view models e renderers principais produzem cards visuais coerentes', asyn
   assert.equal(matchVm.events.length, 2);
   assert.ok(matchVm.scene.frames.length >= 1);
   assert.equal(matchVm.scene.frames[0].players.length, 22);
-  assert.match(renderer.renderMatchCard(createMatchSummary()), /Frame START/);
-  assert.match(renderer.renderMatchSceneSvg(createMatchSummary()), /Sequência com/);
+  assert.doesNotMatch(renderer.renderMatchCard(createMatchSummary()), /Frame START/);
+  assert.match(renderer.renderMatchCard(createMatchSummary()), /Momento decisivo/);
+  assert.match(renderer.renderMatchSceneSvg(createMatchSummary()), /path/);
+  assert.match(renderer.renderMatchSceneSvg(createMatchSummary()), /line/);
   assert.match(onlineVm.routineLine, /Rotina da semana/);
   assert.equal(agendaVm.commitments.length, 3);
 });
