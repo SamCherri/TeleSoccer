@@ -1,15 +1,4 @@
-export type MatchSceneKey =
-  | 'pass-received'
-  | 'pass-intercepted'
-  | 'dribble'
-  | 'defensive-duel'
-  | 'shot'
-  | 'goalkeeper-save'
-  | 'goal'
-  | 'rebound'
-  | 'corner-kick'
-  | 'penalty-kick'
-  | 'fallback';
+import { MatchSceneKey } from '../../domain/match/types';
 
 export interface MatchSceneAsset {
   key: MatchSceneKey;

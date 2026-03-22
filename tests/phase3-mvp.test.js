@@ -16,6 +16,8 @@ const {
 } = require('../dist/domain/multiplayer/types.js');
 const { CareerStatus } = require('../dist/domain/shared/enums.js');
 const { GameCardRenderer } = require('../dist/presentation/game-card-renderer.js');
+const { buildMatchVisualSequence } = require('../dist/domain/match/visual-sequence.js');
+const { buildDefaultMatchLineups } = require('../dist/domain/match/lineup-factory.js');
 const {
   buildOnlineWorldCardViewModel,
   buildWeeklyAgendaCardViewModel,
@@ -289,6 +291,12 @@ function createServices() {
 }
 
 function createMatchSummary() {
+  const player = { playerId: 'player-host', telegramId: 'host', playerName: 'Carlos Lima', clubId: 'club-1', clubName: 'Porto Azul FC', position: 'FORWARD', careerStatus: CareerStatus.Professional, attributes: { PASSING: 50, SHOOTING: 50, DRIBBLING: 52, SPEED: 51, MARKING: 42, POSITIONING: 49, REFLEXES: 30, HANDLING: 28, KICKING: 35 } };
+  const lineups = buildDefaultMatchLineups(player);
+  const actor = lineups.find((entry) => entry.isUserControlled);
+  const marker = lineups.find((entry) => entry.side === MatchPossessionSide.Away && entry.shirtNumber === 7);
+  const receiver = lineups.find((entry) => entry.side === MatchPossessionSide.Home && entry.shirtNumber === 10);
+
   return {
     id: 'match-1',
     playerId: 'player-host',
@@ -310,13 +318,36 @@ function createMatchSummary() {
       minute: 74,
       half: MatchHalf.Second,
       possessionSide: MatchPossessionSide.Home,
-      contextType: MatchContextType.ReceivedFree,
-      contextText: 'Você recebeu livre na meia-lua.',
-      availableActions: [{ key: MatchActionKey.Pass, label: 'Passar' }, { key: MatchActionKey.Shoot, label: 'Finalizar' }],
+      contextType: MatchContextType.ReceivedPressed,
+      contextText: 'Carlos recebeu pressionado na entrada da área.',
+      availableActions: [{ key: MatchActionKey.Pass, label: 'Passar' }, { key: MatchActionKey.Dribble, label: 'Driblar' }],
       deadlineAt: new Date('2026-03-19T13:00:30.000Z'),
       state: 'PENDING',
       isGoalkeeperContext: false,
-      previousOutcome: 'Seu time recuperou a posse no meio-campo.'
+      previousOutcome: 'Seu time recuperou a posse no meio-campo.',
+      visualEvent: {
+        sequence: 7,
+        actionType: 'DRIBBLE',
+        sceneKey: 'dribble',
+        zone: 'CENTER_CHANNEL',
+        actor: { lineupId: actor.id, playerName: actor.displayName, side: actor.side, role: actor.role, shirtNumber: actor.shirtNumber },
+        marker: { lineupId: marker.id, playerName: marker.displayName, side: marker.side, role: marker.role, shirtNumber: marker.shirtNumber },
+        receiver: { lineupId: receiver.id, playerName: receiver.displayName, side: receiver.side, role: receiver.role, shirtNumber: receiver.shirtNumber },
+        possessionBefore: MatchPossessionSide.Home,
+        possessionAfter: MatchPossessionSide.Away,
+        origin: actor.tacticalPosition,
+        destination: { x: actor.tacticalPosition.x + 8, y: actor.tacticalPosition.y - 10 },
+        ballTarget: { x: marker.tacticalPosition.x, y: marker.tacticalPosition.y },
+        movementDirection: 'LEFT',
+        outcome: 'TACKLED',
+        headline: 'Carlos e Samuel entram no 1x1',
+        narration: {
+          start: 'Carlos domina no corredor central.',
+          duel: 'Samuel encosta e fecha a linha de fuga.',
+          action: 'Carlos tenta escapar com um corte para a esquerda.',
+          end: 'Samuel lê o movimento e desarma com precisão.'
+        }
+      }
     },
     recentEvents: [
       { type: 'GOAL', minute: 70, description: 'Gol do Porto Azul após triangulação.', createdAt: new Date('2026-03-19T12:58:00.000Z') },
@@ -326,7 +357,8 @@ function createMatchSummary() {
     redCards: 0,
     suspensionMatchesRemaining: 0,
     energy: 68,
-    injury: { severity: 1, matchesRemaining: 0, description: 'Desconforto leve no tornozelo' }
+    injury: { severity: 1, matchesRemaining: 0, description: 'Desconforto leve no tornozelo' },
+    lineups
   };
 }
 
@@ -450,6 +482,10 @@ test('view models e renderers principais produzem cards visuais coerentes', asyn
   assert.ok(squadVm.starters.length >= 1);
   assert.ok(prepVm.notes.length >= 4);
   assert.equal(matchVm.events.length, 2);
+  assert.ok(matchVm.scene.frames.length >= 1);
+  assert.equal(matchVm.scene.frames[0].players.length, 22);
+  assert.match(renderer.renderMatchCard(createMatchSummary()), /Frame START/);
+  assert.match(renderer.renderMatchSceneSvg(createMatchSummary()), /Sequência com/);
   assert.match(onlineVm.routineLine, /Rotina da semana/);
   assert.equal(agendaVm.commitments.length, 3);
 });
@@ -752,4 +788,18 @@ test('buildWorldActions permanece contextual e não força caminhos profissionai
     phase1BotActions.careerHistory,
     phase1BotActions.walletStatement
   ]);
+});
+
+test('sequência visual da partida gera múltiplos frames narrativos em lances de confronto', () => {
+  const match = createMatchSummary();
+  match.activeTurn.contextType = MatchContextType.ReceivedPressed;
+  match.activeTurn.previousOutcome = 'Carlos domina a bola, Samuel pressiona e tenta o bote.';
+
+  const sequence = buildMatchVisualSequence(match);
+
+  assert.equal(sequence.frames.length, 4);
+  assert.equal(sequence.frames[0].players.length, 22);
+  assert.equal(sequence.frames[1].sceneKey, sequence.sceneKey);
+  assert.match(sequence.frames[3].narration, /Samuel lê o movimento/);
+  assert.ok(sequence.frames.every((frame) => typeof frame.ownerLabel === 'string' && frame.ownerLabel.length > 0));
 });

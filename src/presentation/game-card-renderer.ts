@@ -8,6 +8,7 @@ import {
   squadSectionTitle
 } from '../view-models/game-view-models';
 import { MatchSummary } from '../domain/match/types';
+import { renderMatchVisualSequenceSvg } from './match-visual-svg';
 import { MultiplayerSessionSummary, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
 const divider = '━━━━━━━━━━━━━━━━━━━━';
@@ -70,6 +71,8 @@ export class GameCardRenderer {
       renderBlock('CENA DO LANCE', [
         `${renderSceneMood(viewModel.scene.asset.mood)} ${viewModel.scene.title.toUpperCase()} • HUD ${viewModel.scene.hud}`,
         viewModel.scene.phrase,
+        viewModel.scene.sequenceHeadline,
+        ...viewModel.scene.frames.map((frame) => `${frame.title}: ${frame.narration} | ${frame.owner} | ${frame.ball} | ${frame.playersSummary} | cena ${frame.sceneKey}`),
         viewModel.scene.fallback
       ]),
       viewModel.currentPlay ? renderBlock('LANCE ATUAL', viewModel.currentPlay) : 'LANCE ATUAL\nSem lance pendente.',
@@ -78,8 +81,7 @@ export class GameCardRenderer {
   }
 
   renderMatchSceneSvg(match: MatchSummary): string {
-    const viewModel = buildMatchCardViewModel(match);
-    return viewModel.scene.asset.svg;
+    return renderMatchVisualSequenceSvg(match);
   }
 
   renderMultiplayerSessionCard(session: MultiplayerSessionSummary): string {

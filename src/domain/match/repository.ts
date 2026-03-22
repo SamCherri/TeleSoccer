@@ -1,4 +1,17 @@
-import { MatchActionKey, MatchContextType, MatchEventType, MatchHalf, MatchPossessionSide, MatchRole, MatchStatus, MatchSummary, MatchTurnState, MatchTurnView, ResolveTurnResult } from './types';
+import {
+  MatchActionKey,
+  MatchContextType,
+  MatchEventType,
+  MatchHalf,
+  MatchLineupPlayer,
+  MatchPossessionSide,
+  MatchRole,
+  MatchStatus,
+  MatchSummary,
+  MatchTurnState,
+  MatchVisualEvent,
+  ResolveTurnResult
+} from './types';
 
 export interface MatchPlayerProfile {
   playerId: string;
@@ -22,6 +35,7 @@ export interface CreateMatchTurnInput {
   deadlineAt: Date;
   isGoalkeeperContext: boolean;
   previousOutcome?: string;
+  visualEvent: MatchVisualEvent;
 }
 
 export interface MatchResolutionInput {
@@ -61,6 +75,7 @@ export interface MatchRepository {
     awayClubName: string;
     playerId: string;
     userRole: MatchRole;
+    lineups: MatchLineupPlayer[];
     initialTurn: CreateMatchTurnInput;
   }): Promise<MatchSummary>;
   resolveTurn(matchId: string, resolution: MatchResolutionInput): Promise<ResolveTurnResult>;

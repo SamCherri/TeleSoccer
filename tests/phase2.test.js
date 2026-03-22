@@ -158,9 +158,11 @@ class InMemoryMatchRepository {
         deadlineAt: params.initialTurn.deadlineAt,
         state: 'PENDING',
         isGoalkeeperContext: params.initialTurn.isGoalkeeperContext,
-        previousOutcome: params.initialTurn.previousOutcome
+        previousOutcome: params.initialTurn.previousOutcome,
+        visualEvent: params.initialTurn.visualEvent
       },
       recentEvents: [{ type: 'TURN_STARTED', minute: params.initialTurn.minute, description: 'Partida iniciada e primeiro lance liberado.', createdAt: new Date() }],
+      lineups: structuredClone(params.lineups),
       yellowCards: 0,
       redCards: 0,
       suspensionMatchesRemaining: 0,
@@ -208,7 +210,8 @@ class InMemoryMatchRepository {
           deadlineAt: resolution.nextTurn.deadlineAt,
           state: 'PENDING',
           isGoalkeeperContext: resolution.nextTurn.isGoalkeeperContext,
-          previousOutcome: resolution.nextTurn.previousOutcome
+          previousOutcome: resolution.nextTurn.previousOutcome,
+          visualEvent: resolution.nextTurn.visualEvent
         }
       : undefined;
 

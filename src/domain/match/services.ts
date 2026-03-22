@@ -1,6 +1,7 @@
 import { CareerStatus } from '../shared/enums';
 import { DomainError } from '../../shared/errors';
 import { MatchEngine } from './engine';
+import { buildDefaultMatchLineups } from './lineup-factory';
 import { MatchPlayerProfile, MatchRepository } from './repository';
 import { MatchActionKey, MatchRole, MatchStatus, MatchSummary, ResolveTurnResult, StartMatchResult } from './types';
 
@@ -39,7 +40,8 @@ export class StartMatchService {
     }
 
     const opponent = cpuClubPool[Math.abs(player.playerId.length) % cpuClubPool.length];
-    const initialTurn = this.matchEngine.createInitialTurn(player, now);
+    const lineups = buildDefaultMatchLineups(player);
+    const initialTurn = this.matchEngine.createInitialTurn(player, lineups, now);
     const match = await this.matchRepository.createMatchForPlayer({
       telegramId,
       homeClubId: player.clubId ?? 'unknown-home-club',
@@ -47,6 +49,7 @@ export class StartMatchService {
       awayClubName: opponent.name,
       playerId: player.playerId,
       userRole: player.position === 'GOALKEEPER' ? MatchRole.Goalkeeper : MatchRole.UserPlayer,
+      lineups,
       initialTurn
     });
 
@@ -92,6 +95,7 @@ export class GetActiveMatchService {
     const resolution = this.matchEngine.resolve({
       matchId: match.id,
       player,
+      lineups: match.lineups,
       turn: {
         id: match.activeTurn!.id,
         sequence: match.activeTurn!.sequence,
@@ -104,7 +108,8 @@ export class GetActiveMatchService {
         awayScore: match.scoreboard.awayScore,
         energy: match.energy,
         stoppageMinutes: match.scoreboard.stoppageMinutes,
-        currentYellowCards: match.yellowCards
+        currentYellowCards: match.yellowCards,
+        visualEvent: match.activeTurn!.visualEvent
       },
       now
     });
@@ -146,6 +151,7 @@ export class ResolveMatchTurnService {
     const resolution = this.matchEngine.resolve({
       matchId: activeMatch.id,
       player,
+      lineups: activeMatch.lineups,
       turn: {
         id: activeMatch.activeTurn.id,
         sequence: activeMatch.activeTurn.sequence,
@@ -158,7 +164,8 @@ export class ResolveMatchTurnService {
         awayScore: activeMatch.scoreboard.awayScore,
         energy: activeMatch.energy,
         stoppageMinutes: activeMatch.scoreboard.stoppageMinutes,
-        currentYellowCards: activeMatch.yellowCards
+        currentYellowCards: activeMatch.yellowCards,
+        visualEvent: activeMatch.activeTurn.visualEvent
       },
       action: expired ? undefined : action,
       now

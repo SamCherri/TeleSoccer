@@ -1,6 +1,7 @@
-import { MatchHalf, MatchSummary, MatchTurnView } from '../domain/match/types';
+import { MatchHalf, MatchSummary, MatchTurnView, MatchVisualFrame } from '../domain/match/types';
 import { MatchSceneAsset } from '../assets/scenes/match-scene-art';
 import { resolveMatchScene } from '../presentation/match-scene-resolver';
+import { buildMatchVisualSequence } from '../domain/match/visual-sequence';
 import { MultiplayerParticipantKind, MultiplayerSessionStatus, MultiplayerSessionSummary, MultiplayerSquadRole, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
 const halfLabelMap: Record<MatchHalf, string> = {
@@ -28,12 +29,25 @@ const sessionStatusLabelMap: Record<MultiplayerSessionStatus, string> = {
   [MultiplayerSessionStatus.Closed]: 'Encerrada'
 };
 
+export interface MatchSceneFrameViewModel {
+  title: string;
+  phase: string;
+  narration: string;
+  owner: string;
+  sceneKey: string;
+  ball: string;
+  playersSummary: string;
+  players: MatchVisualFrame['players'];
+}
+
 export interface MatchSceneViewModel {
   title: string;
   hud: string;
   phrase: string;
   fallback: string;
   asset: MatchSceneAsset;
+  sequenceHeadline: string;
+  frames: MatchSceneFrameViewModel[];
 }
 
 export interface MatchCardViewModel {
@@ -226,6 +240,17 @@ export const buildWeeklyAgendaCardViewModel = (input: {
   ]
 });
 
+const formatFrame = (frame: MatchVisualFrame): MatchSceneFrameViewModel => ({
+  title: `Frame ${frame.phase}`,
+  phase: frame.phase,
+  narration: frame.narration,
+  owner: frame.ownerLabel ?? 'Bola sem dono definido',
+  sceneKey: frame.sceneKey,
+  ball: `Bola em (${frame.ball.x.toFixed(1)}, ${frame.ball.y.toFixed(1)}) com posse ${frame.ball.possessionSide}.`,
+  playersSummary: `${frame.players.filter((player) => player.side === 'HOME').length} do HOME + ${frame.players.filter((player) => player.side === 'AWAY').length} do AWAY no mapa.`,
+  players: frame.players
+});
+
 const turnText = (turn: MatchTurnView): string[] => [
   `🎯 Lance ${turn.sequence}: ${turn.contextText}`,
   turn.previousOutcome ? `Último desfecho: ${turn.previousOutcome}` : 'Último desfecho: abertura de nova jogada.',
@@ -233,7 +258,8 @@ const turnText = (turn: MatchTurnView): string[] => [
 ];
 
 export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel => {
-  const scene = resolveMatchScene(match);
+  const visualSequence = match.visualSequence ?? buildMatchVisualSequence(match);
+  const scene = resolveMatchScene({ ...match, visualSequence });
 
   return {
     headline: '🏟️ ESTÁDIO | PARTIDA EM ANDAMENTO',
@@ -252,7 +278,9 @@ export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel
       hud: scene.asset.hudLabel,
       phrase: scene.shortPhrase,
       fallback: scene.fallbackLine,
-      asset: scene.asset
+      asset: scene.asset,
+      sequenceHeadline: visualSequence?.headline ?? 'Sequência visual indisponível.',
+      frames: visualSequence?.frames.map(formatFrame) ?? []
     }
   };
 };
