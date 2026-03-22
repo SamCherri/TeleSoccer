@@ -72,7 +72,9 @@ export class GameCardRenderer {
         `${renderSceneMood(viewModel.scene.asset.mood)} ${viewModel.scene.title.toUpperCase()} • HUD ${viewModel.scene.hud}`,
         viewModel.scene.phrase,
         viewModel.scene.sequenceHeadline,
-        ...viewModel.scene.frames.map((frame) => `${frame.title}: ${frame.narration} | ${frame.owner} | ${frame.ball} | ${frame.playersSummary} | cena ${frame.sceneKey}`),
+        viewModel.scene.frames.length > 0
+          ? `Momento decisivo: ${viewModel.scene.frames[viewModel.scene.frames.length - 1].narration}`
+          : 'Momento decisivo: sequência visual indisponível.',
         viewModel.scene.fallback
       ]),
       viewModel.currentPlay ? renderBlock('LANCE ATUAL', viewModel.currentPlay) : 'LANCE ATUAL\nSem lance pendente.',

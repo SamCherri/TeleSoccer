@@ -10,17 +10,17 @@ export interface ResolvedMatchScene {
 }
 
 const phraseByKey: Record<MatchSceneAsset['key'], string> = {
-  'pass-received': 'Passe encaixado para dar sequência ao ataque.',
-  'pass-intercepted': 'A linha de passe foi lida e cortada pelo adversário.',
-  dribble: 'Condução curta para quebrar a marcação.',
-  'defensive-duel': 'Duelo defensivo direto pedindo tempo de bote.',
-  shot: 'Finalização armada mirando o gol.',
-  'goalkeeper-save': 'O goleiro entra no foco do lance.',
-  goal: 'Rede balançando e jogada concluída.',
-  rebound: 'A segunda bola ficou viva na área.',
-  'corner-kick': 'Bola parada aberta para cruzamento na área.',
-  'penalty-kick': 'Cobrança direta contra o goleiro.',
-  fallback: 'O turno segue com cena genérica do lance.'
+  'pass-received': 'Passe limpo, receptor pronto e a jogada segue com leitura clara.',
+  'pass-intercepted': 'O defensor fecha a linha e transforma o passe em corte decisivo.',
+  dribble: 'O foco vai para o 1x1 entre quem conduz e quem tenta travar o lance.',
+  'defensive-duel': 'A cena destaca o choque direto entre pressão e contenção.',
+  shot: 'O enquadramento aproxima atacante, bola e meta para vender a finalização.',
+  'goalkeeper-save': 'A jogada fecha em goleiro, bola e gol para valorizar a defesa.',
+  goal: 'A conclusão mostra a bola vencendo o goleiro e entrando na rede.',
+  rebound: 'A sobra viva ganha enquadramento curto para evidenciar a segunda bola.',
+  'corner-kick': 'A cobrança aparece com bandeirinha, trajetória aérea e área ocupada.',
+  'penalty-kick': 'A cena concentra cobrador, goleiro e gol no duelo mais direto do turno.',
+  fallback: 'A composição mantém o lance legível mesmo quando o contexto é mais genérico.'
 };
 
 export const resolveMatchScene = (match: MatchSummary): ResolvedMatchScene => {
@@ -33,7 +33,7 @@ export const resolveMatchScene = (match: MatchSummary): ResolvedMatchScene => {
     shortPhrase: phraseByKey[asset.key],
     fallbackLine:
       frameCount > 1
-        ? `Arte preparada: sequência visual com ${frameCount} frames tático-narrativos para esta jogada.`
-        : 'Arte preparada: snapshot tático único para esta jogada.'
+        ? `Arte preparada: cena visual com ${frameCount} momentos do lance e hero frame focado na ação principal.`
+        : 'Arte preparada: cena visual com foco direto no momento principal do lance.'
   };
 };
