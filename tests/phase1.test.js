@@ -24,7 +24,7 @@ const { PrismaMatchRepository } = require('../dist/infra/prisma/match-repository
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchTurnState, MatchActionKey } = require('../dist/domain/match/types.js');
 const { botReplyToTelegramMessage } = require('../dist/infra/telegram/presenter.js');
 const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
-const { createRailwayTelegramServer } = require('../dist/infra/http/railway-telegram-server.js');
+const { buildFinalWebhookUrl, createRailwayTelegramServer } = require('../dist/infra/http/railway-telegram-server.js');
 const { DomainError } = require('../dist/shared/errors.js');
 
 class InMemoryPlayerRepository {
@@ -1138,7 +1138,9 @@ test('runtime do Telegram despacha update real e envia mensagem formatada', asyn
     sendMessage: async (payload) => {
       sentMessages.push(payload);
     },
-    setWebhook: async () => {}
+    setWebhook: async () => {},
+    getWebhookInfo: async () => ({}),
+    deleteWebhook: async () => {}
   });
 
   const processed = await runtime.processUpdate({
@@ -1173,6 +1175,209 @@ test('cliente Telegram usa Bot API real por HTTP', async () => {
   assert.match(String(requests[0].url), /sendMessage/);
   assert.match(String(requests[1].url), /setWebhook/);
   assert.match(requests[1].init.body, /secret/);
+});
+
+
+test('cliente Telegram consulta e remove webhook pela Bot API real', async () => {
+  const requests = [];
+  const client = new TelegramBotApiClient('token-123', async (url, init) => {
+    requests.push({ url, init });
+
+    if (String(url).includes('getWebhookInfo')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true, result: { url: 'https://tele.example/telegram/webhook/secret' } })
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true, result: true })
+    };
+  });
+
+  const webhookInfo = await client.getWebhookInfo();
+  await client.deleteWebhook(false);
+
+  assert.deepEqual(webhookInfo, { url: 'https://tele.example/telegram/webhook/secret' });
+  assert.match(String(requests[0].url), /getWebhookInfo/);
+  assert.equal(requests[0].init.body, '{}');
+  assert.match(String(requests[1].url), /deleteWebhook/);
+  assert.match(requests[1].init.body, /"drop_pending_updates":false/);
+});
+
+test('buildFinalWebhookUrl normaliza APP_BASE_URL e mantém path consistente com o secret', async () => {
+  assert.equal(
+    buildFinalWebhookUrl('https://tele.example///', '/telegram/webhook/diag-secret'),
+    'https://tele.example/telegram/webhook/diag-secret'
+  );
+  assert.equal(
+    buildFinalWebhookUrl(' https://tele.example/base/ ', '/telegram/webhook/diag-secret'),
+    'https://tele.example/base/telegram/webhook/diag-secret'
+  );
+  assert.equal(buildFinalWebhookUrl(undefined, '/telegram/webhook/diag-secret'), undefined);
+});
+
+test('servidor Railway expõe diagnóstico bruto do webhook e permite resetar com a URL final do startup', async () => {
+  const port = 3460 + Math.floor(Math.random() * 200);
+  const observed = {
+    setWebhook: [],
+    deleteWebhook: [],
+    getWebhookInfo: 0
+  };
+  const webhookInfos = [
+    {
+      url: 'https://wrong.example/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 3
+    },
+    {
+      url: 'https://wrong.example/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 3
+    },
+    {
+      url: 'https://tele.example/base/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 0
+    }
+  ];
+  const runtime = {
+    async processUpdate() {
+      return true;
+    }
+  };
+  const telegramClient = {
+    async sendMessage() {},
+    async setWebhook(webhookUrl, secretToken) {
+      observed.setWebhook.push({ webhookUrl, secretToken });
+    },
+    async getWebhookInfo() {
+      const index = observed.getWebhookInfo;
+      observed.getWebhookInfo += 1;
+      return webhookInfos[index] ?? webhookInfos.at(-1);
+    },
+    async deleteWebhook(dropPendingUpdates) {
+      observed.deleteWebhook.push(dropPendingUpdates);
+    }
+  };
+
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgresql://tele',
+      TELEGRAM_BOT_TOKEN: 'token-visible-only-as-boolean',
+      TELEGRAM_WEBHOOK_SECRET: 'diag-secret',
+      APP_BASE_URL: 'https://tele.example/base///',
+      PORT: port,
+      NODE_ENV: 'test'
+    },
+    runtime,
+    telegramClient
+  });
+
+  await server.start();
+
+  assert.equal(server.webhookPath, '/telegram/webhook/diag-secret');
+  assert.deepEqual(observed.setWebhook[0], {
+    webhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    secretToken: 'diag-secret'
+  });
+
+  const infoResponse = await fetch(`http://127.0.0.1:${port}/debug/telegram-webhook-info`);
+  assert.equal(infoResponse.status, 200);
+  const infoPayload = await infoResponse.json();
+  assert.deepEqual(infoPayload, {
+    appBaseUrl: 'https://tele.example/base///',
+    webhookPath: '/telegram/webhook/diag-secret',
+    finalWebhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    webhookInfo: {
+      url: 'https://wrong.example/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 3
+    }
+  });
+
+  const resetResponse = await fetch(`http://127.0.0.1:${port}/debug/telegram-reset-webhook`, {
+    method: 'POST'
+  });
+  assert.equal(resetResponse.status, 200);
+  const resetPayload = await resetResponse.json();
+  assert.deepEqual(resetPayload, {
+    appBaseUrl: 'https://tele.example/base///',
+    webhookPath: '/telegram/webhook/diag-secret',
+    finalWebhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    before: {
+      url: 'https://wrong.example/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 3
+    },
+    after: {
+      url: 'https://tele.example/base/telegram/webhook/diag-secret',
+      has_custom_certificate: false,
+      pending_update_count: 0
+    }
+  });
+  assert.deepEqual(observed.deleteWebhook, [false]);
+  assert.deepEqual(observed.setWebhook[1], {
+    webhookUrl: 'https://tele.example/base/telegram/webhook/diag-secret',
+    secretToken: 'diag-secret'
+  });
+
+  await server.stop();
+});
+
+test('startup do servidor registra log estruturado com finalWebhookUrl', async () => {
+  const port = 3670 + Math.floor(Math.random() * 200);
+  const originalConsoleInfo = console.info;
+  const messages = [];
+  console.info = (...args) => {
+    messages.push(args);
+  };
+
+  const runtime = {
+    async processUpdate() {
+      return true;
+    }
+  };
+  const telegramClient = {
+    async sendMessage() {},
+    async setWebhook() {},
+    async getWebhookInfo() { return {}; },
+    async deleteWebhook() {}
+  };
+
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgresql://tele',
+      TELEGRAM_WEBHOOK_SECRET: 'log-secret',
+      APP_BASE_URL: 'https://tele.example/',
+      PORT: port,
+      NODE_ENV: 'test'
+    },
+    runtime,
+    telegramClient
+  });
+
+  try {
+    await server.start();
+  } finally {
+    console.info = originalConsoleInfo;
+    await server.stop();
+  }
+
+  const startupLog = messages.find((entry) =>
+    entry[0] === '[railway-telegram-server]'
+    && typeof entry[1] === 'string'
+    && entry[1].includes('startup-webhook-configuration')
+  );
+
+  assert.ok(startupLog);
+  assert.match(startupLog[1], /"appBaseUrl":"https:\/\/tele.example\/"/);
+  assert.match(startupLog[1], /"webhookPath":"\/telegram\/webhook\/log-secret"/);
+  assert.match(startupLog[1], /"finalWebhookUrl":"https:\/\/tele.example\/telegram\/webhook\/log-secret"/);
+  assert.match(startupLog[1], /"port":/);
 });
 
 test('servidor Railway expõe healthcheck e processa webhook do Telegram', async () => {
@@ -1236,7 +1441,9 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
   };
   const telegramClient = {
     async sendMessage() {},
-    async setWebhook() {}
+    async setWebhook() {},
+    async getWebhookInfo() { return {}; },
+    async deleteWebhook() {}
   };
 
   const server = createRailwayTelegramServer({
@@ -1436,7 +1643,9 @@ test('runtime propaga falha real de sendMessage para o processamento', async () 
     sendMessage: async () => {
       throw new Error('Telegram sendMessage falhou com 403');
     },
-    setWebhook: async () => {}
+    setWebhook: async () => {},
+    getWebhookInfo: async () => ({}),
+    deleteWebhook: async () => {}
   });
 
   await assert.rejects(
@@ -1462,7 +1671,9 @@ test('servidor Railway expõe diagnóstico e não mascara erro interno como inva
   };
   const telegramClient = {
     async sendMessage() {},
-    async setWebhook() {}
+    async setWebhook() {},
+    async getWebhookInfo() { return {}; },
+    async deleteWebhook() {}
   };
 
   const server = createRailwayTelegramServer({
@@ -1524,7 +1735,9 @@ test('servidor Railway ignora update estruturalmente válido sem mensagem proces
   };
   const telegramClient = {
     async sendMessage() {},
-    async setWebhook() {}
+    async setWebhook() {},
+    async getWebhookInfo() { return {}; },
+    async deleteWebhook() {}
   };
 
   const port = 3322;
