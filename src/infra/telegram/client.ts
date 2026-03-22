@@ -17,6 +17,29 @@ const toRecord = (payload: TelegramSendMessagePayload): Record<string, unknown> 
   reply_markup: payload.reply_markup
 });
 
+const serializeError = (error: unknown): Record<string, unknown> => {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    };
+  }
+
+  return {
+    message: typeof error === 'string' ? error : 'Erro não identificado',
+    value: error
+  };
+};
+
+const logAudit = (event: string, details: Record<string, unknown>): void => {
+  console.info('[telegram-client]', JSON.stringify({ event, ...details }));
+};
+
+const logFailure = (event: string, details: Record<string, unknown>, error?: unknown): void => {
+  console.error('[telegram-client]', JSON.stringify({ event, ...details, ...(error === undefined ? {} : { error: serializeError(error) }) }));
+};
+
 export class TelegramBotApiClient implements TelegramHttpClient {
   constructor(
     private readonly token: string,
@@ -24,34 +47,89 @@ export class TelegramBotApiClient implements TelegramHttpClient {
   ) {}
 
   async sendMessage(payload: TelegramSendMessagePayload): Promise<void> {
-    await this.callApi('sendMessage', toRecord(payload));
+    try {
+      await this.callApi('sendMessage', toRecord(payload));
+    } catch (error) {
+      logFailure('send-message-failed', {
+        method: 'sendMessage',
+        chatId: payload.chat_id
+      }, error);
+      throw error;
+    }
   }
 
   async setWebhook(webhookUrl: string, secretToken?: string): Promise<void> {
-    await this.callApi('setWebhook', {
-      url: webhookUrl,
-      secret_token: secretToken
-    });
+    try {
+      await this.callApi('setWebhook', {
+        url: webhookUrl,
+        secret_token: secretToken
+      });
+    } catch (error) {
+      logFailure('set-webhook-failed', {
+        method: 'setWebhook',
+        webhookUrl,
+        hasSecretToken: Boolean(secretToken)
+      }, error);
+      throw error;
+    }
   }
 
   private async callApi<T>(method: string, body: Record<string, unknown>): Promise<T> {
-    const response = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
+    try {
+      const response = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
 
-    if (!response.ok) {
-      throw new Error(`Telegram Bot API respondeu com HTTP ${response.status} no método ${method}.`);
+      const rawPayload = await response.text();
+      let payload: TelegramApiResponse<T> | undefined;
+      if (rawPayload) {
+        try {
+          payload = JSON.parse(rawPayload) as TelegramApiResponse<T>;
+        } catch (error) {
+          logFailure('telegram-api-invalid-json', {
+            method,
+            httpStatus: response.status,
+            responseBodyPreview: rawPayload.slice(0, 500)
+          }, error);
+          throw new Error(`Telegram Bot API retornou JSON inválido no método ${method}.`);
+        }
+      }
+
+      if (!response.ok) {
+        const description = payload?.description ?? 'sem descrição retornada';
+        logFailure('telegram-api-http-error', {
+          method,
+          httpStatus: response.status,
+          description
+        });
+        throw new Error(`Telegram Bot API respondeu com HTTP ${response.status} no método ${method}: ${description}.`);
+      }
+
+      if (!payload?.ok) {
+        const description = payload?.description ?? 'erro desconhecido';
+        logFailure('telegram-api-declared-error', {
+          method,
+          httpStatus: response.status,
+          description
+        });
+        throw new Error(`Telegram Bot API rejeitou ${method}: ${description}.`);
+      }
+
+      logAudit('telegram-api-success', {
+        method,
+        httpStatus: response.status
+      });
+      return payload.result as T;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw new Error(`Falha inesperada ao chamar Telegram Bot API no método ${method}.`);
     }
-
-    const payload = (await response.json()) as TelegramApiResponse<T>;
-    if (!payload.ok) {
-      throw new Error(`Telegram Bot API rejeitou ${method}: ${payload.description ?? 'erro desconhecido'}.`);
-    }
-
-    return payload.result as T;
   }
 }

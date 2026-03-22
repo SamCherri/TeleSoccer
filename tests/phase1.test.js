@@ -659,6 +659,42 @@ test('dispatcher abre menu principal e roteia comandos reais do bot', async () =
   assert.ok(tryoutPrompt.actions.includes(phase1BotActions.confirmTryout));
 });
 
+test('dispatcher normaliza slash commands sem afetar botões textuais', async () => {
+  const repo = new InMemoryPlayerRepository();
+  const clubs = new InMemoryClubRepository();
+  const createPlayerService = new CreatePlayerService(repo);
+  const facade = new Phase1TelegramFacade(
+    createPlayerService,
+    new GetPlayerCardService(repo),
+    new GetCareerStatusService(repo),
+    new GetCareerHistoryService(repo),
+    new GetWalletStatementService(repo),
+    new WeeklyTrainingService(repo),
+    new TryoutService(repo, clubs)
+  );
+  const dispatcher = new Phase1TelegramDispatcher(facade, new Phase1PlayerCreationFlow(new InMemoryPlayerCreationConversationStore()));
+
+  await createPlayerService.execute({
+    telegramId: '111-upper',
+    name: 'Nando Luz',
+    nationality: 'Brasil',
+    position: PlayerPosition.Forward,
+    dominantFoot: DominantFoot.Right,
+    heightCm: 176,
+    weightKg: 70,
+    visual: { skinTone: 'morena', hairStyle: 'curto' }
+  });
+
+  const lowerReply = await dispatcher.dispatch({ telegramId: '111-upper', text: '/start' });
+  const upperReply = await dispatcher.dispatch({ telegramId: '111-upper', text: '/Start' });
+  const capsReply = await dispatcher.dispatch({ telegramId: '111-upper', text: '/START' });
+
+  assert.equal(upperReply.text, lowerReply.text);
+  assert.deepEqual(upperReply.actions, lowerReply.actions);
+  assert.equal(capsReply.text, lowerReply.text);
+  assert.deepEqual(capsReply.actions, lowerReply.actions);
+});
+
 test('dispatcher trata erro de domínio com retorno consistente para o bot', async () => {
   const repo = new InMemoryPlayerRepository();
   const clubs = new InMemoryClubRepository();
@@ -1088,7 +1124,8 @@ test('cliente Telegram usa Bot API real por HTTP', async () => {
     requests.push({ url, init });
     return {
       ok: true,
-      json: async () => ({ ok: true, result: true })
+      status: 200,
+      text: async () => JSON.stringify({ ok: true, result: true })
     };
   });
 
@@ -1105,7 +1142,8 @@ test('servidor Railway expõe healthcheck e processa webhook do Telegram', async
   const port = 3400 + Math.floor(Math.random() * 200);
   const telegramFetch = async () => ({
     ok: true,
-    json: async () => ({ ok: true, result: true })
+    status: 200,
+    text: async () => JSON.stringify({ ok: true, result: true })
   });
 
   const updates = [];
@@ -1203,6 +1241,95 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
   });
   assert.equal(invalidPayloadResponse.status, 400);
   assert.equal(processedUpdates.length, 0);
+
+  await server.stop();
+});
+
+test('runtime propaga falha real de sendMessage para o processamento', async () => {
+  const dispatcher = {
+    dispatch: async () => ({
+      text: 'Resposta pronta',
+      actions: [phase1BotActions.mainMenu]
+    })
+  };
+  const runtime = new Phase1TelegramRuntime(dispatcher, {
+    sendMessage: async () => {
+      throw new Error('Telegram sendMessage falhou com 403');
+    },
+    setWebhook: async () => {}
+  });
+
+  await assert.rejects(
+    runtime.processUpdate({
+      update_id: 30,
+      message: {
+        message_id: 1,
+        text: '/start',
+        chat: { id: 500, type: 'private' },
+        from: { id: 999 }
+      }
+    }),
+    /sendMessage falhou com 403/
+  );
+});
+
+test('servidor Railway expõe diagnóstico e não mascara erro interno como invalid-json', async () => {
+  const port = 3333 + Math.floor(Math.random() * 200);
+  const runtime = {
+    async processUpdate() {
+      throw new Error('dispatcher-runtime-broken');
+    }
+  };
+  const telegramClient = {
+    async sendMessage() {},
+    async setWebhook() {}
+  };
+
+  const server = createRailwayTelegramServer({
+    env: {
+      DATABASE_URL: 'postgresql://tele',
+      TELEGRAM_BOT_TOKEN: 'token-visible-only-as-boolean',
+      TELEGRAM_WEBHOOK_SECRET: 'diag-secret',
+      APP_BASE_URL: 'https://tele.example',
+      PORT: port,
+      NODE_ENV: 'test'
+    },
+    runtime,
+    telegramClient
+  });
+
+  await server.start();
+
+  const debugResponse = await fetch(`http://127.0.0.1:${port}/debug/telegram-runtime`);
+  assert.equal(debugResponse.status, 200);
+  const debugPayload = await debugResponse.json();
+  assert.deepEqual(debugPayload, {
+    nodeEnv: 'test',
+    hasTelegramBotToken: true,
+    hasAppBaseUrl: true,
+    hasWebhookSecret: true,
+    webhookPath: '/telegram/webhook/diag-secret'
+  });
+
+  const webhookResponse = await fetch(`http://127.0.0.1:${port}/telegram/webhook/diag-secret`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-telegram-bot-api-secret-token': 'diag-secret'
+    },
+    body: JSON.stringify({
+      update_id: 40,
+      message: {
+        message_id: 8,
+        chat: { id: 1, type: 'private' },
+        from: { id: 2 },
+        text: '/start'
+      }
+    })
+  });
+
+  assert.equal(webhookResponse.status, 500);
+  assert.equal(await webhookResponse.text(), 'processing-error');
 
   await server.stop();
 });
