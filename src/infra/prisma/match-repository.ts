@@ -85,6 +85,10 @@ const asVisualEvent = (value: unknown): MatchVisualEvent | undefined => {
   return record.visualEvent;
 };
 
+const logAudit = (event: string, details: Record<string, unknown>): void => {
+  console.info('[prisma-match-repository]', JSON.stringify({ event, ...details }));
+};
+
 export class PrismaMatchRepository implements MatchRepository {
   async findPlayerByTelegramId(telegramId: string): Promise<MatchPlayerProfile | null> {
     const prisma = getPrismaClient();
@@ -113,16 +117,16 @@ export class PrismaMatchRepository implements MatchRepository {
 
     const match = (await prisma.match.create({
       data: {
-        playerId: params.playerId,
-        homeClubId: homeClub.id,
-        awayClubId: awayClub.id,
+        player: { connect: { id: params.playerId } },
+        homeClub: { connect: { id: homeClub.id } },
+        awayClub: { connect: { id: awayClub.id } },
         currentMinute: params.initialTurn.minute,
         currentHalf: params.initialTurn.half,
         possessionSide: params.initialTurn.possessionSide,
         status: MatchStatus.InProgress,
         lineups: {
           create: params.lineups.map((lineup) => ({
-            playerId: lineup.isUserControlled ? params.playerId : undefined,
+            ...(lineup.isUserControlled ? { player: { connect: { id: params.playerId } } } : {}),
             side: lineup.side,
             role: lineup.role === 'GOALKEEPER' ? MatchRole.Goalkeeper : lineup.isUserControlled ? params.userRole : MatchRole.CpuSupport,
             displayName: lineup.displayName,
@@ -215,6 +219,16 @@ export class PrismaMatchRepository implements MatchRepository {
       }
 
       if (resolution.nextTurn) {
+        logAudit('next-turn-create-request', {
+          matchId,
+          turnId: resolution.turnId,
+          nextSequence: resolution.nextTurn.sequence,
+          relationConnectEnabled: true,
+          relationConnect: {
+            match: { connect: { id: matchId } }
+          }
+        });
+
         await tx.matchTurn.create({
           data: {
             match: { connect: { id: matchId } },

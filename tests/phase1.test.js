@@ -574,7 +574,7 @@ test('o repositório Prisma não envia walletTransaction nem historyEntry ao cre
   });
 
   assert.deepEqual(capturedCreateData, {
-    playerId: 'player-1',
+    player: { connect: { id: 'player-1' } },
     weekNumber: 2,
     focus: AttributeKey.Passing,
     cost: 20,
@@ -1492,8 +1492,101 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
 
 
 
+test('repositório Prisma usa connect explícito ao criar partida e lineup relacional do jogador', async () => {
+  let capturedMatchCreate;
+
+  setPrismaClientForTests({
+    club: {
+      findUnique: async () => ({ id: 'club-home', name: 'Porto Azul FC' }),
+      upsert: async () => ({ id: 'club-away', name: 'Real Aurora' })
+    },
+    match: {
+      create: async (args) => {
+        capturedMatchCreate = args;
+        return {
+          id: 'match-1',
+          playerId: 'player-1',
+          status: MatchStatus.InProgress,
+          homeScore: 0,
+          awayScore: 0,
+          currentMinute: 1,
+          currentHalf: MatchHalf.First,
+          possessionSide: MatchPossessionSide.Home,
+          stoppageMinutes: 0,
+          userEnergy: 100,
+          yellowCards: 0,
+          redCards: 0,
+          homeClub: { name: 'Porto Azul FC' },
+          awayClub: { name: 'Real Aurora' },
+          lineups: [],
+          turns: [],
+          events: [],
+          injuries: [],
+          suspensions: []
+        };
+      }
+    }
+  });
+
+  const repository = new PrismaMatchRepository();
+  await repository.createMatchForPlayer({
+    telegramId: '77',
+    homeClubId: 'club-home',
+    homeClubName: 'Porto Azul FC',
+    awayClubName: 'Real Aurora',
+    playerId: 'player-1',
+    userRole: 'USER_PLAYER',
+    lineups: [
+      {
+        id: 'lineup-1',
+        side: MatchPossessionSide.Home,
+        role: 'FORWARD',
+        displayName: 'Jogador Usuário',
+        shirtNumber: 10,
+        isUserControlled: true,
+        tacticalPosition: 'ST'
+      },
+      {
+        id: 'lineup-2',
+        side: MatchPossessionSide.Away,
+        role: 'DEFENDER',
+        displayName: 'CPU',
+        shirtNumber: 4,
+        isUserControlled: false,
+        tacticalPosition: 'CB'
+      }
+    ],
+    initialTurn: {
+      sequence: 1,
+      minute: 1,
+      half: MatchHalf.First,
+      possessionSide: MatchPossessionSide.Home,
+      contextType: MatchContextType.ReceivedFree,
+      contextText: 'Primeiro lance',
+      availableActions: [MatchActionKey.Pass],
+      deadlineAt: new Date('2026-03-22T12:00:00.000Z'),
+      previousOutcome: undefined,
+      isGoalkeeperContext: false,
+      visualEvent: { kind: 'duel' }
+    }
+  });
+
+  assert.deepEqual(capturedMatchCreate.data.player, { connect: { id: 'player-1' } });
+  assert.deepEqual(capturedMatchCreate.data.homeClub, { connect: { id: 'club-home' } });
+  assert.deepEqual(capturedMatchCreate.data.awayClub, { connect: { id: 'club-away' } });
+  assert.deepEqual(capturedMatchCreate.data.lineups.create[0].player, { connect: { id: 'player-1' } });
+  assert.equal(capturedMatchCreate.data.lineups.create[1].player, undefined);
+
+  setPrismaClientForTests(null);
+});
+
 test('repositório Prisma usa connect explícito ao criar próximo turno e eventos relacionais da partida', async () => {
   const calls = { matchTurn: [], matchEvent: [], disciplinary: [], injury: [], suspension: [] };
+  const originalConsoleInfo = console.info;
+  const messages = [];
+  console.info = (...args) => {
+    messages.push(args);
+  };
 
   setPrismaClientForTests({
     $transaction: async (callback) => callback({
@@ -1584,41 +1677,45 @@ test('repositório Prisma usa connect explícito ao criar próximo turno e event
   });
 
   const repository = new PrismaMatchRepository();
-  await repository.resolveTurn('match-1', {
-    turnId: 'turn-1',
-    action: MatchActionKey.Pass,
-    turnState: MatchTurnState.Resolved,
-    outcomeText: 'Passe certo',
-    homeScore: 1,
-    awayScore: 0,
-    minute: 16,
-    half: MatchHalf.First,
-    possessionSide: MatchPossessionSide.Home,
-    status: MatchStatus.InProgress,
-    energy: 88,
-    stoppageMinutes: 0,
-    yellowCardsDelta: 1,
-    suspensionMatchesToAdd: 1,
-    redCardIssued: false,
-    injury: { severity: 2, matchesRemaining: 1, description: 'Pancada no tornozelo' },
-    events: [
-      { type: 'ACTION_RESOLVED', minute: 15, description: 'Passe certo', metadata: { chain: 1 } },
-      { type: 'SUSPENSION', minute: 15, description: 'Suspenso', metadata: { chain: 2 } }
-    ],
-    nextTurn: {
-      sequence: 2,
+  try {
+    await repository.resolveTurn('match-1', {
+      turnId: 'turn-1',
+      action: MatchActionKey.Pass,
+      turnState: MatchTurnState.Resolved,
+      outcomeText: 'Passe certo',
+      homeScore: 1,
+      awayScore: 0,
       minute: 16,
       half: MatchHalf.First,
       possessionSide: MatchPossessionSide.Home,
-      contextType: MatchContextType.ReceivedFree,
-      contextText: 'Novo lance',
-      availableActions: [MatchActionKey.Pass],
-      deadlineAt: new Date('2026-03-22T12:01:00.000Z'),
-      isGoalkeeperContext: false,
-      previousOutcome: 'Passe certo',
-      visualEvent: { kind: 'duel' }
-    }
-  });
+      status: MatchStatus.InProgress,
+      energy: 88,
+      stoppageMinutes: 0,
+      yellowCardsDelta: 1,
+      suspensionMatchesToAdd: 1,
+      redCardIssued: false,
+      injury: { severity: 2, matchesRemaining: 1, description: 'Pancada no tornozelo' },
+      events: [
+        { type: 'ACTION_RESOLVED', minute: 15, description: 'Passe certo', metadata: { chain: 1 } },
+        { type: 'SUSPENSION', minute: 15, description: 'Suspenso', metadata: { chain: 2 } }
+      ],
+      nextTurn: {
+        sequence: 2,
+        minute: 16,
+        half: MatchHalf.First,
+        possessionSide: MatchPossessionSide.Home,
+        contextType: MatchContextType.ReceivedFree,
+        contextText: 'Novo lance',
+        availableActions: [MatchActionKey.Pass],
+        deadlineAt: new Date('2026-03-22T12:01:00.000Z'),
+        isGoalkeeperContext: false,
+        previousOutcome: 'Passe certo',
+        visualEvent: { kind: 'duel' }
+      }
+    });
+  } finally {
+    console.info = originalConsoleInfo;
+  }
 
   assert.deepEqual(calls.matchTurn[0].data.match, { connect: { id: 'match-1' } });
   assert.deepEqual(calls.matchEvent[0].data.match, { connect: { id: 'match-1' } });
@@ -1629,6 +1726,15 @@ test('repositório Prisma usa connect explícito ao criar próximo turno e event
   assert.deepEqual(calls.injury[0].data.player, { connect: { id: 'player-1' } });
   assert.deepEqual(calls.suspension[0].data.match, { connect: { id: 'match-1' } });
   assert.deepEqual(calls.suspension[0].data.player, { connect: { id: 'player-1' } });
+
+  const nextTurnAuditLog = messages.find((entry) =>
+    entry[0] === '[prisma-match-repository]'
+    && typeof entry[1] === 'string'
+    && entry[1].includes('next-turn-create-request')
+  );
+  assert.ok(nextTurnAuditLog);
+  assert.match(nextTurnAuditLog[1], /"relationConnectEnabled":true/);
+  assert.match(nextTurnAuditLog[1], /"match":\{"connect":\{"id":"match-1"\}\}/);
 
   setPrismaClientForTests(null);
 });
