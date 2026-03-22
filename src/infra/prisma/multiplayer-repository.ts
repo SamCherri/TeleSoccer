@@ -214,7 +214,7 @@ export class PrismaMultiplayerRepository implements MultiplayerRepository {
       const createdSession = (await tx.multiplayerSession.create({
         data: {
           code,
-          hostUserId: input.hostUserId,
+          hostUser: { connect: { id: input.hostUserId } },
           fillPolicy: input.fillPolicy,
           maxStartersPerSide: input.maxStartersPerSide,
           maxSubstitutesPerSide: input.maxSubstitutesPerSide,

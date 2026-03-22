@@ -9,6 +9,8 @@ interface TelegramApiResponse<T> {
 export interface TelegramHttpClient {
   sendMessage(payload: TelegramSendMessagePayload): Promise<void>;
   setWebhook(webhookUrl: string, secretToken?: string): Promise<void>;
+  getWebhookInfo(): Promise<unknown>;
+  deleteWebhook(dropPendingUpdates?: boolean): Promise<void>;
 }
 
 const toRecord = (payload: TelegramSendMessagePayload): Record<string, unknown> => ({
@@ -69,6 +71,31 @@ export class TelegramBotApiClient implements TelegramHttpClient {
         method: 'setWebhook',
         webhookUrl,
         hasSecretToken: Boolean(secretToken)
+      }, error);
+      throw error;
+    }
+  }
+
+  async getWebhookInfo(): Promise<unknown> {
+    try {
+      return await this.callApi<unknown>('getWebhookInfo', {});
+    } catch (error) {
+      logFailure('get-webhook-info-failed', {
+        method: 'getWebhookInfo'
+      }, error);
+      throw error;
+    }
+  }
+
+  async deleteWebhook(dropPendingUpdates = false): Promise<void> {
+    try {
+      await this.callApi('deleteWebhook', {
+        drop_pending_updates: dropPendingUpdates
+      });
+    } catch (error) {
+      logFailure('delete-webhook-failed', {
+        method: 'deleteWebhook',
+        dropPendingUpdates
       }, error);
       throw error;
     }

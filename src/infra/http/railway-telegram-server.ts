@@ -1,6 +1,6 @@
 import { AppEnv } from '../../config/env';
 import { Phase1TelegramRuntime } from '../telegram/runtime';
-import { TelegramBotApiClient } from '../telegram/client';
+import { TelegramHttpClient } from '../telegram/client';
 import { isTelegramUpdate, TelegramUpdate } from '../telegram/types';
 
 interface HttpRequest {
@@ -94,6 +94,61 @@ const normalizeHeaderValue = (value: string | string[] | undefined): string | un
   return value;
 };
 
+const normalizeBaseUrl = (appBaseUrl?: string): string | undefined => {
+  const trimmed = appBaseUrl?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.replace(/\/+$/, '');
+};
+
+const normalizeWebhookPath = (webhookPath: string): string => {
+  if (!webhookPath.startsWith('/')) {
+    return `/${webhookPath}`;
+  }
+
+  return webhookPath;
+};
+
+export const buildFinalWebhookUrl = (appBaseUrl: string | undefined, webhookPath: string): string | undefined => {
+  const normalizedBaseUrl = normalizeBaseUrl(appBaseUrl);
+  if (!normalizedBaseUrl) {
+    return undefined;
+  }
+
+  return `${normalizedBaseUrl}${normalizeWebhookPath(webhookPath)}`;
+};
+
+const extractRegisteredWebhookUrl = (webhookInfo: unknown): string | undefined => {
+  if (!webhookInfo || typeof webhookInfo !== 'object' || !('url' in webhookInfo)) {
+    return undefined;
+  }
+
+  const url = (webhookInfo as { url?: unknown }).url;
+  return typeof url === 'string' && url.trim().length > 0 ? url : undefined;
+};
+
+const buildWebhookDebugPayload = (
+  appBaseUrl: string | undefined,
+  webhookPath: string,
+  finalWebhookUrl: string | undefined,
+  webhookInfo: unknown
+): Record<string, unknown> => {
+  const registeredWebhookUrl = extractRegisteredWebhookUrl(webhookInfo);
+  const urlsMatch = Boolean(finalWebhookUrl && registeredWebhookUrl && registeredWebhookUrl === finalWebhookUrl);
+
+  return {
+    appBaseUrl: appBaseUrl ?? null,
+    webhookPath,
+    finalWebhookUrl: finalWebhookUrl ?? null,
+    registeredWebhookUrl: registeredWebhookUrl ?? null,
+    urlsMatch,
+    webhookInfo
+  };
+};
+
 const hasValidWebhookSecret = (request: HttpRequest, webhookSecret?: string): boolean => {
   if (!webhookSecret) {
     return true;
@@ -112,10 +167,11 @@ export interface RailwayTelegramServerHandle {
 export const createRailwayTelegramServer = (params: {
   env: AppEnv;
   runtime: Phase1TelegramRuntime;
-  telegramClient: TelegramBotApiClient;
+  telegramClient: TelegramHttpClient;
 }): RailwayTelegramServerHandle => {
   const webhookSecret = params.env.TELEGRAM_WEBHOOK_SECRET ?? 'telesoccer-phase1';
   const webhookPath = `/telegram/webhook/${webhookSecret}`;
+  const finalWebhookUrl = buildFinalWebhookUrl(params.env.APP_BASE_URL, webhookPath);
   let server: HttpServer | null = null;
 
   return {
@@ -148,6 +204,57 @@ export const createRailwayTelegramServer = (params: {
             hasWebhookSecret: Boolean(params.env.TELEGRAM_WEBHOOK_SECRET),
             webhookPath
           });
+          return;
+        }
+
+        if (request.method === 'GET' && request.url === '/debug/telegram-webhook-info') {
+          try {
+            const webhookInfo = await params.telegramClient.getWebhookInfo();
+            respondJson(response, 200, buildWebhookDebugPayload(params.env.APP_BASE_URL, webhookPath, finalWebhookUrl, webhookInfo));
+          } catch (error) {
+            logFailure('debug-telegram-webhook-info-failed', {
+              method: requestMethod,
+              url: requestUrl,
+              appBaseUrl: params.env.APP_BASE_URL ?? null,
+              webhookPath,
+              finalWebhookUrl: finalWebhookUrl ?? null
+            }, error);
+            respondJson(response, 500, {
+              error: 'telegram-webhook-info-failed'
+            });
+          }
+          return;
+        }
+
+        if (request.method === 'POST' && request.url === '/debug/telegram-reset-webhook') {
+          try {
+            const before = await params.telegramClient.getWebhookInfo();
+            await params.telegramClient.deleteWebhook(false);
+
+            if (!finalWebhookUrl) {
+              throw new Error('APP_BASE_URL não está configurado; não foi possível recalcular a URL pública do webhook.');
+            }
+
+            await params.telegramClient.setWebhook(finalWebhookUrl, params.env.TELEGRAM_WEBHOOK_SECRET);
+            const after = await params.telegramClient.getWebhookInfo();
+
+            respondJson(response, 200, {
+              ...buildWebhookDebugPayload(params.env.APP_BASE_URL, webhookPath, finalWebhookUrl, after),
+              before,
+              after
+            });
+          } catch (error) {
+            logFailure('debug-telegram-reset-webhook-failed', {
+              method: requestMethod,
+              url: requestUrl,
+              appBaseUrl: params.env.APP_BASE_URL ?? null,
+              webhookPath,
+              finalWebhookUrl: finalWebhookUrl ?? null
+            }, error);
+            respondJson(response, 500, {
+              error: 'telegram-reset-webhook-failed'
+            });
+          }
           return;
         }
 
@@ -222,9 +329,15 @@ export const createRailwayTelegramServer = (params: {
         server?.listen(params.env.PORT, '0.0.0.0', () => resolve());
       });
 
-      if (params.env.APP_BASE_URL) {
-        const baseUrl = params.env.APP_BASE_URL.replace(/\/$/, '');
-        await params.telegramClient.setWebhook(`${baseUrl}${webhookPath}`, params.env.TELEGRAM_WEBHOOK_SECRET);
+      logAudit('startup-webhook-configuration', {
+        appBaseUrl: params.env.APP_BASE_URL ?? null,
+        webhookPath,
+        finalWebhookUrl: finalWebhookUrl ?? null,
+        port: params.env.PORT
+      });
+
+      if (finalWebhookUrl) {
+        await params.telegramClient.setWebhook(finalWebhookUrl, params.env.TELEGRAM_WEBHOOK_SECRET);
       }
     },
     async stop(): Promise<void> {

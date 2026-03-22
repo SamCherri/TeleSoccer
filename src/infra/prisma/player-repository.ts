@@ -113,7 +113,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
 
       const generation = (await tx.playerGeneration.create({
         data: {
-          userId: user.id,
+          user: { connect: { id: user.id } },
           generationNumber: input.generationNumber,
           inheritedPoints: input.inheritedPoints,
           isCurrent: true
@@ -122,7 +122,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
 
       return tx.player.create({
         data: {
-          generationId: generation.id,
+          generation: { connect: { id: generation.id } },
           name: input.name,
           nationality: input.nationality,
           position: input.position,
@@ -358,13 +358,13 @@ export class PrismaPlayerRepository implements PlayerRepository {
       }
 
       await tx.trainingSession.create({
-        data: buildTrainingSessionCreateData({
-          playerId: params.playerId,
+        data: {
+          player: { connect: { id: params.playerId } },
           weekNumber: params.weekNumber,
           focus: params.focus,
           cost: params.cost,
           attributeGain: params.attributeGain
-        })
+        }
       });
 
       await tx.playerAttribute.update({
@@ -382,7 +382,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
 
       await tx.playerHistoryEntry.create({
         data: {
-          playerId: params.playerId,
+          player: { connect: { id: params.playerId } },
           type: params.historyEntry.type,
           description: params.historyEntry.description,
           metadata: params.historyEntry.metadata
@@ -442,13 +442,13 @@ export class PrismaPlayerRepository implements PlayerRepository {
 
       await tx.tryoutAttempt.create({
         data: {
-          playerId: params.playerId,
+          player: { connect: { id: params.playerId } },
           cost: params.cost,
           weekNumber: params.weekNumber,
           score: params.score,
           requiredScore: params.requiredScore,
           status: approved ? TryoutStatus.Approved : TryoutStatus.Failed,
-          clubId: params.approvedClubId
+          ...(params.approvedClubId ? { club: { connect: { id: params.approvedClubId } } } : {})
         }
       });
 
@@ -460,8 +460,8 @@ export class PrismaPlayerRepository implements PlayerRepository {
 
         await tx.clubMembership.create({
           data: {
-            playerId: params.playerId,
-            clubId: params.approvedClubId,
+            player: { connect: { id: params.playerId } },
+            club: { connect: { id: params.approvedClubId } },
             role: 'PLAYER',
             isActive: true
           }
@@ -479,7 +479,7 @@ export class PrismaPlayerRepository implements PlayerRepository {
       for (const entry of params.historyEntries) {
         await tx.playerHistoryEntry.create({
           data: {
-            playerId: params.playerId,
+            player: { connect: { id: params.playerId } },
             type: entry.type,
             description: entry.description,
             metadata: entry.metadata
