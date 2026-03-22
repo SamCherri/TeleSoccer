@@ -22,6 +22,15 @@ test('build registra inputHash e distHash no artefato', () => {
   assert.equal(metadata.distHash.length > 10, true);
 });
 
+test('build registra auditoria de creates relacionais do Prisma em src e dist', () => {
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+  const checks = metadata.artifactStatus?.checks ?? [];
+
+  assert.equal(Array.isArray(checks), true);
+  assert.equal(checks.length >= 5, true);
+  assert.equal(checks.every((check) => check.srcHasSnippet && check.distHasSnippet && check.matches), true);
+});
+
 test('verify-artifact falha se src e dist divergirem', () => {
   const original = fs.readFileSync(entryPath, 'utf8');
   fs.writeFileSync(entryPath, `${original}\n// divergence injected by test\n`);

@@ -74,7 +74,7 @@ interface TryoutAttemptRecord {
 }
 
 interface TrainingSessionCreateData {
-  playerId: string;
+  player: { connect: { id: string } };
   weekNumber: number;
   focus: string;
   cost: number;
@@ -88,7 +88,7 @@ export const buildTrainingSessionCreateData = (params: {
   cost: number;
   attributeGain: number;
 }): TrainingSessionCreateData => ({
-  playerId: params.playerId,
+  player: { connect: { id: params.playerId } },
   weekNumber: params.weekNumber,
   focus: params.focus,
   cost: params.cost,
@@ -358,13 +358,13 @@ export class PrismaPlayerRepository implements PlayerRepository {
       }
 
       await tx.trainingSession.create({
-        data: {
-          player: { connect: { id: params.playerId } },
+        data: buildTrainingSessionCreateData({
+          playerId: params.playerId,
           weekNumber: params.weekNumber,
           focus: params.focus,
           cost: params.cost,
           attributeGain: params.attributeGain
-        }
+        })
       });
 
       await tx.playerAttribute.update({

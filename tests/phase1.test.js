@@ -502,7 +502,7 @@ test('o payload de persistência do treino contém apenas campos válidos da tab
       attributeGain: 2
     }),
     {
-      playerId: 'player-1',
+      player: { connect: { id: 'player-1' } },
       weekNumber: 2,
       focus: AttributeKey.Passing,
       cost: 20,
