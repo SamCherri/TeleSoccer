@@ -26,6 +26,16 @@ const logFailure = (event: string, details: Record<string, unknown>, error: unkn
   console.error('[telegram-runtime]', JSON.stringify({ event, ...details, error: serializeError(error) }));
 };
 
+const extractCommand = (text?: string): string | undefined => {
+  const trimmed = text?.trim();
+  if (!trimmed || !trimmed.startsWith('/')) {
+    return undefined;
+  }
+
+  const [command] = trimmed.split(/\s+/);
+  return command;
+};
+
 export class Phase1TelegramRuntime {
   constructor(
     private readonly dispatcher: Phase1TelegramDispatcher,
@@ -38,6 +48,7 @@ export class Phase1TelegramRuntime {
       updateId: update.update_id,
       chatId: message?.chat?.id,
       fromId: message?.from?.id,
+      command: extractCommand(message?.text),
       text: message?.text ?? '/start'
     };
 

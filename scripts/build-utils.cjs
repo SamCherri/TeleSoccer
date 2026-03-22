@@ -13,7 +13,15 @@ const packageJsonPath = path.join(repoRoot, 'package.json');
 const tsconfigPath = path.join(repoRoot, 'tsconfig.json');
 const matchRepositorySrcPath = path.join(srcDir, 'infra', 'prisma', 'match-repository.ts');
 const matchRepositoryDistPath = path.join(distDir, 'infra', 'prisma', 'match-repository.js');
-const artifactNeedle = "match: { connect: { id: matchId } }";
+const artifactNeedle = 'match: { connect: { id: matchId } }';
+const requiredDistFiles = [
+  path.join(distDir, 'app', 'index.js'),
+  path.join(distDir, 'infra', 'http', 'railway-telegram-server.js'),
+  path.join(distDir, 'infra', 'prisma', 'match-repository.js'),
+  path.join(distDir, 'infra', 'prisma', 'multiplayer-repository.js'),
+  path.join(distDir, 'infra', 'prisma', 'player-repository.js'),
+  metadataPath
+];
 
 const walkFiles = (targetPath) => {
   if (!fs.existsSync(targetPath)) return [];
@@ -33,29 +41,45 @@ const walkFiles = (targetPath) => {
 const getTrackedInputFiles = () => {
   return [
     ...walkFiles(srcDir).filter((file) => file.endsWith('.ts')),
-    ...walkFiles(prismaDir).filter((file) => file.endsWith('.prisma')),
+    ...walkFiles(prismaDir).filter((file) => file.endsWith('.prisma') || file.endsWith('.sql') || file.endsWith('.toml')),
     ...walkFiles(scriptsDir).filter((file) => file.endsWith('.cjs')),
     packageJsonPath,
     tsconfigPath
   ].filter((file, index, array) => fs.existsSync(file) && array.indexOf(file) === index);
 };
 
-const computeInputSummary = () => {
-  const files = getTrackedInputFiles();
-  const latestMtimeMs = files.reduce((max, file) => Math.max(max, fs.statSync(file).mtimeMs), 0);
+const computeHashForFiles = (files, baseDir = repoRoot) => {
   const hash = crypto.createHash('sha256');
 
-  for (const file of files.sort()) {
-    hash.update(path.relative(repoRoot, file));
+  for (const file of [...files].sort()) {
+    hash.update(path.relative(baseDir, file));
     hash.update('\n');
     hash.update(fs.readFileSync(file));
     hash.update('\n');
   }
 
+  return hash.digest('hex');
+};
+
+const computeInputSummary = () => {
+  const files = getTrackedInputFiles();
+  const latestMtimeMs = files.reduce((max, file) => Math.max(max, fs.statSync(file).mtimeMs), 0);
+
   return {
     files,
     latestMtimeMs,
-    inputHash: hash.digest('hex')
+    inputHash: computeHashForFiles(files)
+  };
+};
+
+const computeDistSummary = () => {
+  const files = walkFiles(distDir).filter((file) => (file.endsWith('.js') || file.endsWith('.json') || file.endsWith('.d.ts')) && file !== metadataPath);
+  const latestMtimeMs = files.reduce((max, file) => Math.max(max, fs.statSync(file).mtimeMs), 0);
+
+  return {
+    files,
+    latestMtimeMs,
+    distHash: files.length > 0 ? computeHashForFiles(files) : null
   };
 };
 
@@ -96,14 +120,58 @@ const getArtifactStatus = () => {
   };
 };
 
+const evaluateArtifactIntegrity = () => {
+  const metadata = readBuildMetadata();
+  const inputSummary = computeInputSummary();
+  const distSummary = computeDistSummary();
+  const artifactStatus = getArtifactStatus();
+  const missingDistFiles = requiredDistFiles
+    .filter((file) => !fs.existsSync(file))
+    .map((file) => path.relative(repoRoot, file));
+
+  const reasons = [];
+  if (missingDistFiles.length > 0) {
+    reasons.push('missing-dist-files');
+  }
+  if (!metadata) {
+    reasons.push('missing-build-metadata');
+  }
+  if (metadata && metadata.inputHash !== inputSummary.inputHash) {
+    reasons.push('input-hash-mismatch');
+  }
+  if (metadata && Number(metadata.latestSourceMtimeMs) < inputSummary.latestMtimeMs) {
+    reasons.push('source-newer-than-dist');
+  }
+  if (metadata && metadata.distHash && metadata.distHash !== distSummary.distHash) {
+    reasons.push('dist-hash-mismatch');
+  }
+  if (!artifactStatus.srcHasFix || !artifactStatus.distHasFix) {
+    reasons.push('prisma-match-connect-regression');
+  }
+
+  return {
+    ok: reasons.length === 0,
+    reasons,
+    metadata,
+    inputSummary,
+    distSummary,
+    artifactStatus,
+    missingDistFiles
+  };
+};
+
 module.exports = {
+  artifactNeedle,
+  computeDistSummary,
   computeInputSummary,
   distDir,
   ensureDir,
+  evaluateArtifactIntegrity,
   getArtifactStatus,
   getGitCommit,
   metadataPath,
   readBuildMetadata,
   readPackageJson,
-  repoRoot
+  repoRoot,
+  requiredDistFiles
 };
