@@ -25,10 +25,10 @@ const artifactChecks = [
     needle: 'turn: { connect: { id: resolution.turnId } }'
   },
   {
-    key: 'matchTurnUsesConnect',
+    key: 'matchTurnUsesExplicitForeignKey',
     srcPath: path.join(srcDir, 'infra', 'prisma', 'match-repository.ts'),
     distPath: path.join(distDir, 'infra', 'prisma', 'match-repository.js'),
-    needle: 'match: { connect: { id: matchId } }'
+    needle: 'matchId: params.matchId'
   },
   {
     key: 'multiplayerSessionUsesConnect',
@@ -67,7 +67,7 @@ const artifactChecks = [
     needle: 'club: { connect: { id: params.approvedClubId } }'
   }
 ];
-const artifactNeedle = artifactChecks.find((check) => check.key === 'matchTurnUsesConnect').needle;
+const artifactNeedle = artifactChecks.find((check) => check.key === 'matchTurnUsesExplicitForeignKey').needle;
 const requiredDistFiles = [
   path.join(distDir, 'app', 'index.js'),
   path.join(distDir, 'infra', 'http', 'railway-telegram-server.js'),
@@ -176,7 +176,7 @@ const getArtifactStatus = () => {
     };
   });
 
-  const matchTurnCheck = checks.find((check) => check.key === 'matchTurnUsesConnect');
+  const matchTurnCheck = checks.find((check) => check.key === 'matchTurnUsesExplicitForeignKey');
 
   return {
     srcHasFix: Boolean(matchTurnCheck?.srcHasSnippet),

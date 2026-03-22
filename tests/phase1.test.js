@@ -1501,18 +1501,19 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
 
 
 
-test('repositório Prisma usa connect explícito ao criar partida e lineup relacional do jogador', async () => {
+test('repositório Prisma separa create inicial do turno para respeitar o schema atual do MatchTurn', async () => {
   let capturedMatchCreate;
+  let capturedMatchTurnCreate;
+  let capturedMatchEventCreate;
 
   setPrismaClientForTests({
-    club: {
-      findUnique: async () => ({ id: 'club-home', name: 'Porto Azul FC' }),
-      upsert: async () => ({ id: 'club-away', name: 'Real Aurora' })
-    },
-    match: {
-      create: async (args) => {
-        capturedMatchCreate = args;
-        return {
+    $transaction: async (callback) => callback({
+      match: {
+        create: async (args) => {
+          capturedMatchCreate = args;
+          return { id: 'match-1' };
+        },
+        findUnique: async () => ({
           id: 'match-1',
           playerId: 'player-1',
           status: MatchStatus.InProgress,
@@ -1528,13 +1529,46 @@ test('repositório Prisma usa connect explícito ao criar partida e lineup relac
           homeClub: { name: 'Porto Azul FC' },
           awayClub: { name: 'Real Aurora' },
           lineups: [],
-          turns: [],
+          turns: [{
+            id: 'turn-1',
+            sequence: 1,
+            minute: 1,
+            half: MatchHalf.First,
+            possessionSide: MatchPossessionSide.Home,
+            contextType: MatchContextType.ReceivedFree,
+            contextText: 'Primeiro lance',
+            availableActions: [MatchActionKey.Pass],
+            deadlineAt: new Date('2026-03-22T12:00:00.000Z'),
+            state: MatchTurnState.Pending,
+            isGoalkeeperContext: false,
+            previousOutcome: null,
+            events: [{ metadata: { visualEvent: { kind: 'duel' } } }]
+          }],
           events: [],
           injuries: [],
           suspensions: []
-        };
+        })
+      },
+      matchTurn: {
+        create: async (args) => {
+          capturedMatchTurnCreate = args;
+          return { id: 'turn-1' };
+        }
+      },
+      matchEvent: {
+        create: async (args) => {
+          capturedMatchEventCreate = args;
+          return { id: 'event-1' };
+        }
       }
-    }
+    }),
+    club: {
+      findUnique: async () => ({ id: 'club-home', name: 'Porto Azul FC' }),
+      upsert: async () => ({ id: 'club-away', name: 'Real Aurora' })
+    },
+    match: {},
+    matchTurn: {},
+    matchEvent: {}
   });
 
   const repository = new PrismaMatchRepository();
@@ -1585,6 +1619,10 @@ test('repositório Prisma usa connect explícito ao criar partida e lineup relac
   assert.deepEqual(capturedMatchCreate.data.awayClub, { connect: { id: 'club-away' } });
   assert.deepEqual(capturedMatchCreate.data.lineups.create[0].player, { connect: { id: 'player-1' } });
   assert.equal(capturedMatchCreate.data.lineups.create[1].player, undefined);
+  assert.equal(capturedMatchTurnCreate.data.matchId, 'match-1');
+  assert.equal(capturedMatchTurnCreate.data.sequence, 1);
+  assert.deepEqual(capturedMatchEventCreate.data.match, { connect: { id: 'match-1' } });
+  assert.deepEqual(capturedMatchEventCreate.data.turn, { connect: { id: 'turn-1' } });
 
   setPrismaClientForTests(null);
 });
@@ -1726,7 +1764,7 @@ test('repositório Prisma usa connect explícito ao criar próximo turno e event
     console.info = originalConsoleInfo;
   }
 
-  assert.deepEqual(calls.matchTurn[0].data.match, { connect: { id: 'match-1' } });
+  assert.equal(calls.matchTurn[0].data.matchId, 'match-1');
   assert.deepEqual(calls.matchEvent[0].data.match, { connect: { id: 'match-1' } });
   assert.deepEqual(calls.matchEvent[0].data.turn, { connect: { id: 'turn-1' } });
   assert.deepEqual(calls.disciplinary[0].data.match, { connect: { id: 'match-1' } });
@@ -1739,11 +1777,13 @@ test('repositório Prisma usa connect explícito ao criar próximo turno e event
   const nextTurnAuditLog = messages.find((entry) =>
     entry[0] === '[prisma-match-repository]'
     && typeof entry[1] === 'string'
-    && entry[1].includes('next-turn-create-request')
+    && entry[1].includes('match-turn-create-request')
+    && entry[1].includes('resolve-next-turn')
   );
   assert.ok(nextTurnAuditLog);
-  assert.match(nextTurnAuditLog[1], /"relationConnectEnabled":true/);
-  assert.match(nextTurnAuditLog[1], /"match":\{"connect":\{"id":"match-1"\}\}/);
+  assert.match(nextTurnAuditLog[1], /"model":"MatchTurn"/);
+  assert.match(nextTurnAuditLog[1], /"flowStep":"resolve-next-turn"/);
+  assert.match(nextTurnAuditLog[1], /"matchId":"match-1"/);
 
   setPrismaClientForTests(null);
 });
