@@ -91,11 +91,78 @@ export type MatchSceneKey =
   | 'penalty-kick'
   | 'fallback';
 
-export type MatchVisualFramePhase = 'START' | 'MIDDLE' | 'END';
+export type MatchVisualFramePhase = 'START' | 'DUEL' | 'ACTION' | 'END';
+export type MatchVisualPlayerRole = 'GOALKEEPER' | 'DEFENDER' | 'MIDFIELDER' | 'FORWARD';
+export type MatchFieldZone = 'DEFENSIVE_THIRD' | 'MIDDLE_THIRD' | 'ATTACKING_THIRD' | 'BOX' | 'LEFT_WING' | 'RIGHT_WING' | 'CENTER_CHANNEL';
+export type MatchMoveDirection = 'LEFT' | 'RIGHT' | 'FORWARD' | 'BACKWARD' | 'CENTER';
+export type MatchVisualOutcome = 'SUCCESS' | 'INTERCEPTED' | 'TACKLED' | 'SAVED' | 'GOAL' | 'FOUL_WON' | 'CLEARED' | 'OUT' | 'TIMEOUT';
+export type MatchVisualActionType =
+  | 'CONTROL'
+  | 'PASS'
+  | 'PRESSURE'
+  | 'DRIBBLE'
+  | 'TACKLE'
+  | 'SHOT'
+  | 'SAVE'
+  | 'CLEAR'
+  | 'CORNER'
+  | 'PENALTY'
+  | 'FREE_KICK'
+  | 'REBOUND'
+  | 'TIMEOUT';
 
 export interface MatchActionChoice {
   key: MatchActionKey;
   label: string;
+}
+
+export interface MatchVisualCoordinate {
+  x: number;
+  y: number;
+}
+
+export interface MatchLineupPlayer {
+  id: string;
+  side: MatchPossessionSide;
+  role: MatchVisualPlayerRole;
+  displayName: string;
+  shirtNumber: number;
+  isUserControlled: boolean;
+  tacticalPosition: MatchVisualCoordinate;
+}
+
+export interface MatchVisualActorRef {
+  lineupId: string;
+  playerName: string;
+  side: MatchPossessionSide;
+  role: MatchVisualPlayerRole;
+  shirtNumber: number;
+}
+
+export interface MatchVisualEvent {
+  sequence: number;
+  actionType: MatchVisualActionType;
+  sceneKey: MatchSceneKey;
+  zone: MatchFieldZone;
+  actor: MatchVisualActorRef;
+  primaryTarget?: MatchVisualActorRef;
+  receiver?: MatchVisualActorRef;
+  marker?: MatchVisualActorRef;
+  goalkeeper?: MatchVisualActorRef;
+  possessionBefore: MatchPossessionSide;
+  possessionAfter: MatchPossessionSide;
+  origin: MatchVisualCoordinate;
+  destination: MatchVisualCoordinate;
+  ballTarget: MatchVisualCoordinate;
+  movementDirection?: MatchMoveDirection;
+  outcome: MatchVisualOutcome;
+  headline: string;
+  narration: {
+    start: string;
+    duel?: string;
+    action: string;
+    end: string;
+  };
 }
 
 export interface MatchTurnView {
@@ -112,6 +179,7 @@ export interface MatchTurnView {
   state: MatchTurnState;
   isGoalkeeperContext: boolean;
   previousOutcome?: string;
+  visualEvent?: MatchVisualEvent;
 }
 
 export interface MatchScoreboard {
@@ -141,7 +209,7 @@ export interface InjuryView {
 export interface MatchVisualPlayerSnapshot {
   id: string;
   side: MatchPossessionSide;
-  role: 'GOALKEEPER' | 'DEFENDER' | 'MIDFIELDER' | 'FORWARD';
+  role: MatchVisualPlayerRole;
   shirtNumber: number;
   label: string;
   x: number;
@@ -149,6 +217,7 @@ export interface MatchVisualPlayerSnapshot {
   hasBall?: boolean;
   isUserControlled?: boolean;
   isPrimaryActor?: boolean;
+  isPrimaryTarget?: boolean;
 }
 
 export interface MatchVisualBallSnapshot {
@@ -176,6 +245,7 @@ export interface MatchVisualSequence {
   sequence: number;
   sceneKey: MatchSceneKey;
   headline: string;
+  frameCount: number;
   frames: MatchVisualFrame[];
 }
 
@@ -191,6 +261,7 @@ export interface MatchSummary {
   suspensionMatchesRemaining: number;
   energy: number;
   injury?: InjuryView;
+  lineups: MatchLineupPlayer[];
   visualSequence?: MatchVisualSequence;
 }
 
