@@ -27,6 +27,7 @@ test('runtime propaga falha de sendMessage e loga contexto mínimo', async () =>
       },
       {
         sendMessage: async () => { throw new Error('send failed'); },
+        sendDocument: async () => { throw new Error('send document failed'); },
         setWebhook: async () => {},
         getWebhookInfo: async () => ({}),
         deleteWebhook: async () => {}

@@ -1,7 +1,7 @@
 import { Phase1TelegramDispatcher } from '../../bot/phase1-dispatcher';
 import { botReplyToTelegramMessage } from './presenter';
 import { TelegramHttpClient } from './client';
-import { TelegramUpdate } from './types';
+import { TelegramSendDocumentPayload, TelegramUpdate } from './types';
 
 const serializeError = (error: unknown): Record<string, unknown> => {
   if (error instanceof Error) {
@@ -35,6 +35,8 @@ const extractCommand = (text?: string): string | undefined => {
   const [command] = trimmed.split(/\s+/);
   return command;
 };
+
+const isDocumentPayload = (payload: ReturnType<typeof botReplyToTelegramMessage>): payload is TelegramSendDocumentPayload => 'document' in payload;
 
 export class Phase1TelegramRuntime {
   constructor(
@@ -75,6 +77,39 @@ export class Phase1TelegramRuntime {
       });
 
       const outgoingMessage = botReplyToTelegramMessage(message.chat.id, reply);
+      if (isDocumentPayload(outgoingMessage)) {
+        logAudit('send-document-start', {
+          ...auditData,
+          outgoingChatId: outgoingMessage.chat_id,
+          filename: outgoingMessage.document.filename
+        });
+        try {
+          await this.telegramClient.sendDocument(outgoingMessage);
+          logAudit('send-document-finish', {
+            ...auditData,
+            outgoingChatId: outgoingMessage.chat_id,
+            filename: outgoingMessage.document.filename
+          });
+        } catch (error) {
+          logFailure('send-document-failed-fallback-to-text', {
+            ...auditData,
+            outgoingChatId: outgoingMessage.chat_id,
+            filename: outgoingMessage.document.filename
+          }, error);
+          await this.telegramClient.sendMessage({
+            chat_id: outgoingMessage.chat_id,
+            text: [outgoingMessage.caption, outgoingMessage.scene.fallbackText].join('\n\n'),
+            reply_markup: outgoingMessage.reply_markup,
+            scene: outgoingMessage.scene
+          });
+          logAudit('send-message-fallback-finish', {
+            ...auditData,
+            outgoingChatId: outgoingMessage.chat_id
+          });
+        }
+        return true;
+      }
+
       logAudit('send-message-start', {
         ...auditData,
         outgoingChatId: outgoingMessage.chat_id

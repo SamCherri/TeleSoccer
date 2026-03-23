@@ -1,4 +1,4 @@
-import { TelegramSendMessagePayload } from './types';
+import { TelegramSendDocumentPayload, TelegramSendMessagePayload } from './types';
 
 interface TelegramApiResponse<T> {
   ok: boolean;
@@ -8,12 +8,13 @@ interface TelegramApiResponse<T> {
 
 export interface TelegramHttpClient {
   sendMessage(payload: TelegramSendMessagePayload): Promise<void>;
+  sendDocument(payload: TelegramSendDocumentPayload): Promise<void>;
   setWebhook(webhookUrl: string, secretToken?: string): Promise<void>;
   getWebhookInfo(): Promise<unknown>;
   deleteWebhook(dropPendingUpdates?: boolean): Promise<void>;
 }
 
-const toRecord = (payload: TelegramSendMessagePayload): Record<string, unknown> => ({
+const toMessageRecord = (payload: TelegramSendMessagePayload): Record<string, unknown> => ({
   chat_id: payload.chat_id,
   text: payload.text,
   reply_markup: payload.reply_markup
@@ -42,6 +43,7 @@ const logFailure = (event: string, details: Record<string, unknown>, error?: unk
   console.error('[telegram-client]', JSON.stringify({ event, ...details, ...(error === undefined ? {} : { error: serializeError(error) }) }));
 };
 
+
 export class TelegramBotApiClient implements TelegramHttpClient {
   constructor(
     private readonly token: string,
@@ -58,10 +60,30 @@ export class TelegramBotApiClient implements TelegramHttpClient {
 
     logAudit('send-message-start', auditData);
     try {
-      await this.callApi('sendMessage', toRecord(payload));
+      await this.callApi('sendMessage', toMessageRecord(payload));
       logAudit('send-message-success', auditData);
     } catch (error) {
       logFailure('send-message-failed', auditData, error);
+      throw error;
+    }
+  }
+
+  async sendDocument(payload: TelegramSendDocumentPayload): Promise<void> {
+    const auditData = {
+      method: 'sendDocument',
+      chatId: payload.chat_id,
+      captionLength: payload.caption.length,
+      filename: payload.document.filename,
+      contentType: payload.document.contentType,
+      hasReplyMarkup: Boolean(payload.reply_markup)
+    };
+
+    logAudit('send-document-start', auditData);
+    try {
+      await this.callMultipartApi('sendDocument', payload);
+      logAudit('send-document-success', auditData);
+    } catch (error) {
+      logFailure('send-document-failed', auditData, error);
       throw error;
     }
   }
@@ -117,15 +139,31 @@ export class TelegramBotApiClient implements TelegramHttpClient {
     }
   }
 
+  private async callMultipartApi<T>(method: string, payload: TelegramSendDocumentPayload): Promise<T> {
+    const form = new FormData();
+    form.set('chat_id', String(payload.chat_id));
+    form.set('caption', payload.caption);
+    form.set('document', new Blob([payload.document.data], { type: payload.document.contentType }), payload.document.filename);
+    if (payload.reply_markup) {
+      form.set('reply_markup', JSON.stringify(payload.reply_markup));
+    }
+
+    return this.callApiRequest<T>(method, { method: 'POST', body: form });
+  }
+
   private async callApi<T>(method: string, body: Record<string, unknown>): Promise<T> {
+    return this.callApiRequest<T>(method, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+  }
+
+  private async callApiRequest<T>(method: string, init: RequestInit): Promise<T> {
     try {
-      const response = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
+      const response = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, init);
 
       const rawPayload = await response.text();
       let payload: TelegramApiResponse<T> | undefined;

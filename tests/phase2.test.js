@@ -646,7 +646,7 @@ test('fachada da partida expõe cena visual simples com svg e fallback textual',
 
   assert.ok(reply.scene);
   assert.match(reply.scene.svg, /<svg/);
-  assert.match(reply.text, /CENA DO LANCE/);
+  assert.match(reply.text, /⚽ 0x0/);
   assert.match(reply.scene.fallbackText, /Arte preparada/);
 });
 
@@ -734,6 +734,7 @@ test('runtime envia resposta mesmo quando /start encontra partida expirada e res
     sendMessage: async (payload) => {
       sentMessages.push(payload);
     },
+    sendDocument: async () => {},
     setWebhook: async () => {},
     getWebhookInfo: async () => ({}),
     deleteWebhook: async () => {}
