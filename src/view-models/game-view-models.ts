@@ -2,6 +2,7 @@ import { MatchHalf, MatchSummary, MatchTurnView, MatchVisualFrame } from '../dom
 import { MatchSceneAsset } from '../assets/scenes/match-scene-art';
 import { resolveMatchScene } from '../presentation/match-scene-resolver';
 import { buildMatchVisualSequence } from '../domain/match/visual-sequence';
+import { renderMatchVisualSequenceSvg } from '../presentation/match-visual-svg';
 import { MultiplayerParticipantKind, MultiplayerSessionStatus, MultiplayerSessionSummary, MultiplayerSquadRole, MultiplayerTeamSide } from '../domain/multiplayer/types';
 
 const halfLabelMap: Record<MatchHalf, string> = {
@@ -45,6 +46,7 @@ export interface MatchSceneViewModel {
   hud: string;
   phrase: string;
   fallback: string;
+  svg: string;
   asset: MatchSceneAsset;
   sequenceHeadline: string;
   frames: MatchSceneFrameViewModel[];
@@ -278,6 +280,7 @@ export const buildMatchCardViewModel = (match: MatchSummary): MatchCardViewModel
       hud: scene.asset.hudLabel,
       phrase: scene.shortPhrase,
       fallback: scene.fallbackLine,
+      svg: renderMatchVisualSequenceSvg({ ...match, visualSequence }),
       asset: scene.asset,
       sequenceHeadline: visualSequence?.headline ?? 'Sequência visual indisponível.',
       frames: visualSequence?.frames.map(formatFrame) ?? []

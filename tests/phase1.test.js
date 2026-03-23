@@ -24,6 +24,7 @@ const { PrismaMatchRepository } = require('../dist/infra/prisma/match-repository
 const { MatchStatus, MatchHalf, MatchPossessionSide, MatchContextType, MatchTurnState, MatchActionKey } = require('../dist/domain/match/types.js');
 const { botReplyToTelegramMessage } = require('../dist/infra/telegram/presenter.js');
 const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
+const { rasterizeTelegramSceneSvgToPng } = require('../dist/infra/telegram/svg-png-rasterizer.js');
 const { buildFinalWebhookUrl, createRailwayTelegramServer } = require('../dist/infra/http/railway-telegram-server.js');
 const { DomainError } = require('../dist/shared/errors.js');
 
@@ -1117,13 +1118,128 @@ test('presenter inclui fallback textual e payload estruturado para cena visual',
       hud: 'finalização armada',
       phrase: 'Finalização armada mirando o gol.',
       svg: '<svg viewBox="0 0 10 10"></svg>',
+      caption: 'HUD curta\nChute • Finalização armada mirando o gol.',
       fallbackText: 'Arte preparada para envio futuro no Telegram.'
     }
   });
 
-  assert.match(payload.text, /CENA VISUAL PREPARADA/);
+  assert.equal(payload.text.includes('Painel do lance'), true);
+  assert.equal(payload.scene.caption.includes('HUD curta'), true);
   assert.equal(payload.scene.key, 'shot');
   assert.match(payload.scene.svg, /<svg/);
+  assert.equal(payload.scene.assetKeys, undefined);
+});
+
+test('rasterização SVG -> PNG gera payload PNG válido para foto do Telegram', async () => {
+  const rendered = rasterizeTelegramSceneSvgToPng('<svg viewBox="0 0 10 10"></svg>');
+
+  assert.equal(rendered.width > 0, true);
+  assert.equal(rendered.height > 0, true);
+  assert.deepEqual(Array.from(rendered.png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test('rasterização SVG -> PNG muda os bytes quando o SVG muda visualmente', async () => {
+  const svgA = `
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="20" height="20" fill="#112233" />
+      <circle cx="10" cy="10" r="4" fill="#ffffff" />
+    </svg>
+  `.trim();
+  const svgB = `
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="20" height="20" fill="#112233" />
+      <circle cx="14" cy="6" r="4" fill="#ff3366" />
+    </svg>
+  `.trim();
+
+  const renderedA = rasterizeTelegramSceneSvgToPng(svgA);
+  const renderedB = rasterizeTelegramSceneSvgToPng(svgB);
+
+  assert.deepEqual(Array.from(renderedA.png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.deepEqual(Array.from(renderedB.png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.notDeepEqual(Array.from(renderedA.png), Array.from(renderedB.png));
+});
+
+
+test('runtime faz fallback textual quando o envio da cena PNG falha', async () => {
+  const deliveries = [];
+  const runtime = new Phase1TelegramRuntime({
+    dispatch: async () => ({
+      text: 'HUD curta',
+      actions: [phase1BotActions.currentMatch],
+      scene: {
+        key: 'goal',
+        title: 'Gol',
+        hud: "⚽ 1x0 • ⏱️ 33'",
+        phrase: 'Explosão no ataque.',
+        svg: '<svg viewBox="0 0 10 10"></svg>',
+        caption: 'HUD curta\nGol • Explosão no ataque.',
+        fallbackText: 'Cena alternativa pronta.'
+      }
+    })
+  }, {
+    sendMessage: async (payload) => { deliveries.push({ channel: 'message', payload }); },
+    sendDocument: async () => {},
+    sendPhoto: async () => { throw new Error('png upload failed'); },
+    setWebhook: async () => {},
+    getWebhookInfo: async () => ({}),
+    deleteWebhook: async () => {}
+  });
+
+  const processed = await runtime.processUpdate({
+    update_id: 2,
+    message: {
+      message_id: 100,
+      text: '/start',
+      chat: { id: 88, type: 'private' },
+      from: { id: 77 }
+    }
+  });
+
+  assert.equal(processed, true);
+  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries[0].channel, 'message');
+  assert.match(deliveries[0].payload.text, /HUD curta/);
+  assert.match(deliveries[0].payload.text, /Cena alternativa pronta/);
+});
+
+test('runtime envia foto PNG como mídia principal quando a cena existe', async () => {
+  const sentMessages = [];
+  const dispatcher = {
+    dispatch: async () => ({
+      text: 'HUD curta',
+      actions: [phase1BotActions.currentMatch],
+      scene: {
+        key: 'shot',
+        title: 'Chute',
+        hud: "⚽ 0x0 • ⏱️ 12'",
+        phrase: 'Finalização armada.',
+        svg: '<svg viewBox="0 0 10 10"></svg>',
+        caption: 'HUD curta\nChute • Finalização armada.',
+        fallbackText: 'Cena alternativa pronta.'
+      }
+    })
+  };
+  const runtime = new Phase1TelegramRuntime(dispatcher, {
+    sendMessage: async (payload) => { sentMessages.push({ channel: 'message', payload }); },
+    sendDocument: async () => {},
+    sendPhoto: async (payload) => { sentMessages.push({ channel: 'photo', payload }); },
+    setWebhook: async () => {},
+    getWebhookInfo: async () => ({}),
+    deleteWebhook: async () => {}
+  });
+
+  const processed = await runtime.processUpdate({
+    update_id: 3,
+    message: { message_id: 1, text: '/start', chat: { id: 99, type: 'private' }, from: { id: 55 } }
+  });
+
+  assert.equal(processed, true);
+  assert.equal(sentMessages[0].channel, 'photo');
+  assert.equal(sentMessages[0].payload.photo.filename, 'match-scene-shot.png');
+  assert.deepEqual(Array.from(sentMessages[0].payload.photo.data.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(sentMessages[0].payload.caption.includes('HUD curta'), true);
+  assert.equal(sentMessages.some((entry) => entry.channel === 'message'), false);
 });
 
 test('runtime do Telegram despacha update real e envia mensagem formatada', async () => {
@@ -1136,8 +1252,10 @@ test('runtime do Telegram despacha update real e envia mensagem formatada', asyn
   };
   const runtime = new Phase1TelegramRuntime(dispatcher, {
     sendMessage: async (payload) => {
-      sentMessages.push(payload);
+      sentMessages.push({ channel: 'message', payload });
     },
+    sendDocument: async () => {},
+    sendPhoto: async () => {},
     setWebhook: async () => {},
     getWebhookInfo: async () => ({}),
     deleteWebhook: async () => {}
@@ -1154,8 +1272,9 @@ test('runtime do Telegram despacha update real e envia mensagem formatada', asyn
   });
 
   assert.equal(processed, true);
-  assert.equal(sentMessages[0].chat_id, 54321);
-  assert.match(sentMessages[0].text, /Recebido 777:\/start/);
+  assert.equal(sentMessages[0].channel, 'message');
+  assert.equal(sentMessages[0].payload.chat_id, 54321);
+  assert.match(sentMessages[0].payload.text, /Recebido 777:\/start/);
 });
 
 test('cliente Telegram usa Bot API real por HTTP', async () => {
@@ -1251,6 +1370,8 @@ test('servidor Railway expõe diagnóstico bruto do webhook e permite resetar co
   };
   const telegramClient = {
     async sendMessage() {},
+    async sendDocument() {},
+    async sendPhoto() {},
     async setWebhook(webhookUrl, secretToken) {
       observed.setWebhook.push({ webhookUrl, secretToken });
     },
@@ -1352,6 +1473,8 @@ test('startup do servidor registra log estruturado com finalWebhookUrl', async (
   };
   const telegramClient = {
     async sendMessage() {},
+    async sendDocument() {},
+    async sendPhoto() {},
     async setWebhook() {},
     async getWebhookInfo() { return {}; },
     async deleteWebhook() {}
@@ -1450,6 +1573,8 @@ test('servidor Railway rejeita webhook sem secret token válido e payload invál
   };
   const telegramClient = {
     async sendMessage() {},
+    async sendDocument() {},
+    async sendPhoto() {},
     async setWebhook() {},
     async getWebhookInfo() { return {}; },
     async deleteWebhook() {}
@@ -1798,6 +1923,10 @@ test('runtime propaga falha real de sendMessage para o processamento', async () 
     sendMessage: async () => {
       throw new Error('Telegram sendMessage falhou com 403');
     },
+    sendDocument: async () => {},
+    sendPhoto: async () => {
+      throw new Error('Telegram sendPhoto falhou com 403');
+    },
     setWebhook: async () => {},
     getWebhookInfo: async () => ({}),
     deleteWebhook: async () => {}
@@ -1826,6 +1955,8 @@ test('servidor Railway expõe diagnóstico e não mascara erro interno como inva
   };
   const telegramClient = {
     async sendMessage() {},
+    async sendDocument() {},
+    async sendPhoto() {},
     async setWebhook() {},
     async getWebhookInfo() { return {}; },
     async deleteWebhook() {}
@@ -1890,6 +2021,8 @@ test('servidor Railway ignora update estruturalmente válido sem mensagem proces
   };
   const telegramClient = {
     async sendMessage() {},
+    async sendDocument() {},
+    async sendPhoto() {},
     async setWebhook() {},
     async getWebhookInfo() { return {}; },
     async deleteWebhook() {}

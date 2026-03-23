@@ -34,7 +34,16 @@ export interface TelegramScenePayload {
   hud: string;
   phrase: string;
   svg: string;
+  caption: string;
   fallbackText: string;
+  assetKeys?: string[];
+  replacementSlots?: string[];
+}
+
+export interface TelegramMediaFile {
+  filename: string;
+  contentType: string;
+  data: Uint8Array;
 }
 
 export interface TelegramSendMessagePayload {
@@ -43,6 +52,24 @@ export interface TelegramSendMessagePayload {
   reply_markup?: TelegramReplyKeyboardMarkup;
   scene?: TelegramScenePayload;
 }
+
+export interface TelegramSendDocumentPayload {
+  chat_id: number | string;
+  caption: string;
+  document: TelegramMediaFile;
+  reply_markup?: TelegramReplyKeyboardMarkup;
+  scene: TelegramScenePayload;
+}
+
+export interface TelegramSendPhotoPayload {
+  chat_id: number | string;
+  caption: string;
+  photo: TelegramMediaFile;
+  reply_markup?: TelegramReplyKeyboardMarkup;
+  scene: TelegramScenePayload;
+}
+
+export type TelegramOutgoingPayload = TelegramSendMessagePayload;
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 

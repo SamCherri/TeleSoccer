@@ -1,5 +1,5 @@
 import { BotReply } from '../../bot/phase1-bot';
-import { TelegramKeyboardButton, TelegramReplyKeyboardMarkup, TelegramSendMessagePayload } from './types';
+import { TelegramKeyboardButton, TelegramOutgoingPayload, TelegramReplyKeyboardMarkup, TelegramSendMessagePayload } from './types';
 
 const chunkActions = (actions: string[], columns = 2): TelegramKeyboardButton[][] => {
   const rows: TelegramKeyboardButton[][] = [];
@@ -11,30 +11,26 @@ const chunkActions = (actions: string[], columns = 2): TelegramKeyboardButton[][
   return rows;
 };
 
+const buildReplyMarkup = (actions: string[]): TelegramReplyKeyboardMarkup | undefined =>
+  actions.length > 0
+    ? {
+        keyboard: chunkActions(actions),
+        resize_keyboard: true
+      }
+    : undefined;
+
 const appendSceneFallback = (reply: BotReply): string => {
   if (!reply.scene) {
     return reply.text;
   }
 
-  return [
-    reply.text,
-    '🖼️ CENA VISUAL PREPARADA',
-    `${reply.scene.title} • HUD ${reply.scene.hud}`,
-    reply.scene.phrase,
-    reply.scene.fallbackText
-  ].join('\n\n');
+  return [reply.text, reply.scene.fallbackText].join('\n\n');
 };
 
-export const botReplyToTelegramMessage = (chatId: number | string, reply: BotReply): TelegramSendMessagePayload => {
-  const replyMarkup: TelegramReplyKeyboardMarkup | undefined =
-    reply.actions.length > 0
-      ? {
-          keyboard: chunkActions(reply.actions),
-          resize_keyboard: true
-        }
-      : undefined;
+export const botReplyToTelegramMessage = (chatId: number | string, reply: BotReply): TelegramOutgoingPayload => {
+  const replyMarkup = buildReplyMarkup(reply.actions);
 
-  return {
+  const payload: TelegramSendMessagePayload = {
     chat_id: chatId,
     text: appendSceneFallback(reply),
     reply_markup: replyMarkup,
@@ -45,8 +41,13 @@ export const botReplyToTelegramMessage = (chatId: number | string, reply: BotRep
           hud: reply.scene.hud,
           phrase: reply.scene.phrase,
           svg: reply.scene.svg,
-          fallbackText: reply.scene.fallbackText
+          caption: reply.scene.caption,
+          fallbackText: reply.scene.fallbackText,
+          assetKeys: reply.scene.assetKeys,
+          replacementSlots: reply.scene.replacementSlots
         }
       : undefined
   };
+
+  return payload;
 };
