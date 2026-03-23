@@ -1131,17 +1131,7 @@ test('presenter inclui fallback textual e payload estruturado para cena visual',
 });
 
 test('rasterização SVG -> PNG gera payload PNG válido para foto do Telegram', async () => {
-  const rendered = rasterizeTelegramSceneSvgToPng('<svg viewBox="0 0 10 10"></svg>', {
-    key: 'goal',
-    title: 'Gol',
-    hud: "⚽ 1x0 • ⏱️ 33'",
-    phrase: 'Explosão no ataque.',
-    svg: '<svg viewBox="0 0 10 10"></svg>',
-    caption: 'HUD curta\nGol • Explosão no ataque.',
-    fallbackText: 'Cena alternativa pronta.',
-    assetKeys: ['match-hud-placeholder'],
-    replacementSlots: ['telegram.match.widget.hud']
-  });
+  const rendered = rasterizeTelegramSceneSvgToPng('<svg viewBox="0 0 10 10"></svg>');
 
   assert.equal(rendered.width > 0, true);
   assert.equal(rendered.height > 0, true);

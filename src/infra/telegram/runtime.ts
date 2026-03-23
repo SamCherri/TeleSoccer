@@ -59,7 +59,7 @@ export class Phase1TelegramRuntime {
         logAudit('visual-generation-finish', { ...auditData, sceneKey: outgoingMessage.scene.key, svgLength: outgoingMessage.scene.svg.length });
         try {
           logAudit('rasterization-start', { ...auditData, sceneKey: outgoingMessage.scene.key });
-          const rasterized = rasterizeTelegramSceneSvgToPng(outgoingMessage.scene.svg, outgoingMessage.scene);
+          const rasterized = rasterizeTelegramSceneSvgToPng(outgoingMessage.scene.svg);
           logAudit('rasterization-finish', { ...auditData, sceneKey: outgoingMessage.scene.key, pngBytes: rasterized.png.length, width: rasterized.width, height: rasterized.height });
 
           const photoPayload: TelegramSendPhotoPayload = {
