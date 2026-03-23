@@ -759,6 +759,7 @@ test('runtime envia resposta mesmo quando /start encontra partida expirada e res
       sentMessages.push(payload);
     },
     sendDocument: async () => {},
+    sendPhoto: async () => {},
     setWebhook: async () => {},
     getWebhookInfo: async () => ({}),
     deleteWebhook: async () => {}

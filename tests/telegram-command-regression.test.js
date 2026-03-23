@@ -102,7 +102,8 @@ test('webhook responde 400 para invalid-json, 401 para secret inválido e 500 pa
       getWebhookInfo: async () => ({ url: 'https://tele.example.com/telegram/webhook/secret-123' }),
       deleteWebhook: async () => {},
       sendMessage: async () => {},
-      sendDocument: async () => {}
+      sendDocument: async () => {},
+      sendPhoto: async () => {}
     }
   });
 
@@ -148,7 +149,8 @@ test('debug webhook info mostra mismatch entre URL registrada e finalWebhookUrl'
       getWebhookInfo: async () => ({ url: 'https://staging.tele.example.com/telegram/webhook/secret-456' }),
       deleteWebhook: async () => {},
       sendMessage: async () => {},
-      sendDocument: async () => {}
+      sendDocument: async () => {},
+      sendPhoto: async () => {}
     }
   });
 
@@ -185,7 +187,8 @@ test('webhook mantém PrismaClientValidationError como erro interno real, sem ca
       getWebhookInfo: async () => ({ url: 'https://tele.example.com/telegram/webhook/secret-prisma' }),
       deleteWebhook: async () => {},
       sendMessage: async () => {},
-      sendDocument: async () => {}
+      sendDocument: async () => {},
+      sendPhoto: async () => {}
     }
   });
 

@@ -81,6 +81,7 @@ export const presentTelegramMatchVisual = (match: MatchSummary): TelegramMatchPr
       hud: buildHudLine(match),
       phrase: truncate(stripTrailingPeriod(viewModel.scene.phrase), 84),
       svg: placeholderCard.svg,
+      caption: `${buildHudLine(match)}\n${viewModel.scene.title} • ${truncate(stripTrailingPeriod(viewModel.scene.phrase), 84)}`,
       fallbackText: `Cena alternativa: ${viewModel.scene.fallback}`,
       assetKeys: placeholderCard.assetKeys,
       replacementSlots: placeholderCard.replacementSlots

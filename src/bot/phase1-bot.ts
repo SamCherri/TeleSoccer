@@ -33,6 +33,7 @@ export interface BotReplyScene {
   hud: string;
   phrase: string;
   svg: string;
+  caption: string;
   fallbackText: string;
   assetKeys?: string[];
   replacementSlots?: string[];
