@@ -21,6 +21,9 @@ const matchVisualModeBySceneKey: Record<MatchSceneKey, MatchVisualMode> = {
   'goalkeeper-save': 'hero-scene',
   goal: 'hero-scene',
   rebound: 'hero-scene',
+  // Simplificação de MVP: por enquanto todo escanteio entra como cena de confronto.
+  // Quando o evento distinguir organização/trajetória de disputa na área, ele poderá
+  // alternar entre field-scene e hero-scene sem mexer no domínio da partida.
   'corner-kick': 'hero-scene',
   'penalty-kick': 'hero-scene',
   fallback: 'field-scene'

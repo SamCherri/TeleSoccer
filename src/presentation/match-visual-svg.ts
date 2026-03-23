@@ -44,6 +44,11 @@ type Facing = 'left' | 'right';
 type Tone = 'home' | 'away' | 'goalkeeper';
 type VisualMode = 'field-scene' | 'hero-scene';
 
+const visualModeProductLabelMap: Record<VisualMode, string> = {
+  'field-scene': 'CAMPO',
+  'hero-scene': 'CONFRONTO'
+};
+
 type HeroEntityKind = 'actor' | 'marker' | 'receiver' | 'goalkeeper' | 'support';
 
 interface HeroEntity {
@@ -332,7 +337,7 @@ const renderNarrativePanel = (headline: string, narration: string, mode: VisualM
 const renderHud = (context: SceneContext): string => {
   const minute = `${context.frame.minute}'`;
   const possession = context.focusSide === MatchPossessionSide.Home ? 'HOME' : 'AWAY';
-  const modeLabel = context.visualMode === 'field-scene' ? 'FIELD-SCENE' : 'HERO-SCENE';
+  const modeLabel = visualModeProductLabelMap[context.visualMode];
 
   return `
     <rect x="34" y="28" width="310" height="54" rx="18" fill="#ffffff" stroke="${palette.outline}" stroke-width="3" />

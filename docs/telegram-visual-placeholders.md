@@ -4,6 +4,10 @@
 
 Dar ao turno de partida uma aparência de jogo no Telegram antes da arte final, sem alterar regra de negócio nem a engine da partida.
 
+> Estado atual do produto: esta camada placeholder **não** é a apresentação final oficial da partida.
+> A saída principal oficial enviada ao Telegram é a cena dinâmica do lance (`hero-scene` ou `field-scene`).
+> O placeholder permanece apenas como fallback técnico, ferramenta de teste e recurso legado temporário.
+
 ## Assets placeholder gerados
 
 ### 1. HUD de partida
@@ -74,15 +78,17 @@ Substituir os SVGs de cena em:
 - `src/assets/scenes/match-scene-art.ts`
 - Estrutura: `matchSceneAssets[*].svg`
 
-### 4. Card consolidado enviado ao Telegram
+### 4. Card consolidado legado
 Substituir a composição do card em:
 - `src/presentation/telegram-match-placeholder-renderer.ts`
 - Função: `renderTelegramMatchPlaceholderCard`
+- Observação: este card não deve voltar a ser o fluxo principal oficial da partida no Telegram.
 
 ### 5. Presenter do Telegram
 Se a arte final exigir outro empacotamento, trocar em:
 - `src/infra/telegram/match-visual-presenter.ts`
 - Função: `presentTelegramMatchVisual`
+- Observação: o presenter oficial deve continuar priorizando a cena dinâmica do lance como mídia principal.
 
 ## Prompts padronizados para arte final externa
 

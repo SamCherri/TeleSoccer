@@ -649,7 +649,8 @@ test('fachada da partida expõe cena visual simples com svg e fallback textual',
   assert.ok(reply.scene);
   assert.doesNotMatch(reply.scene.svg, /MATCH HUD PLACEHOLDER/);
   assert.doesNotMatch(reply.scene.svg, /CARD VISUAL DO LANCE/);
-  assert.match(reply.scene.svg, /HERO-SCENE|FIELD-SCENE/);
+  assert.match(reply.scene.svg, /CONFRONTO|CAMPO/);
+  assert.doesNotMatch(reply.scene.svg, /HERO-SCENE|FIELD-SCENE/);
   assert.match(reply.text, /⚽ 0x0/);
   assert.match(reply.scene.caption, /Porto Azul FC 0x0/);
   assert.match(reply.scene.fallbackText, /Fallback técnico apenas/);
