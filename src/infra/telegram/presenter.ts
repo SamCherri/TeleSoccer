@@ -43,7 +43,9 @@ export const botReplyToTelegramMessage = (chatId: number | string, reply: BotRep
         hud: reply.scene.hud,
         phrase: reply.scene.phrase,
         svg: reply.scene.svg,
-        fallbackText: reply.scene.fallbackText
+        fallbackText: reply.scene.fallbackText,
+        assetKeys: reply.scene.assetKeys,
+        replacementSlots: reply.scene.replacementSlots
       },
       document: {
         filename: `match-scene-${reply.scene.key}.svg`,

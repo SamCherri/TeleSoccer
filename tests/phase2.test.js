@@ -10,6 +10,8 @@ const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-b
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
 const { DomainError } = require('../dist/shared/errors.js');
+const { renderTelegramMatchPlaceholderCard } = require('../dist/presentation/telegram-match-placeholder-renderer.js');
+const { matchActionPlaceholderIcons, matchScenePlaceholderPrompts, renderMiniPitchPlaceholder } = require('../dist/assets/telegram/match-placeholder-art.js');
 
 const SPECIAL_CONTEXTS = new Set([MatchContextType.FreeKick, MatchContextType.PenaltyKick, MatchContextType.CornerKick]);
 
@@ -645,9 +647,31 @@ test('fachada da partida expõe cena visual simples com svg e fallback textual',
   const reply = await facade.handleStartMatch('scene-1');
 
   assert.ok(reply.scene);
-  assert.match(reply.scene.svg, /<svg/);
+  assert.match(reply.scene.svg, /CARD VISUAL DO LANCE/);
+  assert.match(reply.scene.svg, /MINI CAMPO/);
+  assert.match(reply.scene.svg, /AÇÕES PRINCIPAIS/);
   assert.match(reply.text, /⚽ 0x0/);
   assert.match(reply.scene.fallbackText, /Arte preparada/);
+  assert.ok(reply.scene.assetKeys.includes('match-hud-placeholder'));
+  assert.ok(reply.scene.replacementSlots.includes('telegram.match.widget.play-card'));
+});
+
+test('renderer placeholder consolida HUD, mini campo, cena e ícones com slots de substituição', async () => {
+  const { facade, matchRepository } = await createProfessionalFacade('scene-renderer');
+  await facade.handleStartMatch('scene-renderer');
+  const match = matchRepository.matchesByTelegramId.get('scene-renderer').active;
+
+  const placeholder = renderTelegramMatchPlaceholderCard(match);
+
+  assert.match(placeholder.svg, /MATCH HUD PLACEHOLDER/);
+  assert.match(placeholder.svg, /CARD VISUAL DO LANCE/);
+  assert.match(placeholder.svg, /MINI CAMPO/);
+  assert.match(placeholder.svg, /AÇÕES PRINCIPAIS/);
+  assert.ok(placeholder.assetKeys.includes('match-mini-pitch-placeholder'));
+  assert.ok(placeholder.replacementSlots.includes('telegram.match.widget.hud'));
+  assert.ok(matchScenePlaceholderPrompts[match.activeTurn.visualEvent.sceneKey].replacementSlot.startsWith('telegram.match.scene.'));
+  assert.match(renderMiniPitchPlaceholder(MatchPossessionSide.Home), /POSSE HOME/);
+  assert.ok(matchActionPlaceholderIcons[match.activeTurn.availableActions[0].key].replacementSlot.startsWith('telegram.match.action-icon.'));
 });
 
 const createProfessionalFacade = async (telegramId) => {

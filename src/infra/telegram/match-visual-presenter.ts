@@ -1,6 +1,7 @@
 import { MatchContextType, MatchPossessionSide, MatchStatus, MatchSummary } from '../../domain/match/types';
 import type { BotReplyScene } from '../../bot/phase1-bot';
 import { buildMatchCardViewModel } from '../../view-models/game-view-models';
+import { renderTelegramMatchPlaceholderCard } from '../../presentation/telegram-match-placeholder-renderer';
 
 export interface TelegramMatchPresentation {
   text: string;
@@ -70,6 +71,7 @@ const buildSummaryText = (match: MatchSummary): string => {
 export const presentTelegramMatchVisual = (match: MatchSummary): TelegramMatchPresentation => {
   const viewModel = buildMatchCardViewModel(match);
   const text = buildSummaryText(match);
+  const placeholderCard = renderTelegramMatchPlaceholderCard(match);
 
   return {
     text,
@@ -78,8 +80,10 @@ export const presentTelegramMatchVisual = (match: MatchSummary): TelegramMatchPr
       title: viewModel.scene.title,
       hud: buildHudLine(match),
       phrase: truncate(stripTrailingPeriod(viewModel.scene.phrase), 84),
-      svg: viewModel.scene.svg,
-      fallbackText: `Cena alternativa: ${viewModel.scene.fallback}`
+      svg: placeholderCard.svg,
+      fallbackText: `Cena alternativa: ${viewModel.scene.fallback}`,
+      assetKeys: placeholderCard.assetKeys,
+      replacementSlots: placeholderCard.replacementSlots
     }
   };
 };

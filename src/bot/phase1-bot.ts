@@ -34,6 +34,8 @@ export interface BotReplyScene {
   phrase: string;
   svg: string;
   fallbackText: string;
+  assetKeys?: string[];
+  replacementSlots?: string[];
 }
 
 export interface BotReply {

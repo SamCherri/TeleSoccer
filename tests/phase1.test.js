@@ -1125,6 +1125,7 @@ test('presenter inclui fallback textual e payload estruturado para cena visual',
   assert.equal(payload.document.filename, 'match-scene-shot.svg');
   assert.equal(payload.scene.key, 'shot');
   assert.match(payload.scene.svg, /<svg/);
+  assert.equal(payload.scene.assetKeys, undefined);
 });
 
 

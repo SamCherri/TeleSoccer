@@ -35,6 +35,8 @@ export interface TelegramScenePayload {
   phrase: string;
   svg: string;
   fallbackText: string;
+  assetKeys?: string[];
+  replacementSlots?: string[];
 }
 
 export interface TelegramMediaFile {
