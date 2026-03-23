@@ -667,6 +667,9 @@ test('renderer placeholder consolida HUD, mini campo, cena e ícones com slots d
   assert.match(placeholder.svg, /CARD VISUAL DO LANCE/);
   assert.match(placeholder.svg, /MINI CAMPO/);
   assert.match(placeholder.svg, /AÇÕES PRINCIPAIS/);
+  assert.match(placeholder.svg, /<linearGradient id="heroGradient"/);
+  assert.match(placeholder.svg, /data:image\/svg\+xml;utf8,/);
+  assert.match(placeholder.svg, /telegram\.match\.widget\.mini-pitch/);
   assert.ok(placeholder.assetKeys.includes('match-mini-pitch-placeholder'));
   assert.ok(placeholder.replacementSlots.includes('telegram.match.widget.hud'));
   assert.ok(matchScenePlaceholderPrompts[match.activeTurn.visualEvent.sceneKey].replacementSlot.startsWith('telegram.match.scene.'));

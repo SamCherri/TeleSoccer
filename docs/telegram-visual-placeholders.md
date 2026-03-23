@@ -97,6 +97,28 @@ Se a arte final exigir outro empacotamento, trocar em:
 
 ## Compatibilidade com Telegram
 
-- O fluxo atual prioriza SVG versionável e renderizável via upload como documento.
-- O canvas placeholder foi montado em um único SVG vertical para ficar legível no Telegram sem depender de arte final.
-- Se no futuro houver rasterização para PNG, o ponto de entrada natural é o renderer `renderTelegramMatchPlaceholderCard`.
+- O SVG continua sendo a fonte principal do card placeholder.
+- O backend rasteriza esse SVG para PNG antes do envio ao Telegram.
+- O Telegram usa `sendPhoto` como mídia principal quando existe `scene`.
+- A caption curta continua separada do SVG para manter leitura rápida no chat.
+- Se o upload da foto falhar, o runtime faz fallback para `sendMessage`, preservando texto e teclado de ações.
+
+## Limitações técnicas reais do rasterizador atual
+
+- O rasterizador atual **não é um renderizador SVG completo**.
+- Ele suporta apenas o subset SVG usado hoje pela camada placeholder do TeleSoccer:
+  - `rect`
+  - `circle`
+  - `line`
+  - `path`
+  - `text`
+  - `image` com `data:image/svg+xml`
+  - `linearGradient` usado pelo card atual
+  - `transform` básico (`translate`, `scale`, `rotate`)
+- Não há suporte completo para CSS, filtros, máscaras, `clipPath`, imagens remotas, `foreignObject` ou recursos SVG avançados.
+- O objetivo desta camada atual é fidelidade suficiente ao placeholder oficial, não cobertura genérica de SVG.
+
+## Evolução futura
+
+- O ponto oficial de evolução continua sendo a substituição dos placeholders por arte final.
+- Quando a arte final exigir novos recursos visuais, o renderer SVG e o rasterizador backend devem evoluir juntos, sem quebrar o fluxo atual `SVG -> PNG -> sendPhoto -> fallback textual`.

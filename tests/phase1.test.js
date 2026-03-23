@@ -1138,6 +1138,28 @@ test('rasterização SVG -> PNG gera payload PNG válido para foto do Telegram',
   assert.deepEqual(Array.from(rendered.png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
+test('rasterização SVG -> PNG muda os bytes quando o SVG muda visualmente', async () => {
+  const svgA = `
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="20" height="20" fill="#112233" />
+      <circle cx="10" cy="10" r="4" fill="#ffffff" />
+    </svg>
+  `.trim();
+  const svgB = `
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="20" height="20" fill="#112233" />
+      <circle cx="14" cy="6" r="4" fill="#ff3366" />
+    </svg>
+  `.trim();
+
+  const renderedA = rasterizeTelegramSceneSvgToPng(svgA);
+  const renderedB = rasterizeTelegramSceneSvgToPng(svgB);
+
+  assert.deepEqual(Array.from(renderedA.png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.deepEqual(Array.from(renderedB.png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.notDeepEqual(Array.from(renderedA.png), Array.from(renderedB.png));
+});
+
 
 test('runtime faz fallback textual quando o envio da cena PNG falha', async () => {
   const deliveries = [];
@@ -1217,6 +1239,7 @@ test('runtime envia foto PNG como mídia principal quando a cena existe', async 
   assert.equal(sentMessages[0].payload.photo.filename, 'match-scene-shot.png');
   assert.deepEqual(Array.from(sentMessages[0].payload.photo.data.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.equal(sentMessages[0].payload.caption.includes('HUD curta'), true);
+  assert.equal(sentMessages.some((entry) => entry.channel === 'message'), false);
 });
 
 test('runtime do Telegram despacha update real e envia mensagem formatada', async () => {

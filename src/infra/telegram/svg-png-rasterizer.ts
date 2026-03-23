@@ -1,7 +1,38 @@
 const { deflateSync } = require('zlib') as { deflateSync: (input: Uint8Array) => Uint8Array };
 
+/**
+ * Rasterizador propositalmente limitado ao subset SVG usado pelos placeholders
+ * atuais do TeleSoccer no Telegram.
+ *
+ * Escopo suportado neste arquivo:
+ * - rect
+ * - circle
+ * - line
+ * - path
+ * - text
+ * - image com `data:image/svg+xml;utf8,`
+ * - linearGradient do placeholder atual
+ * - transform básico: translate / scale / rotate
+ *
+ * Fora de escopo:
+ * - renderização SVG completa/CSS completa
+ * - filtros, máscaras, clipPath, stroke-linecap/linejoin avançados
+ * - gradientes complexos, patterns, foreignObject, imagens remotas
+ *
+ * Se o SVG placeholder mudar para usar recursos fora deste subset, os testes
+ * desta camada devem falhar e o rasterizador deve ser evoluído junto.
+ */
 type Color = readonly [number, number, number, number];
 type Matrix = readonly [number, number, number, number, number, number];
+type Paint = { kind: 'color'; color: Color } | { kind: 'linearGradient'; gradient: LinearGradient };
+
+interface LinearGradient {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  stops: Array<{ offset: number; color: string }>;
+}
 
 interface XmlNode {
   name: string;
@@ -14,7 +45,7 @@ interface RenderState {
   matrix: Matrix;
   opacity: number;
   color: string;
-  gradients: Record<string, { start: string; end: string }>;
+  gradients: Record<string, LinearGradient>;
 }
 
 const identity: Matrix = [1, 0, 0, 1, 0, 0];
@@ -74,6 +105,38 @@ const setPixel = (pixels: Uint8Array, width: number, height: number, x: number, 
 
 const fillRect = (pixels: Uint8Array, width: number, height: number, x: number, y: number, w: number, h: number, color: Color): void => {
   for (let py = Math.max(0, y); py < Math.min(height, y + h); py += 1) for (let px = Math.max(0, x); px < Math.min(width, x + w); px += 1) setPixel(pixels, width, height, px, py, color);
+};
+
+const mixColor = (start: Color, end: Color, t: number): Color => [
+  Math.round(start[0] + (end[0] - start[0]) * t),
+  Math.round(start[1] + (end[1] - start[1]) * t),
+  Math.round(start[2] + (end[2] - start[2]) * t),
+  Math.round(start[3] + (end[3] - start[3]) * t)
+];
+
+const fillRectLinearGradient = (
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  start: Color,
+  end: Color,
+  gradient: LinearGradient
+): void => {
+  const gx = gradient.x2 - gradient.x1;
+  const gy = gradient.y2 - gradient.y1;
+  const denominator = gx * gx + gy * gy || 1;
+  for (let py = Math.max(0, y); py < Math.min(height, y + h); py += 1) {
+    for (let px = Math.max(0, x); px < Math.min(width, x + w); px += 1) {
+      const localX = w <= 1 ? 0 : (px - x) / Math.max(1, w - 1);
+      const localY = h <= 1 ? 0 : (py - y) / Math.max(1, h - 1);
+      const t = Math.max(0, Math.min(1, ((localX - gradient.x1) * gx + (localY - gradient.y1) * gy) / denominator));
+      setPixel(pixels, width, height, px, py, mixColor(start, end, t));
+    }
+  }
 };
 
 const strokeRect = (pixels: Uint8Array, width: number, height: number, x: number, y: number, w: number, h: number, thickness: number, color: Color): void => {
@@ -142,13 +205,20 @@ const parseXml = (svg: string): XmlNode => {
   return root.children[0];
 };
 
+const parseUnitInterval = (input: string | undefined, fallback: number): number => {
+  if (!input) return fallback;
+  if (input.endsWith('%')) return Number(input.slice(0, -1)) / 100;
+  const value = Number(input);
+  return Number.isFinite(value) ? value : fallback;
+};
+
 const parseColor = (input: string | undefined, state: RenderState): Color | null => {
   if (!input || input === 'none') return null;
   if (input === 'currentColor') return parseColor(state.color, state);
   if (input.startsWith('url(#')) {
     const id = input.slice(5, -1);
     const gradient = state.gradients[id];
-    return parseColor(gradient?.start ?? '#ffffff', state);
+    return parseColor(gradient?.stops[0]?.color ?? '#ffffff', state);
   }
   if (input.startsWith('#')) {
     const hex = input.slice(1);
@@ -164,6 +234,17 @@ const parseColor = (input: string | undefined, state: RenderState): Color | null
     return [r, g, b, Math.round(255 * state.opacity)];
   }
   return null;
+};
+
+const parsePaint = (input: string | undefined, state: RenderState): Paint | null => {
+  if (!input || input === 'none') return null;
+  if (input.startsWith('url(#')) {
+    const id = input.slice(5, -1);
+    const gradient = state.gradients[id];
+    if (gradient) return { kind: 'linearGradient', gradient };
+  }
+  const color = parseColor(input, state);
+  return color ? { kind: 'color', color } : null;
 };
 
 const parseTransform = (input: string | undefined): Matrix => {
@@ -265,7 +346,16 @@ const renderNode = (node: XmlNode, pixels: Uint8Array, width: number, height: nu
     node.children.forEach((child) => {
       if (child.name === 'linearGradient' && child.attrs.id) {
         const stops = child.children.filter((item) => item.name === 'stop');
-        nextState.gradients[child.attrs.id] = { start: stops[0]?.attrs['stop-color'] ?? '#ffffff', end: stops.at(-1)?.attrs['stop-color'] ?? '#ffffff' };
+        nextState.gradients[child.attrs.id] = {
+          x1: parseUnitInterval(child.attrs.x1, 0),
+          y1: parseUnitInterval(child.attrs.y1, 0),
+          x2: parseUnitInterval(child.attrs.x2, 1),
+          y2: parseUnitInterval(child.attrs.y2, 0),
+          stops: stops.map((stop) => ({
+            offset: parseUnitInterval(stop.attrs.offset, 0),
+            color: stop.attrs['stop-color'] ?? '#ffffff'
+          }))
+        };
       }
     });
     return;
@@ -274,7 +364,7 @@ const renderNode = (node: XmlNode, pixels: Uint8Array, width: number, height: nu
   if (node.name === 'svg' || node.name === 'g') { node.children.forEach((child) => renderNode(child, pixels, width, height, nextState)); return; }
   if (node.name === '#text' || !node.name) return;
 
-  const fill = parseColor(node.attrs.fill, nextState);
+  const fill = parsePaint(node.attrs.fill, nextState);
   const stroke = parseColor(node.attrs.stroke, nextState);
   const strokeWidth = Number(node.attrs['stroke-width'] ?? 1);
 
@@ -282,12 +372,28 @@ const renderNode = (node: XmlNode, pixels: Uint8Array, width: number, height: nu
     const p = apply(nextState.matrix, Number(node.attrs.x ?? 0), Number(node.attrs.y ?? 0));
     const w = Math.round(Number(node.attrs.width ?? 0) * nextState.matrix[0]);
     const h = Math.round(Number(node.attrs.height ?? 0) * nextState.matrix[3]);
-    if (fill) fillRect(pixels, width, height, Math.round(p.x), Math.round(p.y), w, h, fill);
+    if (fill?.kind === 'color') fillRect(pixels, width, height, Math.round(p.x), Math.round(p.y), w, h, fill.color);
+    if (fill?.kind === 'linearGradient') {
+      const firstStop = fill.gradient.stops[0]?.color ?? '#ffffff';
+      const lastStop = fill.gradient.stops.at(-1)?.color ?? firstStop;
+      fillRectLinearGradient(
+        pixels,
+        width,
+        height,
+        Math.round(p.x),
+        Math.round(p.y),
+        w,
+        h,
+        parseColor(firstStop, nextState) ?? [255, 255, 255, 255],
+        parseColor(lastStop, nextState) ?? [255, 255, 255, 255],
+        fill.gradient
+      );
+    }
     if (stroke) strokeRect(pixels, width, height, Math.round(p.x), Math.round(p.y), w, h, Math.max(1, Math.round(strokeWidth)), stroke);
   } else if (node.name === 'circle') {
     const p = apply(nextState.matrix, Number(node.attrs.cx ?? 0), Number(node.attrs.cy ?? 0));
     const r = Math.max(1, Math.round(Number(node.attrs.r ?? 0) * Math.abs(nextState.matrix[0])));
-    if (fill) fillCircle(pixels, width, height, Math.round(p.x), Math.round(p.y), r, fill);
+    if (fill?.kind === 'color') fillCircle(pixels, width, height, Math.round(p.x), Math.round(p.y), r, fill.color);
   } else if (node.name === 'line') {
     if (!stroke) return;
     const a = apply(nextState.matrix, Number(node.attrs.x1 ?? 0), Number(node.attrs.y1 ?? 0));
@@ -295,15 +401,27 @@ const renderNode = (node: XmlNode, pixels: Uint8Array, width: number, height: nu
     drawSegment(pixels, width, height, a, b, stroke, Math.max(1, Math.round(strokeWidth)));
   } else if (node.name === 'path') {
     const paths = approximatePath(node.attrs.d ?? '', nextState.matrix);
-    if (fill) paths.forEach((path) => fillPolygon(pixels, width, height, path, fill));
+    if (fill?.kind === 'color') paths.forEach((path) => fillPolygon(pixels, width, height, path, fill.color));
     if (stroke) paths.forEach((path) => path.slice(1).forEach((point, index) => drawSegment(pixels, width, height, path[index], point, stroke, Math.max(1, Math.round(strokeWidth)))));
   } else if (node.name === 'text') {
     const text = node.children.filter((child) => child.name === '#text').map((child) => child.text ?? '').join('');
     const p = apply(nextState.matrix, Number(node.attrs.x ?? 0), Number(node.attrs.y ?? 0));
     const fontSize = Number(node.attrs['font-size'] ?? 16);
     const scaleSize = Math.max(1, Math.round(fontSize / 8));
-    drawText(pixels, width, height, Math.round(p.x), Math.round(p.y), scaleSize, text, fill ?? parseColor('#ffffff', nextState)!, (node.attrs['text-anchor'] as 'start' | 'middle' | 'end') ?? 'start');
+    drawText(
+      pixels,
+      width,
+      height,
+      Math.round(p.x),
+      Math.round(p.y),
+      scaleSize,
+      text,
+      fill?.kind === 'color' ? fill.color : parseColor('#ffffff', nextState)!,
+      (node.attrs['text-anchor'] as 'start' | 'middle' | 'end') ?? 'start'
+    );
   } else if (node.name === 'image' && node.attrs.href?.startsWith('data:image/svg+xml;utf8,')) {
+    // Mantido intencionalmente restrito ao uso atual do placeholder: SVG inline
+    // embutido por data URI. Não há suporte a imagens remotas/raster externas.
     const innerSvg = decodeURIComponent(node.attrs.href.slice('data:image/svg+xml;utf8,'.length));
     const inner = rasterizeSvgToCanvas(innerSvg, Math.round(Number(node.attrs.width ?? 1)), Math.round(Number(node.attrs.height ?? 1)));
     const p = apply(nextState.matrix, Number(node.attrs.x ?? 0), Number(node.attrs.y ?? 0));
