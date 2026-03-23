@@ -291,6 +291,82 @@ Não mostrar:
 
 ---
 
+## 9.6 Linguagem visual dos lances
+
+A partida no Telegram deve usar uma **linguagem visual oficial**.
+
+Cada atualização relevante de lance deve ter uma imagem principal adequada ao tipo do momento.
+
+A imagem do lance é parte do gameplay e não apenas decoração.
+
+### Modos visuais oficiais
+
+#### A. Cena de confronto
+Usada quando há duelo direto, tensão, finalização ou impacto dramático.
+
+Exemplos:
+- drible contra marcador
+- disputa defensiva
+- finalização
+- defesa do goleiro
+- gol
+- rebote
+- pênalti
+- disputa forte em escanteio ofensivo
+
+#### B. Cena de campo
+Usada quando o momento é coletivo, tático ou de organização.
+
+Exemplos:
+- jogador recebe a bola
+- passe simples
+- troca de lado
+- circulação de posse
+- avanço sem contato direto
+- lance genérico de construção
+
+### Regra obrigatória
+Todo tipo de lance deve mapear para um modo visual oficial.
+
+A implementação de um novo lance deve definir:
+- classificação do lance
+- modo visual
+- legenda curta esperada
+- renderer oficial
+
+### Proibição
+Não usar placeholder como experiência final oficial da partida.
+
+Placeholder pode existir apenas como:
+- fallback técnico
+- teste interno
+- etapa provisória explicitamente marcada
+
+---
+
+## 9.7 Legendas da imagem do lance
+
+A legenda da imagem deve ser:
+
+- curta
+- objetiva
+- forte
+- centrada no ator principal e na ação principal
+
+### Boas referências de legenda
+- “Samuel encara Eduardo no duelo individual!”
+- “Henrique recebe aberto pela direita!”
+- “Samuel finaliza contra o goleiro!”
+- “A bola gira pelo meio-campo.”
+
+### Evitar
+- bloco longo de texto
+- linguagem de relatório
+- excesso de HUD textual
+- repetir informação demais que a imagem já mostra
+
+---
+
 ## 10. Regras de futebol presentes
 
 Estão incluídas na base:
@@ -709,3 +785,4 @@ Toda nova feature deve respeitar:
 4. integração com bot
 5. impacto visual
 6. expansão futura sem quebrar a base
+7. consistência com a linguagem visual oficial da partida

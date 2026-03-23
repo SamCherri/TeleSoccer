@@ -42,6 +42,9 @@ Sempre priorizar nesta ordem:
 
 Nunca começar pela parte visual sem que a base de domínio esteja definida.
 
+**Mas atenção:** no contexto de partida, a apresentação visual não é apenas estética.  
+Ela é parte da experiência jogável e deve ser tratada como entrega funcional do jogo.
+
 ---
 
 ## 3. Stack obrigatória
@@ -93,6 +96,8 @@ Não propor reorganização grande sem necessidade real.
 8. Sempre pensar primeiro em backend, fluxo, banco e integração.
 9. Sempre evitar acoplamento forte entre domínio do jogo e camada Telegram.
 10. Sempre manter regras de negócio separadas de infraestrutura.
+11. Sempre tratar a experiência da partida como produto jogável, não como relatório técnico.
+12. Sempre considerar a imagem do lance como parte da entrega funcional da partida quando houver saída visual no Telegram.
 
 ---
 
@@ -108,7 +113,7 @@ Antes de implementar qualquer feature, definir:
 - impacto visual
 - critérios de aceite
 
-Se algo disso estiver ausente, inferir com base em `docs/current-phase.md`, `docs/roadmap.md` e `docs/game-rules.md`.
+Se algo disso estiver ausente, inferir com base em `docs/current-phase.md`, `docs/roadmap.md`, `docs/game-rules.md` e `docs/match-visual-language.md`.
 
 ---
 
@@ -124,6 +129,9 @@ Exemplos de tarefas corretas:
 - implementar tentativa de peneira
 - implementar leitura do contexto de lance no bot
 - implementar contrato profissional básico
+- implementar classificação visual oficial de lances
+- implementar renderer oficial de cena de confronto
+- implementar renderer oficial de cena de campo
 
 Exemplos de tarefas erradas:
 
@@ -131,6 +139,7 @@ Exemplos de tarefas erradas:
 - refazer toda a arquitetura
 - inventar telas soltas sem base
 - misturar mercado, partida, clube e seleção no mesmo passo sem necessidade
+- entregar placeholder visual como se fosse experiência final da partida
 
 ---
 
@@ -154,7 +163,6 @@ O projeto deve respeitar a visão definida pelo usuário.
 - cada turno tem 30 segundos
 - se o usuário não responder, perde o lance
 - o adversário fica com a posse
-- ações disponíveis dependem do contexto do lance
 
 ### Evolução
 - sem nível geral
@@ -190,7 +198,100 @@ Exemplos já aceitos:
 
 ---
 
-## 9. Regras de entrega de código
+## 9. Política visual obrigatória da partida
+
+A partida do TeleSoccer no Telegram possui uma **linguagem visual oficial**.
+
+Essa linguagem visual é parte do gameplay e não deve ser tratada como detalhe secundário.
+
+### 9.1 Princípio central
+Toda atualização relevante de lance deve considerar:
+
+- o tipo do lance
+- o modo visual adequado
+- a legenda curta do lance
+- a clareza de leitura imediata no Telegram
+
+### 9.2 Modos visuais oficiais
+
+Existem dois modos visuais oficiais para a partida:
+
+#### A. Cena de confronto
+Usada quando o lance é dramático, direto e individualizado.
+
+Exemplos:
+- drible
+- duelo defensivo
+- finalização
+- defesa do goleiro
+- gol
+- rebote
+- pênalti
+- disputa intensa em bola parada ofensiva
+
+#### B. Cena de campo
+Usada quando o lance é tático, coletivo ou de organização.
+
+Exemplos:
+- passe recebido
+- passe interceptado
+- movimentação simples
+- posse
+- circulação
+- troca de setor
+- progressão sem confronto direto
+- fallback genérico
+
+### 9.3 Regra obrigatória
+Toda nova feature de partida deve definir também:
+
+- qual é o tipo de lance
+- qual é o modo visual oficial do lance
+- qual é a legenda curta esperada
+- qual renderer oficial deve ser usado
+
+### 9.4 Restrições obrigatórias
+Não fazer:
+
+- usar placeholder visual como saída principal da partida
+- usar card técnico genérico como identidade final do lance
+- tratar mini-campo, HUD pesado e arte hero no mesmo nível sem critério
+- deixar a partida parecer relatório ao invés de jogo
+
+Placeholder visual pode existir apenas como:
+
+- fallback técnico
+- ferramenta interna de teste
+- etapa temporária explicitamente marcada como provisória
+
+Nunca como experiência final oficial da partida.
+
+### 9.5 Legendas da partida
+A legenda de imagem da partida deve ser:
+
+- curta
+- direta
+- legível rapidamente
+- centrada no ator principal e na ação principal
+
+Evitar:
+
+- blocos longos
+- excesso de dados técnicos
+- linguagem de relatório
+- texto que concorra com a imagem principal
+
+### 9.6 Regra de produto
+Quando houver conflito entre “mostrar mais informação técnica” e “preservar a leitura imediata do lance”, priorizar:
+
+1. clareza do lance
+2. tipo de cena correto
+3. leitura rápida no Telegram
+4. consistência com a linguagem visual oficial
+
+---
+
+## 10. Regras de entrega de código
 
 Quando responder com implementação:
 
@@ -204,7 +305,7 @@ Quando responder com implementação:
 
 ---
 
-## 10. Formato obrigatório de entrega
+## 11. Formato obrigatório de entrega
 
 Sempre numerar os arquivos:
 
@@ -217,7 +318,7 @@ Não misturar caminho e conteúdo no mesmo bloco.
 
 ---
 
-## 11. Restrições importantes
+## 12. Restrições importantes
 
 Não fazer:
 
@@ -227,10 +328,11 @@ Não fazer:
 - lógica crítica escondida em camada errada
 - mudanças grandes sem justificativa
 - respostas vagas do tipo “depois você completa”
+- saída final de partida baseada em placeholder como se fosse produto concluído
 
 ---
 
-## 12. Critério de qualidade
+## 13. Critério de qualidade
 
 As decisões devem priorizar:
 
@@ -240,29 +342,34 @@ As decisões devem priorizar:
 - compatibilidade com a base atual
 - facilidade de manutenção
 - coerência com o roadmap do jogo
+- consistência com a linguagem visual oficial da partida
 
 ---
 
-## 13. Documentos de referência obrigatórios
+## 14. Documentos de referência obrigatórios
 
 Antes de trabalhar, consultar:
 
 - `docs/game-rules.md`
 - `docs/roadmap.md`
 - `docs/current-phase.md`
+- `docs/match-visual-language.md`
 
 Se houver conflito, a prioridade é:
 
 1. `docs/current-phase.md`
 2. `docs/game-rules.md`
-3. `docs/roadmap.md`
-4. este `AGENTS.md`
+3. `docs/match-visual-language.md`
+4. `docs/roadmap.md`
+5. este `AGENTS.md`
 
 ---
 
-## 14. Conduta esperada
+## 15. Conduta esperada
 
 Aja como mantenedor técnico do TeleSoccer.
 
-Seu papel não é reinventar o projeto.
+Seu papel não é reinventar o projeto.  
 Seu papel é expandir o jogo com segurança, consistência arquitetural e foco em entrega real.
+
+No contexto da partida, isso inclui preservar e evoluir a identidade visual oficial do jogo no Telegram.
