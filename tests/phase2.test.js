@@ -10,6 +10,8 @@ const { Phase1TelegramFacade, phase1BotActions } = require('../dist/bot/phase1-b
 const { Phase1TelegramDispatcher } = require('../dist/bot/phase1-dispatcher.js');
 const { Phase1TelegramRuntime } = require('../dist/infra/telegram/runtime.js');
 const { DomainError } = require('../dist/shared/errors.js');
+const { renderTelegramMatchPlaceholderCard } = require('../dist/presentation/telegram-match-placeholder-renderer.js');
+const { matchActionPlaceholderIcons, matchScenePlaceholderPrompts, renderMiniPitchPlaceholder } = require('../dist/assets/telegram/match-placeholder-art.js');
 
 const SPECIAL_CONTEXTS = new Set([MatchContextType.FreeKick, MatchContextType.PenaltyKick, MatchContextType.CornerKick]);
 
@@ -645,9 +647,36 @@ test('fachada da partida expõe cena visual simples com svg e fallback textual',
   const reply = await facade.handleStartMatch('scene-1');
 
   assert.ok(reply.scene);
-  assert.match(reply.scene.svg, /<svg/);
-  assert.match(reply.text, /CENA DO LANCE/);
+  assert.match(reply.scene.svg, /CARD VISUAL DO LANCE|MAPA VIVO DO LANCE/);
+  assert.match(reply.scene.svg, /MINI CAMPO TÁTICO|MAPA TÁTICO AMPLIADO/);
+  assert.match(reply.scene.svg, /AÇÕES PRINCIPAIS/);
+  assert.match(reply.text, /⚽ 0x0/);
   assert.match(reply.scene.fallbackText, /Arte preparada/);
+  assert.ok(reply.scene.assetKeys.includes('match-hud-placeholder'));
+  assert.ok(reply.scene.replacementSlots.includes('telegram.match.widget.play-card'));
+});
+
+test('renderer placeholder consolida HUD, mini campo, cena e ícones com slots de substituição', async () => {
+  const { facade, matchRepository } = await createProfessionalFacade('scene-renderer');
+  await facade.handleStartMatch('scene-renderer');
+  const match = matchRepository.matchesByTelegramId.get('scene-renderer').active;
+
+  const placeholder = renderTelegramMatchPlaceholderCard(match);
+
+  assert.match(placeholder.svg, /MATCH HUD PLACEHOLDER/);
+  assert.match(placeholder.svg, /CARD VISUAL DO LANCE|MAPA VIVO DO LANCE/);
+  assert.match(placeholder.svg, /MINI CAMPO TÁTICO|MAPA TÁTICO AMPLIADO/);
+  assert.match(placeholder.svg, /AÇÕES PRINCIPAIS/);
+  assert.match(placeholder.svg, /LIVE MATCHDAY PREVIEW/);
+  assert.match(placeholder.svg, /Modo duelo: pixel art grande destaca o confronto principal\.|Modo mapa: o mini-campo cresce para liderar a leitura do turno\./);
+  assert.match(placeholder.svg, /<linearGradient id="heroGradient"/);
+  assert.match(placeholder.svg, /data:image\/svg\+xml;utf8,/);
+  assert.match(placeholder.svg, /telegram\.match\.widget\.mini-pitch/);
+  assert.ok(placeholder.assetKeys.includes('match-mini-pitch-placeholder'));
+  assert.ok(placeholder.replacementSlots.includes('telegram.match.widget.hud'));
+  assert.ok(matchScenePlaceholderPrompts[match.activeTurn.visualEvent.sceneKey].replacementSlot.startsWith('telegram.match.scene.'));
+  assert.match(renderMiniPitchPlaceholder(MatchPossessionSide.Home), /POSSE HOME/);
+  assert.ok(matchActionPlaceholderIcons[match.activeTurn.availableActions[0].key].replacementSlot.startsWith('telegram.match.action-icon.'));
 });
 
 const createProfessionalFacade = async (telegramId) => {
@@ -734,6 +763,8 @@ test('runtime envia resposta mesmo quando /start encontra partida expirada e res
     sendMessage: async (payload) => {
       sentMessages.push(payload);
     },
+    sendDocument: async () => {},
+    sendPhoto: async () => {},
     setWebhook: async () => {},
     getWebhookInfo: async () => ({}),
     deleteWebhook: async () => {}
@@ -753,4 +784,111 @@ test('runtime envia resposta mesmo quando /start encontra partida expirada e res
   assert.equal(sentMessages.length, 1);
   assert.match(sentMessages[0].text, /mundo contínuo de futebol/i);
   assert.ok(matchRepository.matchesByTelegramId.get('7003').active.recentEvents.some((event) => event.type === 'TIMEOUT'));
+});
+
+
+test('renderer placeholder alterna entre modo duelo e modo mapa conforme a cena do lance', () => {
+  const baseMatch = {
+    id: 'match-placeholder-modes',
+    playerId: 'player-1',
+    status: MatchStatus.InProgress,
+    scoreboard: {
+      homeClubName: 'Porto Azul FC',
+      awayClubName: 'Aurora SC',
+      homeScore: 1,
+      awayScore: 0,
+      minute: 67,
+      half: MatchHalf.Second,
+      status: MatchStatus.InProgress,
+      stoppageMinutes: 0
+    },
+    activeTurn: {
+      id: 'turn-1',
+      matchId: 'match-placeholder-modes',
+      sequence: 5,
+      minute: 67,
+      half: MatchHalf.Second,
+      possessionSide: MatchPossessionSide.Home,
+      contextType: MatchContextType.AttackingThird,
+      contextText: 'Lance vivo',
+      availableActions: [{ key: MatchActionKey.Dribble, label: 'Driblar' }, { key: MatchActionKey.Pass, label: 'Passar' }],
+      deadlineAt: new Date('2026-03-03T12:00:30.000Z'),
+      state: 'PENDING',
+      isGoalkeeperContext: false,
+      previousOutcome: 'O time acelera no setor ofensivo.',
+      visualEvent: {
+        sequence: 5,
+        actionType: 'DRIBBLE',
+        sceneKey: 'dribble',
+        zone: 'ATTACKING_THIRD',
+        actor: { lineupId: 'home-fw', playerName: 'Rafael', side: MatchPossessionSide.Home, role: 'FORWARD', shirtNumber: 9 },
+        primaryTarget: { lineupId: 'away-df', playerName: 'Mauro', side: MatchPossessionSide.Away, role: 'DEFENDER', shirtNumber: 4 },
+        marker: { lineupId: 'away-df', playerName: 'Mauro', side: MatchPossessionSide.Away, role: 'DEFENDER', shirtNumber: 4 },
+        goalkeeper: { lineupId: 'away-gk', playerName: 'Davi', side: MatchPossessionSide.Away, role: 'GOALKEEPER', shirtNumber: 1 },
+        possessionBefore: MatchPossessionSide.Home,
+        possessionAfter: MatchPossessionSide.Home,
+        origin: { x: 60, y: 54 },
+        destination: { x: 74, y: 48 },
+        ballTarget: { x: 72, y: 50 },
+        movementDirection: 'FORWARD',
+        outcome: 'SUCCESS',
+        headline: 'Drible',
+        narration: {
+          start: 'Rafael encara o marcador.',
+          duel: 'O duelo fica no mano a mano.',
+          action: 'O atacante muda a passada.',
+          end: 'Rafael mantém a posse após o drible.'
+        }
+      }
+    },
+    recentEvents: [],
+    lineups: [
+      { id: 'home-fw', side: MatchPossessionSide.Home, role: 'FORWARD', displayName: 'Rafael', shirtNumber: 9, isUserControlled: true, tacticalPosition: { x: 62, y: 54 } },
+      { id: 'home-mf', side: MatchPossessionSide.Home, role: 'MIDFIELDER', displayName: 'Caio', shirtNumber: 8, isUserControlled: false, tacticalPosition: { x: 48, y: 52 } },
+      { id: 'away-df', side: MatchPossessionSide.Away, role: 'DEFENDER', displayName: 'Mauro', shirtNumber: 4, isUserControlled: false, tacticalPosition: { x: 68, y: 54 } },
+      { id: 'away-gk', side: MatchPossessionSide.Away, role: 'GOALKEEPER', displayName: 'Davi', shirtNumber: 1, isUserControlled: false, tacticalPosition: { x: 88, y: 50 } }
+    ],
+    yellowCards: 0,
+    redCards: 0,
+    suspensionMatchesRemaining: 0,
+    energy: 82
+  };
+
+  const duelPlaceholder = renderTelegramMatchPlaceholderCard(baseMatch);
+  assert.match(duelPlaceholder.svg, /MODO DUELO SNES/);
+  assert.match(duelPlaceholder.svg, /MINI CAMPO TÁTICO/);
+  assert.match(duelPlaceholder.svg, /close-up em pixel art do confronto/);
+
+  const mapPlaceholder = renderTelegramMatchPlaceholderCard({
+    ...baseMatch,
+    activeTurn: {
+      ...baseMatch.activeTurn,
+      availableActions: [{ key: MatchActionKey.Pass, label: 'Passar' }, { key: MatchActionKey.Control, label: 'Dominar' }],
+      visualEvent: {
+        sequence: 6,
+        actionType: 'PASS',
+        sceneKey: 'pass-received',
+        zone: 'MIDDLE_THIRD',
+        actor: { lineupId: 'home-mf', playerName: 'Caio', side: MatchPossessionSide.Home, role: 'MIDFIELDER', shirtNumber: 8 },
+        receiver: { lineupId: 'home-fw', playerName: 'Rafael', side: MatchPossessionSide.Home, role: 'FORWARD', shirtNumber: 9 },
+        marker: { lineupId: 'away-df', playerName: 'Mauro', side: MatchPossessionSide.Away, role: 'DEFENDER', shirtNumber: 4 },
+        possessionBefore: MatchPossessionSide.Home,
+        possessionAfter: MatchPossessionSide.Home,
+        origin: { x: 48, y: 52 },
+        destination: { x: 60, y: 50 },
+        ballTarget: { x: 68, y: 46 },
+        movementDirection: 'FORWARD',
+        outcome: 'SUCCESS',
+        headline: 'Passe recebido',
+        narration: {
+          start: 'Caio levanta a cabeça.',
+          action: 'O passe entra no corredor.',
+          end: 'Rafael recebe livre à frente.'
+        }
+      }
+    }
+  });
+  assert.match(mapPlaceholder.svg, /MODO MAPA SNES/);
+  assert.match(mapPlaceholder.svg, /MAPA TÁTICO AMPLIADO/);
+  assert.match(mapPlaceholder.svg, /mapa ampliado do turno e da circulação/);
 });

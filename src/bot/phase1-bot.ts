@@ -25,7 +25,7 @@ import {
   MultiplayerTeamSide
 } from '../domain/multiplayer/types';
 import { GameCardRenderer } from '../presentation/game-card-renderer';
-import { buildMatchCardViewModel } from '../view-models/game-view-models';
+import { presentTelegramMatchVisual } from '../infra/telegram/match-visual-presenter';
 
 export interface BotReplyScene {
   key: string;
@@ -33,7 +33,10 @@ export interface BotReplyScene {
   hud: string;
   phrase: string;
   svg: string;
+  caption: string;
   fallbackText: string;
+  assetKeys?: string[];
+  replacementSlots?: string[];
 }
 
 export interface BotReply {
@@ -663,26 +666,18 @@ export class Phase1TelegramFacade {
     worldActions: string[]
   ): BotReply {
     const turn = match.activeTurn;
-    const matchCard = this.renderer.renderMatchCard(match);
-    const sceneViewModel = buildMatchCardViewModel(match).scene;
+    const presentation = presentTelegramMatchVisual(match);
 
     return {
-      text: [leadText, matchCard].join('\n\n'),
-      scene: {
-        key: sceneViewModel.asset.key,
-        title: sceneViewModel.title,
-        hud: sceneViewModel.hud,
-        phrase: sceneViewModel.phrase,
-        svg: this.renderer.renderMatchSceneSvg(match),
-        fallbackText: sceneViewModel.fallback
-      },
+      text: [leadText, presentation.text].join('\n\n'),
+      scene: presentation.scene,
       actions:
         match.status === MatchStatus.Finished || !turn
           ? worldActions
           : [
               ...turn.availableActions.map((action) => matchActionLabels[action.key]),
-              phase1BotActions.resolveTimeout,
               phase1BotActions.currentMatch,
+              phase1BotActions.resolveTimeout,
               phase1BotActions.lockerRoom,
               phase1BotActions.mainMenu
             ]
