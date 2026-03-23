@@ -12,35 +12,32 @@ import {
 
 const viewBox = { width: 640, height: 360 } as const;
 const palette = {
-  sky: '#b8ecff',
-  pitch: '#3f9b3a',
-  pitchDark: '#2d7d2d',
-  pitchLight: '#66b54f',
-  stripe: 'rgba(255,255,255,0.10)',
-  line: '#f6f4e8',
-  panel: 'rgba(8, 26, 17, 0.78)',
-  panelAccent: '#d9fbe8',
-  text: '#ffffff',
-  shadow: 'rgba(15, 23, 42, 0.24)',
-  homePrimary: '#c0392b',
-  homeAccent: '#ffd7cf',
-  awayPrimary: '#1f5fbf',
-  awayAccent: '#d3e6ff',
-  goalkeeperPrimary: '#d99a00',
-  goalkeeperAccent: '#ffe066',
-  skin: '#f2d3ae',
-  boot: '#1f2937',
+  card: '#f7f3e8',
+  cardShadow: '#d7cfbf',
+  pitch: '#2d7c33',
+  pitchDark: '#23612a',
+  stripe: '#3b913f',
+  line: '#efe7d2',
+  outline: '#2a2016',
+  text: '#241a12',
+  textSoft: '#5f5546',
+  homePrimary: '#d94833',
+  homeAccent: '#ffe0d8',
+  awayPrimary: '#2a61cf',
+  awayAccent: '#d9e6ff',
+  goalkeeperPrimary: '#d59a1d',
+  goalkeeperAccent: '#fff0ab',
+  skin: '#f0c49b',
+  hair: '#3d2417',
+  boot: '#23242b',
   ball: '#ffffff',
-  ballDetail: '#111827',
-  actorGlow: '#fff3bf',
-  targetGlow: '#ffd43b',
-  guide: 'rgba(255,255,255,0.55)',
-  goal: '#dfe7eb',
-  net: '#f8f9fa',
-  flag: '#ffd43b',
-  flagAlt: '#ff8787',
-  pixelOutline: '#2b1d16',
-  userHalo: '#fff0a6'
+  ballDetail: '#1d2433',
+  glow: '#fff4a8',
+  passTrail: '#fff3bf',
+  shotTrail: '#ffd166',
+  userHalo: '#fff0a6',
+  hud: '#ffffff',
+  hudMuted: '#ebe4d2'
 } as const;
 
 type Facing = 'left' | 'right';
@@ -83,7 +80,13 @@ const cinematicSceneKeys: MatchSceneKey[] = ['dribble', 'defensive-duel', 'shot'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const lerp = (start: number, end: number, weight: number) => start + (end - start) * weight;
-const distance = (left: MatchVisualCoordinate, right: MatchVisualCoordinate) => Math.hypot(right.x - left.x, right.y - left.y);
+const escapeXml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 const toneFor = (player: MatchVisualPlayerSnapshot): Tone =>
   player.role === 'GOALKEEPER' ? 'goalkeeper' : player.side === MatchPossessionSide.Home ? 'home' : 'away';
@@ -155,25 +158,25 @@ const buildCamera = (event: MatchVisualEvent, heroEntities: HeroEntity[], visual
     { minX: 100, maxX: 0, minY: 100, maxY: 0 }
   );
 
-  const paddingByScene: Record<MatchSceneKey, { x: number; y: number; minWidth: number; minHeight: number }> = {
-    'pass-received': { x: 12, y: 14, minWidth: 42, minHeight: 40 },
-    'pass-intercepted': { x: 12, y: 16, minWidth: 42, minHeight: 42 },
-    dribble: { x: 10, y: 16, minWidth: 36, minHeight: 38 },
-    'defensive-duel': { x: 10, y: 16, minWidth: 34, minHeight: 36 },
-    shot: { x: 16, y: 20, minWidth: 56, minHeight: 44 },
-    'goalkeeper-save': { x: 16, y: 20, minWidth: 58, minHeight: 46 },
-    goal: { x: 16, y: 20, minWidth: 60, minHeight: 46 },
-    rebound: { x: 14, y: 20, minWidth: 50, minHeight: 44 },
-    'corner-kick': { x: 18, y: 18, minWidth: 64, minHeight: 54 },
-    'penalty-kick': { x: 18, y: 20, minWidth: 56, minHeight: 44 },
-    fallback: { x: 18, y: 20, minWidth: 58, minHeight: 48 }
+  const settingsByScene: Record<MatchSceneKey, { padX: number; padY: number; minWidth: number; minHeight: number }> = {
+    'pass-received': { padX: 12, padY: 14, minWidth: 42, minHeight: 40 },
+    'pass-intercepted': { padX: 12, padY: 14, minWidth: 44, minHeight: 40 },
+    dribble: { padX: 10, padY: 12, minWidth: 32, minHeight: 34 },
+    'defensive-duel': { padX: 10, padY: 12, minWidth: 32, minHeight: 34 },
+    shot: { padX: 16, padY: 18, minWidth: 56, minHeight: 42 },
+    'goalkeeper-save': { padX: 16, padY: 18, minWidth: 56, minHeight: 42 },
+    goal: { padX: 16, padY: 18, minWidth: 56, minHeight: 42 },
+    rebound: { padX: 16, padY: 18, minWidth: 54, minHeight: 42 },
+    'corner-kick': { padX: 18, padY: 16, minWidth: 62, minHeight: 50 },
+    'penalty-kick': { padX: 18, padY: 18, minWidth: 54, minHeight: 42 },
+    fallback: { padX: 16, padY: 18, minWidth: 56, minHeight: 44 }
   };
 
-  const settings = paddingByScene[event.sceneKey];
-  let minX = base.minX - settings.x;
-  let maxX = base.maxX + settings.x;
-  let minY = base.minY - settings.y;
-  let maxY = base.maxY + settings.y;
+  const settings = settingsByScene[event.sceneKey];
+  let minX = base.minX - settings.padX;
+  let maxX = base.maxX + settings.padX;
+  let minY = base.minY - settings.padY;
+  let maxY = base.maxY + settings.padY;
 
   if (maxX - minX < settings.minWidth) {
     const extra = (settings.minWidth - (maxX - minX)) / 2;
@@ -186,356 +189,240 @@ const buildCamera = (event: MatchVisualEvent, heroEntities: HeroEntity[], visual
     maxY += extra;
   }
 
-  minX = clamp(minX, 0, 100 - settings.minWidth);
-  maxX = clamp(maxX, settings.minWidth, 100);
-  minY = clamp(minY, 0, 100 - settings.minHeight);
-  maxY = clamp(maxY, settings.minHeight, 100);
-
-  return { minX, maxX, minY, maxY };
+  return {
+    minX: clamp(minX, 0, 100 - settings.minWidth),
+    maxX: clamp(maxX, settings.minWidth, 100),
+    minY: clamp(minY, 0, 100 - settings.minHeight),
+    maxY: clamp(maxY, settings.minHeight, 100)
+  };
 };
 
 const toScenePoint = (camera: Camera, point: MatchVisualCoordinate): Point => {
   const width = Math.max(camera.maxX - camera.minX, 1);
   const height = Math.max(camera.maxY - camera.minY, 1);
   const x = 32 + ((point.x - camera.minX) / width) * 576;
-  const y = 36 + ((point.y - camera.minY) / height) * 288;
-  return { x: clamp(x, 24, 616), y: clamp(y, 30, 330) };
+  const y = 32 + ((point.y - camera.minY) / height) * 296;
+  return { x: clamp(x, 24, 616), y: clamp(y, 26, 334) };
 };
 
-const renderDefs = () => `
-  <defs>
-    <linearGradient id="skyGradient" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${palette.sky}" />
-      <stop offset="44%" stop-color="#7cd4a2" />
-      <stop offset="100%" stop-color="${palette.pitchDark}" />
-    </linearGradient>
-    <linearGradient id="pitchGradient" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${palette.pitchLight}" />
-      <stop offset="100%" stop-color="${palette.pitchDark}" />
-    </linearGradient>
-    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="rgba(15, 23, 42, 0.28)" />
-    </filter>
-  </defs>
+const renderBackground = () => `
+  <rect width="${viewBox.width}" height="${viewBox.height}" fill="#dfe8d4" />
+  <rect x="16" y="16" width="608" height="328" rx="26" fill="${palette.cardShadow}" />
+  <rect x="10" y="10" width="620" height="336" rx="28" fill="${palette.card}" stroke="${palette.outline}" stroke-width="4" />
 `;
 
-const renderBackdrop = () => `
-  <rect width="${viewBox.width}" height="${viewBox.height}" rx="28" fill="url(#skyGradient)" />
-  <rect y="146" width="${viewBox.width}" height="214" fill="url(#pitchGradient)" />
-  ${[0, 1, 2, 3].map((index) => `<rect x="0" y="${156 + index * 44}" width="${viewBox.width}" height="22" fill="${palette.stripe}" />`).join('')}
-`;
-
-const renderStage = (camera: Camera, sceneKey: MatchSceneKey) => {
+const renderPitchFrame = (camera: Camera, visualMode: VisualMode, sceneKey: MatchSceneKey) => {
   const left = toScenePoint(camera, { x: camera.minX, y: camera.minY });
   const right = toScenePoint(camera, { x: camera.maxX, y: camera.maxY });
+  const width = right.x - left.x;
+  const height = right.y - left.y;
   const midfieldX = lerp(left.x, right.x, clamp((50 - camera.minX) / Math.max(camera.maxX - camera.minX, 1), 0, 1));
-  const penaltyZoneLeft = toScenePoint(camera, { x: 12, y: 22 });
-  const penaltyZoneRight = toScenePoint(camera, { x: 88, y: 78 });
   const centerY = (left.y + right.y) / 2;
-  const stageWidth = right.x - left.x;
-  const stageHeight = right.y - left.y;
-
-  const penaltyLines =
-    sceneKey === 'shot' || sceneKey === 'goalkeeper-save' || sceneKey === 'goal' || sceneKey === 'rebound' || sceneKey === 'penalty-kick' || sceneKey === 'corner-kick'
-      ? `
-        <rect x="${penaltyZoneRight.x - 92}" y="${penaltyZoneLeft.y + 20}" width="92" height="${Math.max(penaltyZoneRight.y - penaltyZoneLeft.y - 40, 44)}" fill="none" stroke="${palette.line}" stroke-width="3" opacity="0.65" />
-        <rect x="${penaltyZoneRight.x - 38}" y="${centerY - 36}" width="38" height="72" fill="none" stroke="${palette.line}" stroke-width="2.5" opacity="0.65" />
-      `
-      : '';
+  const leftPenalty = toScenePoint(camera, { x: 12, y: 22 });
+  const rightPenalty = toScenePoint(camera, { x: 88, y: 78 });
+  const showPenalty = visualMode === 'tactical-map' || ['shot', 'goalkeeper-save', 'goal', 'rebound', 'corner-kick', 'penalty-kick'].includes(sceneKey);
 
   return `
-    <g opacity="0.92">
-      <rect x="${left.x}" y="${left.y}" width="${stageWidth}" height="${stageHeight}" rx="24" fill="none" stroke="${palette.line}" stroke-width="3" opacity="0.85" />
-      <line x1="${midfieldX}" y1="${left.y}" x2="${midfieldX}" y2="${right.y}" stroke="${palette.line}" stroke-width="2" opacity="0.25" />
-      ${penaltyLines}
-    </g>
+    <rect x="${left.x}" y="${left.y}" width="${width}" height="${height}" rx="18" fill="${palette.pitch}" stroke="${palette.outline}" stroke-width="3" />
+    ${[0, 1, 2, 3, 4, 5, 6, 7].map((index) => {
+      const stripeWidth = width / 8;
+      return `<rect x="${left.x + index * stripeWidth}" y="${left.y}" width="${stripeWidth}" height="${height}" fill="${index % 2 === 0 ? palette.stripe : palette.pitchDark}" opacity="0.55" />`;
+    }).join('')}
+    <rect x="${left.x}" y="${left.y}" width="${width}" height="${height}" rx="18" fill="none" stroke="${palette.line}" stroke-width="4" />
+    <line x1="${midfieldX}" y1="${left.y}" x2="${midfieldX}" y2="${right.y}" stroke="${palette.line}" stroke-width="3" />
+    <circle cx="${midfieldX}" cy="${centerY}" r="${Math.min(width, height) * 0.12}" fill="none" stroke="${palette.line}" stroke-width="3" />
+    <circle cx="${midfieldX}" cy="${centerY}" r="4" fill="${palette.line}" />
+    ${showPenalty ? `<rect x="${left.x}" y="${leftPenalty.y}" width="${Math.min(width * 0.16, 88)}" height="${Math.max(70, rightPenalty.y - leftPenalty.y)}" fill="none" stroke="${palette.line}" stroke-width="3" />` : ''}
+    ${showPenalty ? `<rect x="${left.x}" y="${centerY - 40}" width="${Math.min(width * 0.055, 32)}" height="80" fill="none" stroke="${palette.line}" stroke-width="3" />` : ''}
+    ${showPenalty ? `<rect x="${right.x - Math.min(width * 0.16, 88)}" y="${leftPenalty.y}" width="${Math.min(width * 0.16, 88)}" height="${Math.max(70, rightPenalty.y - leftPenalty.y)}" fill="none" stroke="${palette.line}" stroke-width="3" />` : ''}
+    ${showPenalty ? `<rect x="${right.x - Math.min(width * 0.055, 32)}" y="${centerY - 40}" width="${Math.min(width * 0.055, 32)}" height="80" fill="none" stroke="${palette.line}" stroke-width="3" />` : ''}
   `;
 };
 
 const renderGoal = (camera: Camera, side: Facing) => {
-  const xField = side === 'right' ? camera.maxX - 1 : camera.minX + 1;
-  const top = toScenePoint(camera, { x: xField, y: 34 });
-  const bottom = toScenePoint(camera, { x: xField, y: 66 });
-  const postX = side === 'right' ? top.x : top.x + 6;
-  const netX = side === 'right' ? postX + 22 : postX - 22;
-  const dir = side === 'right' ? 1 : -1;
+  const xField = side === 'right' ? camera.maxX : camera.minX;
+  const top = toScenePoint(camera, { x: xField, y: 36 });
+  const bottom = toScenePoint(camera, { x: xField, y: 64 });
+  const postX = side === 'right' ? top.x : top.x + 4;
+  const netX = side === 'right' ? postX + 18 : postX - 18;
+  const direction = side === 'right' ? 1 : -1;
 
   return `
-    <g opacity="0.98" filter="url(#softShadow)">
-      <line x1="${postX}" y1="${top.y}" x2="${postX}" y2="${bottom.y}" stroke="${palette.goal}" stroke-width="5" />
-      <line x1="${postX}" y1="${top.y}" x2="${netX}" y2="${top.y + 10}" stroke="${palette.goal}" stroke-width="4" />
-      <line x1="${postX}" y1="${bottom.y}" x2="${netX}" y2="${bottom.y - 10}" stroke="${palette.goal}" stroke-width="4" />
-      <line x1="${netX}" y1="${top.y + 10}" x2="${netX}" y2="${bottom.y - 10}" stroke="${palette.goal}" stroke-width="4" />
-      ${[0, 1, 2].map((index) => `<line x1="${postX + dir * (6 + index * 6)}" y1="${top.y + 2}" x2="${postX + dir * (6 + index * 6)}" y2="${bottom.y - 2}" stroke="${palette.net}" stroke-width="1.5" opacity="0.78" />`).join('')}
-      ${[0, 1, 2].map((index) => `<line x1="${postX}" y1="${top.y + 8 + index * 12}" x2="${netX}" y2="${top.y + 12 + index * 8}" stroke="${palette.net}" stroke-width="1.2" opacity="0.7" />`).join('')}
-    </g>
+    <line x1="${postX}" y1="${top.y}" x2="${postX}" y2="${bottom.y}" stroke="${palette.line}" stroke-width="5" />
+    <line x1="${postX}" y1="${top.y}" x2="${netX}" y2="${top.y + 8}" stroke="${palette.line}" stroke-width="4" />
+    <line x1="${postX}" y1="${bottom.y}" x2="${netX}" y2="${bottom.y - 8}" stroke="${palette.line}" stroke-width="4" />
+    <line x1="${netX}" y1="${top.y + 8}" x2="${netX}" y2="${bottom.y - 8}" stroke="${palette.line}" stroke-width="4" />
+    ${[0, 1, 2].map((index) => `<line x1="${postX + direction * (4 + index * 5)}" y1="${top.y + 2}" x2="${postX + direction * (4 + index * 5)}" y2="${bottom.y - 2}" stroke="${palette.hudMuted}" stroke-width="1" />`).join('')}
   `;
 };
 
 const renderCornerFlag = (point: Point) => `
-  <g filter="url(#softShadow)">
-    <line x1="${point.x}" y1="${point.y + 34}" x2="${point.x}" y2="${point.y - 30}" stroke="#f8f9fa" stroke-width="4" />
-    <path d="M ${point.x} ${point.y - 28} L ${point.x + 24} ${point.y - 20} L ${point.x} ${point.y - 10} z" fill="${palette.flag}" />
-    <path d="M ${point.x + 4} ${point.y - 24} L ${point.x + 20} ${point.y - 20} L ${point.x + 4} ${point.y - 14} z" fill="${palette.flagAlt}" opacity="0.86" />
-  </g>
+  <line x1="${point.x}" y1="${point.y + 16}" x2="${point.x}" y2="${point.y - 18}" stroke="${palette.line}" stroke-width="3" />
+  <path d="M ${point.x} ${point.y - 18} L ${point.x + 16} ${point.y - 12} L ${point.x} ${point.y - 5} Z" fill="#ffd166" stroke="${palette.outline}" stroke-width="1.5" />
 `;
 
-const renderActionTrail = (from: Point, to: Point, accent: string, arcLift = 28) => `
-  <path d="M ${from.x} ${from.y} Q ${(from.x + to.x) / 2} ${Math.min(from.y, to.y) - arcLift}, ${to.x} ${to.y}" fill="none" stroke="${accent}" stroke-width="4" stroke-linecap="round" stroke-dasharray="10 8" opacity="0.88" />
+const renderTrail = (from: Point, to: Point, color: string, lift: number): string => `
+  <path d="M ${from.x} ${from.y} Q ${(from.x + to.x) / 2} ${Math.min(from.y, to.y) - lift}, ${to.x} ${to.y}" fill="none" stroke="${color}" stroke-width="4" stroke-dasharray="8 7" />
 `;
 
-const renderDirectionArrow = (from: Point, to: Point, color: string) => {
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const left = { x: to.x - 14 * Math.cos(angle) + 7 * Math.sin(angle), y: to.y - 14 * Math.sin(angle) - 7 * Math.cos(angle) };
-  const right = { x: to.x - 14 * Math.cos(angle) - 7 * Math.sin(angle), y: to.y - 14 * Math.sin(angle) + 7 * Math.cos(angle) };
+const renderBall = (point: Point, emphasis: 'normal' | 'strong', trailFrom?: Point, trailColor: string = palette.passTrail) => `
+  ${trailFrom ? renderTrail(trailFrom, point, trailColor, 18) : ''}
+  ${emphasis === 'strong' ? `<circle cx="${point.x}" cy="${point.y}" r="14" fill="none" stroke="${palette.glow}" stroke-width="3" />` : ''}
+  <circle cx="${point.x}" cy="${point.y + 6}" r="8" fill="#000000" opacity="0.16" />
+  <circle cx="${point.x}" cy="${point.y}" r="10" fill="${palette.ball}" stroke="${palette.outline}" stroke-width="2" />
+  <path d="M ${point.x - 4} ${point.y - 2} l4 -4 l4 4 l-2 5 h-4 z" fill="${palette.ballDetail}" />
+`;
+
+const renderTopDownPlayer = (player: MatchVisualPlayerSnapshot, point: Point): string => {
+  const colors = colorsFor(toneFor(player));
+  const halo = player.isUserControlled ? `<circle cx="${point.x}" cy="${point.y - 10}" r="14" fill="none" stroke="${palette.userHalo}" stroke-width="3" />` : '';
+  const marker = player.isPrimaryActor || player.isPrimaryTarget ? `<circle cx="${point.x}" cy="${point.y - 10}" r="16" fill="none" stroke="${player.isPrimaryActor ? palette.glow : '#ffffff'}" stroke-width="2.5" stroke-dasharray="4 4" />` : '';
 
   return `
-    <g opacity="0.78">
-      <line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="${color}" stroke-width="3.5" stroke-linecap="round" />
-      <path d="M ${to.x} ${to.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z" fill="${color}" />
-    </g>
+    ${halo}
+    ${marker}
+    <circle cx="${point.x}" cy="${point.y + 8}" r="8" fill="#000000" opacity="0.18" />
+    <circle cx="${point.x}" cy="${point.y}" r="11" fill="${colors.primary}" stroke="${palette.outline}" stroke-width="2" />
+    <rect x="${point.x - 6}" y="${point.y - 4}" width="12" height="6" rx="3" fill="${colors.accent}" />
+    <text x="${point.x}" y="${point.y + 4}" font-family="Arial, Helvetica, sans-serif" font-size="8" text-anchor="middle" font-weight="700" fill="#ffffff">${player.shirtNumber}</text>
   `;
 };
 
-const renderBall = (point: Point, emphasis: 'normal' | 'strong', trailFrom?: Point) => `
-  <g filter="url(#softShadow)">
-    ${trailFrom ? renderActionTrail(trailFrom, point, palette.guide, 18) : ''}
-    <circle cx="${point.x}" cy="${point.y + 9}" r="9" fill="${palette.shadow}" opacity="0.42" />
-    ${emphasis === 'strong' ? `<circle cx="${point.x}" cy="${point.y}" r="16" fill="none" stroke="${palette.actorGlow}" stroke-width="3.2" opacity="0.82" />` : ''}
-    <circle cx="${point.x}" cy="${point.y}" r="11" fill="${palette.ball}" stroke="#d9d9d9" stroke-width="1.6" />
-    <path d="M ${point.x - 5} ${point.y - 2} l5 -5 l5 5 l-2.5 6 h-5 z" fill="${palette.ballDetail}" opacity="0.9" />
-  </g>
-`;
-
-const renderPlayerFigure = (entity: HeroEntity, point: Point, facing: Facing, scale: number) => {
-  const tone = toneFor(entity.player);
-  const colors = colorsFor(tone);
+const renderPixelSprite = (entity: HeroEntity, point: Point, facing: Facing, scale = 1): string => {
+  const colors = colorsFor(toneFor(entity.player));
   const direction = facing === 'right' ? 1 : -1;
-  const glow = entity.focus === 'actor' ? palette.actorGlow : entity.focus === 'target' ? palette.targetGlow : entity.focus === 'goalkeeper' ? palette.goalkeeperAccent : '#ffffff';
-  const label = entity.player.shirtNumber;
-  const labelFill = entity.focus === 'support' ? palette.panelAccent : palette.text;
-  const stretch = entity.focus === 'goalkeeper' ? 1.08 : 1;
+  const outline = palette.outline;
+  const halo = entity.player.isUserControlled
+    ? `<rect x="${point.x - 22}" y="${point.y - 54}" width="44" height="62" rx="14" fill="none" stroke="${palette.userHalo}" stroke-width="3" />`
+    : '';
+  const focus = entity.focus === 'actor' ? palette.glow : entity.focus === 'target' ? '#ffffff' : entity.focus === 'goalkeeper' ? palette.goalkeeperAccent : 'transparent';
+  const swing = entity.focus === 'actor' ? 3 : entity.focus === 'target' ? -3 : 0;
+  const tx = point.x;
+  const ty = point.y;
 
   return `
-    <g transform="translate(${point.x} ${point.y}) scale(${scale * direction} ${scale * stretch})" filter="url(#softShadow)">
-      <ellipse cx="0" cy="38" rx="18" ry="6" fill="${palette.shadow}" />
-      <circle cx="0" cy="-19" r="10.5" fill="${palette.skin}" stroke="rgba(17,24,39,0.14)" stroke-width="1" />
-      ${entity.focus !== 'support' ? `<circle cx="0" cy="2" r="21" fill="none" stroke="${glow}" stroke-width="${entity.focus === 'actor' ? 3 : 2.4}" opacity="0.9" />` : ''}
-      <path d="M -12 -7 Q 0 -16 12 -7 L 12 26 Q 0 34 -12 26 Z" fill="${colors.primary}" />
-      <rect x="-12" y="4" width="24" height="6" rx="3" fill="${colors.accent}" opacity="0.94" />
-      <line x1="-7" y1="25" x2="-12" y2="42" stroke="${palette.boot}" stroke-width="5" stroke-linecap="round" />
-      <line x1="6" y1="25" x2="12" y2="41" stroke="${palette.boot}" stroke-width="5" stroke-linecap="round" />
-      <line x1="-11" y1="2" x2="-26" y2="18" stroke="${palette.boot}" stroke-width="5" stroke-linecap="round" />
-      <line x1="11" y1="2" x2="25" y2="${entity.focus === 'actor' ? 14 : 18}" stroke="${palette.boot}" stroke-width="5" stroke-linecap="round" />
-      <text x="0" y="5" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" text-anchor="middle" fill="${labelFill}">${label}</text>
+    ${halo}
+    <g transform="translate(${tx} ${ty}) scale(${scale * direction} ${scale})">
+      ${focus !== 'transparent' ? `<circle cx="0" cy="-26" r="22" fill="none" stroke="${focus}" stroke-width="3" />` : ''}
+      <ellipse cx="0" cy="14" rx="16" ry="5" fill="#000000" opacity="0.18" />
+      <rect x="-6" y="-42" width="12" height="12" fill="${outline}" />
+      <rect x="-4" y="-40" width="8" height="8" fill="${palette.hair}" />
+      <rect x="-5" y="-32" width="10" height="10" fill="${palette.skin}" stroke="${outline}" stroke-width="1.5" />
+      <rect x="-9" y="-20" width="18" height="22" fill="${colors.primary}" stroke="${outline}" stroke-width="1.5" />
+      <rect x="-9" y="-10" width="18" height="4" fill="${colors.accent}" />
+      <rect x="-8" y="2" width="7" height="12" fill="#f8f9fa" stroke="${outline}" stroke-width="1" />
+      <rect x="1" y="2" width="7" height="12" fill="#f8f9fa" stroke="${outline}" stroke-width="1" />
+      <rect x="-8" y="14" width="7" height="10" fill="${palette.boot}" stroke="${outline}" stroke-width="1" />
+      <rect x="1" y="14" width="7" height="10" fill="${palette.boot}" stroke="${outline}" stroke-width="1" />
+      <rect x="-15" y="-18" width="6" height="14" fill="${palette.skin}" stroke="${outline}" stroke-width="1" transform="rotate(${10 + swing} -12 -12)" />
+      <rect x="9" y="-18" width="6" height="14" fill="${palette.skin}" stroke="${outline}" stroke-width="1" transform="rotate(${-12 + swing} 12 -12)" />
     </g>
   `;
 };
 
-const renderPixelPlayer = (player: MatchVisualPlayerSnapshot, point: Point, emphasis: 'actor' | 'target' | 'support' | 'goalkeeper' | 'neutral') => {
-  const tone = toneFor(player);
-  const colors = colorsFor(tone);
-  const outline = palette.pixelOutline;
-  const glow = emphasis === 'actor' ? palette.actorGlow : emphasis === 'target' ? palette.targetGlow : emphasis === 'goalkeeper' ? palette.goalkeeperAccent : player.isUserControlled ? palette.userHalo : undefined;
-
+const renderNarrativePanel = (headline: string, narration: string, mode: VisualMode): string => {
+  const panelY = mode === 'tactical-map' ? 276 : 282;
   return `
-    <g transform="translate(${point.x} ${point.y})" filter="url(#softShadow)">
-      <ellipse cx="0" cy="16" rx="9" ry="4" fill="${palette.shadow}" opacity="0.42" />
-      ${glow ? `<rect x="-11" y="-19" width="22" height="34" rx="5" fill="none" stroke="${glow}" stroke-width="2.5" opacity="0.92" />` : ''}
-      <rect x="-3" y="-18" width="6" height="2" fill="${outline}" />
-      <rect x="-5" y="-16" width="10" height="4" fill="${outline}" />
-      <rect x="-5" y="-14" width="10" height="6" fill="${palette.skin}" />
-      <rect x="-6" y="-18" width="12" height="6" fill="${outline}" opacity="0.88" />
-      <rect x="-7" y="-10" width="14" height="12" fill="${colors.primary}" />
-      <rect x="-7" y="-6" width="14" height="2" fill="${colors.accent}" opacity="0.95" />
-      <rect x="-7" y="2" width="6" height="6" fill="#ffffff" />
-      <rect x="1" y="2" width="6" height="6" fill="#ffffff" />
-      <rect x="-7" y="8" width="6" height="7" fill="${colors.primary}" />
-      <rect x="1" y="8" width="6" height="7" fill="${colors.primary}" />
-      <rect x="-8" y="15" width="7" height="3" fill="${palette.boot}" />
-      <rect x="1" y="15" width="7" height="3" fill="${palette.boot}" />
-      <rect x="-10" y="-9" width="3" height="8" fill="${palette.skin}" />
-      <rect x="7" y="-9" width="3" height="8" fill="${palette.skin}" />
-      <text x="0" y="-22" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="700" text-anchor="middle" fill="${palette.text}">${player.shirtNumber}</text>
-    </g>
+    <rect x="34" y="${panelY}" width="572" height="52" rx="18" fill="#ffffff" stroke="${palette.outline}" stroke-width="3" />
+    <text x="56" y="${panelY + 18}" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="${palette.text}">${escapeXml(headline.toUpperCase())}</text>
+    <text x="56" y="${panelY + 38}" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="${palette.textSoft}">${escapeXml(narration)}</text>
   `;
 };
 
-const renderPixelBall = (point: Point, trailFrom?: Point) => `
-  <g filter="url(#softShadow)">
-    ${trailFrom ? `<line x1="${trailFrom.x}" y1="${trailFrom.y}" x2="${point.x}" y2="${point.y}" stroke="${palette.actorGlow}" stroke-width="2.5" stroke-dasharray="6 6" opacity="0.72" />` : ''}
-    <rect x="${point.x - 5}" y="${point.y + 4}" width="10" height="3" fill="${palette.shadow}" opacity="0.38" />
-    <rect x="${point.x - 4}" y="${point.y - 4}" width="8" height="8" rx="1" fill="${palette.ball}" stroke="#d9d9d9" stroke-width="1" />
-    <rect x="${point.x - 1}" y="${point.y - 1}" width="2" height="2" fill="${palette.ballDetail}" />
-  </g>
-`;
+const renderHud = (context: SceneContext): string => {
+  const minute = `${context.frame.minute}'`;
+  const possession = context.focusSide === MatchPossessionSide.Home ? 'HOME' : 'AWAY';
+  const modeLabel = context.visualMode === 'tactical-map' ? 'MAPA TÁTICO' : 'CENA DECISIVA';
 
-const renderTacticalPitch = () => `
-  <g opacity="0.98">
-    <rect x="28" y="24" width="584" height="312" rx="22" fill="url(#pitchGradient)" stroke="${palette.line}" stroke-width="5" />
-    ${Array.from({ length: 8 }, (_, index) => `<rect x="${28 + index * 73}" y="24" width="37" height="312" fill="${palette.stripe}" opacity="0.9" />`).join('')}
-    <line x1="320" y1="24" x2="320" y2="336" stroke="${palette.line}" stroke-width="4" />
-    <circle cx="320" cy="180" r="56" fill="none" stroke="${palette.line}" stroke-width="4" />
-    <circle cx="320" cy="180" r="4.5" fill="${palette.line}" />
-    <rect x="28" y="95" width="108" height="170" fill="none" stroke="${palette.line}" stroke-width="4" />
-    <rect x="504" y="95" width="108" height="170" fill="none" stroke="${palette.line}" stroke-width="4" />
-    <rect x="28" y="129" width="38" height="102" fill="none" stroke="${palette.line}" stroke-width="4" />
-    <rect x="574" y="129" width="38" height="102" fill="none" stroke="${palette.line}" stroke-width="4" />
-    <circle cx="95" cy="180" r="4.5" fill="${palette.line}" />
-    <circle cx="545" cy="180" r="4.5" fill="${palette.line}" />
-    <path d="M 28 38 h10 v10 h-4 v-6 h-6 z" fill="${palette.line}" opacity="0.95" />
-    <path d="M 612 38 h-10 v10 h4 v-6 h6 z" fill="${palette.line}" opacity="0.95" />
-    <path d="M 28 322 h10 v-10 h-4 v6 h-6 z" fill="${palette.line}" opacity="0.95" />
-    <path d="M 612 322 h-10 v-10 h4 v6 h6 z" fill="${palette.line}" opacity="0.95" />
-  </g>
-`;
-
-const renderTacticalBody = (context: SceneContext): string => {
-  const { frame, event, ballStart, ballEnd } = context;
-  const heroIds = new Map<string, HeroEntity['focus']>(context.heroEntities.map((entity) => [entity.player.id, entity.focus]));
-  const players = frame.players
-    .map((player) => ({ player, point: toScenePoint({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, player) }))
-    .sort((left, right) => left.player.y - right.player.y);
-  const ballPoint = toScenePoint({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, ballEnd);
-  const ballTrailPoint = distance(ballStart, ballEnd) > 2 ? toScenePoint({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, ballStart) : undefined;
-  const actorPoint = toScenePoint({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, event.destination);
-  const originPoint = toScenePoint({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, event.origin);
-  const targetPoint = toScenePoint({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, event.ballTarget);
-
-  const overlaysByScene: Record<MatchSceneKey, string> = {
-    'pass-received': `${renderDirectionArrow(originPoint, targetPoint, '#d9f99d')}<circle cx="${targetPoint.x}" cy="${targetPoint.y}" r="18" fill="none" stroke="#d9f99d" stroke-width="3" opacity="0.78" />`,
-    'pass-intercepted': `${renderDirectionArrow(originPoint, targetPoint, '#ffd8a8')}<path d="M ${targetPoint.x - 12} ${targetPoint.y - 16} L ${targetPoint.x + 12} ${targetPoint.y + 8}" stroke="#fff3bf" stroke-width="5" stroke-linecap="round" opacity="0.88" />`,
-    dribble: renderActionTrail(originPoint, targetPoint, '#91a7ff', 20),
-    'defensive-duel': `<circle cx="${targetPoint.x}" cy="${targetPoint.y}" r="22" fill="none" stroke="#fff3bf" stroke-width="3" stroke-dasharray="6 5" opacity="0.82" />`,
-    shot: renderDirectionArrow(actorPoint, targetPoint, '#ffec99'),
-    'goalkeeper-save': renderActionTrail(originPoint, targetPoint, '#fff3bf', 16),
-    goal: `${renderActionTrail(originPoint, targetPoint, '#fff3bf', 20)}<path d="M ${targetPoint.x - 10} ${targetPoint.y - 18} q 12 12 0 28" fill="none" stroke="#fff3bf" stroke-width="4" opacity="0.88" />`,
-    rebound: renderDirectionArrow(originPoint, targetPoint, '#ffe066'),
-    'corner-kick': renderActionTrail(originPoint, targetPoint, '#ffffff', 40),
-    'penalty-kick': `<circle cx="${targetPoint.x}" cy="${targetPoint.y}" r="20" fill="none" stroke="#fff3bf" stroke-width="3" opacity="0.82" />`,
-    fallback: renderDirectionArrow(originPoint, targetPoint, '#d9fbe8')
-  };
-
-  return [
-    renderTacticalPitch(),
-    overlaysByScene[event.sceneKey],
-    players.map(({ player, point }) => renderPixelPlayer(player, point, heroIds.get(player.id) ?? 'neutral')).join(''),
-    renderPixelBall(ballPoint, ballTrailPoint)
-  ].join('');
+  return `
+    <rect x="34" y="28" width="310" height="54" rx="18" fill="#ffffff" stroke="${palette.outline}" stroke-width="3" />
+    <text x="52" y="50" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="${palette.text}">${escapeXml(modeLabel)}</text>
+    <text x="52" y="68" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="${palette.textSoft}">${escapeXml(context.event.headline)}</text>
+    <rect x="414" y="28" width="192" height="54" rx="18" fill="#ffffff" stroke="${palette.outline}" stroke-width="3" />
+    <text x="430" y="50" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="${palette.text}">POSSE ${possession}</text>
+    <text x="430" y="68" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="${palette.textSoft}">${minute} • seq ${context.event.sequence}</text>
+  `;
 };
 
-const renderHud = (frame: MatchVisualFrame, event: MatchVisualEvent, sceneMoments: number, visualMode: VisualMode) => `
-  <g>
-    <rect x="28" y="24" width="${visualMode === 'tactical-map' ? 404 : 352}" height="92" rx="20" fill="${palette.panel}" />
-    <text x="52" y="54" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="${palette.text}">${event.headline}</text>
-    <text x="52" y="79" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="${palette.panelAccent}">${frame.minute}' • ${visualMode === 'tactical-map' ? 'mapa amplo' : 'cena grande'} • ${sceneMoments} momento(s)</text>
-    <text x="52" y="101" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="${palette.panelAccent}">${frame.narration}</text>
-  </g>
-`;
+const renderTacticalMap = (context: SceneContext): string => {
+  const camera = { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+  const points = new Map(context.frame.players.map((player) => [player.id, toScenePoint(camera, { x: player.x, y: player.y })]));
+  const actorPoint = points.get(context.event.actor.lineupId) ?? toScenePoint(camera, context.ballStart);
+  const targetPoint = toScenePoint(camera, context.ballEnd);
+  const leftCorner = toScenePoint(camera, { x: 0, y: 100 });
 
-const buildSceneContext = (match: MatchSummary): (SceneContext & { sceneMoments: number }) | undefined => {
-  const sequence = match.visualSequence ?? buildMatchVisualSequence(match);
-  const event = match.activeTurn?.visualEvent;
-  const frame = sequence?.frames.at(-1);
-  if (!sequence || !event || !frame) return undefined;
+  return `
+    ${renderPitchFrame(camera, 'tactical-map', context.event.sceneKey)}
+    ${context.frame.players.map((player) => renderTopDownPlayer(player, points.get(player.id) ?? actorPoint)).join('')}
+    ${context.event.sceneKey === 'corner-kick' ? renderCornerFlag(leftCorner) : ''}
+    ${['shot', 'goalkeeper-save', 'goal', 'rebound', 'penalty-kick', 'corner-kick'].includes(context.event.sceneKey) ? renderGoal(camera, 'right') : ''}
+    ${renderTrail(actorPoint, targetPoint, context.event.sceneKey === 'shot' || context.event.sceneKey === 'goal' ? palette.shotTrail : palette.passTrail, 18)}
+    <line x1="${actorPoint.x}" y1="${actorPoint.y}" x2="${targetPoint.x}" y2="${targetPoint.y}" stroke="${context.event.sceneKey === 'pass-intercepted' ? '#ffadad' : '#ffffff'}" stroke-width="2" stroke-dasharray="6 6" />
+    ${renderBall(targetPoint, context.event.sceneKey === 'pass-intercepted' ? 'strong' : 'normal', undefined)}
+  `;
+};
 
-  const attackDirection: Facing =
-    event.sceneKey === 'corner-kick' || event.sceneKey === 'penalty-kick' || event.sceneKey === 'shot' || event.sceneKey === 'goalkeeper-save' || event.sceneKey === 'goal' || event.sceneKey === 'rebound'
-      ? 'right'
-      : event.movementDirection === 'LEFT'
-        ? 'left'
-        : 'right';
+const renderCinematicScene = (context: SceneContext): string => {
+  const camera = buildCamera(context.event, context.heroEntities, 'cinematic-duel');
+  const heroAnchor = toScenePoint(camera, context.ballEnd);
+  const actor = context.heroEntities.find((entity) => entity.kind === 'actor');
+  const target = context.heroEntities.find((entity) => entity.kind === 'marker' || entity.kind === 'receiver' || entity.kind === 'goalkeeper');
+  const support = context.heroEntities.filter((entity) => entity.kind === 'support');
+  const actorPoint = actor ? toScenePoint(camera, { x: actor.player.x, y: actor.player.y }) : heroAnchor;
+  const targetPoint = target ? toScenePoint(camera, { x: target.player.x, y: target.player.y }) : { x: actorPoint.x + 88, y: actorPoint.y - 12 };
+  const ballPoint = toScenePoint(camera, context.ballEnd);
 
-  const ballStart =
-    event.sceneKey === 'pass-received' || event.sceneKey === 'pass-intercepted' || event.sceneKey === 'corner-kick'
-      ? event.origin
-      : event.sceneKey === 'shot' || event.sceneKey === 'goalkeeper-save' || event.sceneKey === 'goal'
-        ? event.destination
-        : event.origin;
+  return `
+    ${renderPitchFrame(camera, 'cinematic-duel', context.event.sceneKey)}
+    ${['shot', 'goalkeeper-save', 'goal', 'rebound', 'penalty-kick', 'corner-kick'].includes(context.event.sceneKey) ? renderGoal(camera, 'right') : ''}
+    ${context.event.sceneKey === 'corner-kick' ? renderCornerFlag(toScenePoint(camera, { x: camera.minX + 2, y: camera.maxY - 3 })) : ''}
+    ${support.map((entity, index) => renderPixelSprite(entity, { x: heroAnchor.x + 112 + index * 44, y: heroAnchor.y - 8 + index * 10 }, context.attackDirection, 0.82)).join('')}
+    ${target ? renderPixelSprite(target, targetPoint, facingFromDirection(context.attackDirection === 'right' ? 'left' : 'right', target.player, heroAnchor.x), target.kind === 'goalkeeper' ? 1.08 : 1) : ''}
+    ${actor ? renderPixelSprite(actor, actorPoint, facingFromDirection(context.attackDirection, actor.player, heroAnchor.x), 1.06) : ''}
+    ${renderBall(ballPoint, 'strong', actor ? { x: actorPoint.x + (context.attackDirection === 'right' ? 24 : -24), y: actorPoint.y - 2 } : undefined, ['shot', 'goal', 'goalkeeper-save'].includes(context.event.sceneKey) ? palette.shotTrail : palette.passTrail)}
+  `;
+};
 
-  const visualMode = resolveVisualMode(event.sceneKey);
+const buildSceneContext = (frame: MatchVisualFrame, event: MatchVisualEvent): SceneContext => {
+  const heroEntities = resolveHeroEntities(event, frame);
+  const attackDirection: Facing = event.destination.x >= event.origin.x ? 'right' : 'left';
 
   return {
     event,
     frame,
-    heroEntities: resolveHeroEntities(event, frame),
-    focusSide: event.actor.side,
+    heroEntities,
+    focusSide: frame.possessionSide,
     attackDirection,
-    ballStart,
-    ballEnd: event.ballTarget,
-    visualMode,
-    sceneMoments: sequence.frameCount
+    ballStart: event.origin,
+    ballEnd: frame.ball,
+    visualMode: resolveVisualMode(event.sceneKey)
   };
-};
-
-const renderSceneBody = (camera: Camera, context: SceneContext): string => {
-  if (context.visualMode === 'tactical-map') {
-    return renderTacticalBody(context);
-  }
-
-  const { event, heroEntities, attackDirection, ballStart, ballEnd } = context;
-  const actor = heroEntities.find((entity) => entity.kind === 'actor');
-  const marker = heroEntities.find((entity) => entity.kind === 'marker');
-  const receiver = heroEntities.find((entity) => entity.kind === 'receiver');
-  const goalkeeper = heroEntities.find((entity) => entity.kind === 'goalkeeper');
-  const supports = heroEntities.filter((entity) => entity.kind === 'support');
-
-  const actorPoint = actor ? toScenePoint(camera, actor.player) : toScenePoint(camera, event.destination);
-  const markerPoint = marker ? toScenePoint(camera, marker.player) : undefined;
-  const receiverPoint = receiver ? toScenePoint(camera, receiver.player) : undefined;
-  const goalkeeperPoint = goalkeeper ? toScenePoint(camera, goalkeeper.player) : undefined;
-  const ballPoint = toScenePoint(camera, ballEnd);
-  const ballTrailPoint = distance(ballStart, ballEnd) > 2 ? toScenePoint(camera, ballStart) : undefined;
-  const goalNeeded = ['shot', 'goalkeeper-save', 'goal', 'rebound', 'penalty-kick', 'corner-kick'].includes(event.sceneKey);
-  const goalSvg = goalNeeded ? renderGoal(camera, attackDirection) : '';
-  const directionArrow =
-    actor && distance(event.origin, event.destination) > 2
-      ? renderDirectionArrow(toScenePoint(camera, event.origin), toScenePoint(camera, event.destination), actor.focus === 'actor' ? palette.actorGlow : palette.guide)
-      : '';
-
-  const playerSvgs = [
-    ...supports.map((entity, index) => {
-      const supportPoint = toScenePoint(camera, entity.player);
-      const supportFacing = facingFromDirection(attackDirection, entity.player, event.ballTarget.x + index * 2);
-      return renderPlayerFigure(entity, supportPoint, supportFacing, 0.88);
-    }),
-    marker && markerPoint ? renderPlayerFigure(marker, markerPoint, facingFromDirection(attackDirection === 'right' ? 'left' : 'right', marker.player, event.origin.x), 1) : '',
-    receiver && receiverPoint ? renderPlayerFigure(receiver, receiverPoint, facingFromDirection(attackDirection, receiver.player, event.ballTarget.x), 1.02) : '',
-    goalkeeper && goalkeeperPoint ? renderPlayerFigure(goalkeeper, goalkeeperPoint, attackDirection === 'right' ? 'left' : 'right', 1.08) : '',
-    actor ? renderPlayerFigure(actor, actorPoint, facingFromDirection(attackDirection, actor.player, event.destination.x), 1.08) : ''
-  ].join('');
-
-  const sceneExtrasByKey: Record<MatchSceneKey, string> = {
-    'pass-received': receiverPoint && actorPoint ? renderActionTrail(actorPoint, receiverPoint, '#d9f99d', 16) : '',
-    'pass-intercepted': markerPoint && actorPoint ? `${renderActionTrail(actorPoint, ballPoint, '#ffe8a1', 12)}<path d="M ${markerPoint.x - 16} ${markerPoint.y - 24} L ${markerPoint.x + 16} ${markerPoint.y + 12}" stroke="#fff3bf" stroke-width="6" stroke-linecap="round" opacity="0.88" />` : '',
-    dribble: markerPoint ? `<path d="M ${actorPoint.x - 10} ${actorPoint.y + 14} C ${actorPoint.x + 18} ${actorPoint.y - 18}, ${markerPoint.x - 10} ${markerPoint.y - 24}, ${ballPoint.x} ${ballPoint.y}" fill="none" stroke="#91a7ff" stroke-width="5" stroke-dasharray="10 8" opacity="0.9" />` : '',
-    'defensive-duel': markerPoint ? `<circle cx="${(actorPoint.x + markerPoint.x) / 2}" cy="${(actorPoint.y + markerPoint.y) / 2}" r="38" fill="none" stroke="#fff3bf" stroke-width="4" stroke-dasharray="7 8" opacity="0.84" />` : '',
-    shot: actorPoint ? renderActionTrail(actorPoint, ballPoint, '#ffec99', 22) : '',
-    'goalkeeper-save': goalkeeperPoint && ballTrailPoint ? renderActionTrail(ballTrailPoint, goalkeeperPoint, '#fff3bf', 20) : '',
-    goal: `${ballTrailPoint ? renderActionTrail(ballTrailPoint, ballPoint, '#fff3bf', 20) : ''}<path d="M ${ballPoint.x - 20} ${ballPoint.y - 22} q 18 18 0 40" fill="none" stroke="#fff3bf" stroke-width="5" opacity="0.9" />`,
-    rebound: actorPoint && goalkeeperPoint ? `${renderActionTrail(goalkeeperPoint, ballPoint, '#fff3bf', 16)}${renderDirectionArrow(ballPoint, actorPoint, '#ffe066')}` : '',
-    'corner-kick': renderCornerFlag(toScenePoint(camera, { x: camera.minX + 3, y: camera.maxY - 3 })) + (ballTrailPoint ? renderActionTrail(ballTrailPoint, ballPoint, '#ffffff', 42) : ''),
-    'penalty-kick': actorPoint ? `<circle cx="${ballPoint.x}" cy="${ballPoint.y}" r="28" fill="none" stroke="#fff3bf" stroke-width="4" opacity="0.82" />${renderActionTrail(actorPoint, ballPoint, '#ffe066', 16)}` : '',
-    fallback: actorPoint ? renderDirectionArrow(actorPoint, ballPoint, '#d9fbe8') : ''
-  };
-
-  return [goalSvg, renderStage(camera, event.sceneKey), directionArrow, sceneExtrasByKey[event.sceneKey], playerSvgs, renderBall(ballPoint, 'strong', ballTrailPoint)].join('');
 };
 
 export const renderMatchVisualSequenceSvg = (match: MatchSummary): string => {
-  const context = buildSceneContext(match);
-  if (!context) {
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" rx="28" fill="#1f8f5a" /><text x="40" y="60" fill="#fff" font-size="24">Sem sequência visual disponível.</text></svg>';
+  const visualSequence = match.visualSequence ?? buildMatchVisualSequence(match);
+  const frame = visualSequence?.frames[visualSequence.frames.length - 1];
+  const event = match.activeTurn?.visualEvent;
+
+  if (!frame || !event) {
+    return `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox.width} ${viewBox.height}" role="img">
+        ${renderBackground()}
+        ${renderPitchFrame({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, 'tactical-map', 'fallback')}
+        ${renderNarrativePanel('Lance em andamento', 'Sequência visual indisponível para este turno.', 'tactical-map')}
+      </svg>
+    `.trim();
   }
 
-  const camera = buildCamera(context.event, context.heroEntities, context.visualMode);
+  const context = buildSceneContext(frame, event);
+  const body = context.visualMode === 'tactical-map' ? renderTacticalMap(context) : renderCinematicScene(context);
 
-  return [
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img">',
-    renderDefs(),
-    renderBackdrop(),
-    renderSceneBody(camera, context),
-    renderHud(context.frame, context.event, context.sceneMoments, context.visualMode),
-    '</svg>'
-  ].join('');
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox.width} ${viewBox.height}" role="img">
+      ${renderBackground()}
+      ${renderHud(context)}
+      ${body}
+      ${renderNarrativePanel(context.event.headline, frame.narration, context.visualMode)}
+    </svg>
+  `.trim();
 };

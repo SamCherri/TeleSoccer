@@ -14,7 +14,7 @@ Dar ao turno de partida uma aparência de jogo no Telegram antes da arte final, 
 ### 2. Card visual do lance
 - Slot: `telegram.match.widget.play-card`
 - Papel: canvas principal do turno entregue ao Telegram.
-- Implementação atual: SVG 1080x1350 com HUD, janela principal da cena, mini campo e badges de ação.
+- Implementação atual: card vertical estilo mensagem do Telegram, com hero image dominante, bloco narrativo em tipografia forte, mini campo e badges de ação.
 
 ### 3. Mini campo
 - Slot: `telegram.match.widget.mini-pitch`
@@ -28,7 +28,7 @@ Dar ao turno de partida uma aparência de jogo no Telegram antes da arte final, 
 
 ### 5. Cenas placeholder de passe, drible, chute, defesa e gol
 - Slots: `telegram.match.scene.*`
-- Papel: hero frame do lance.
+- Papel: hero frame do lance; lances de circulação usam mapa tático completo e lances críticos usam enquadramento cinematográfico.
 - Implementação atual: `src/assets/scenes/match-scene-art.ts` + prompt/slot em `matchScenePlaceholderPrompts`.
 
 ## Naming convention para arte final
