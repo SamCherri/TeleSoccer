@@ -42,7 +42,7 @@ const palette = {
 
 type Facing = 'left' | 'right';
 type Tone = 'home' | 'away' | 'goalkeeper';
-type VisualMode = 'tactical-map' | 'cinematic-duel';
+type VisualMode = 'field-scene' | 'hero-scene';
 
 type HeroEntityKind = 'actor' | 'marker' | 'receiver' | 'goalkeeper' | 'support';
 
@@ -138,10 +138,10 @@ const resolveHeroEntities = (event: MatchVisualEvent, frame: MatchVisualFrame): 
 };
 
 const resolveVisualMode = (sceneKey: MatchSceneKey): VisualMode =>
-  tacticalSceneKeys.includes(sceneKey) ? 'tactical-map' : cinematicSceneKeys.includes(sceneKey) ? 'cinematic-duel' : 'tactical-map';
+  tacticalSceneKeys.includes(sceneKey) ? 'field-scene' : cinematicSceneKeys.includes(sceneKey) ? 'hero-scene' : 'field-scene';
 
 const buildCamera = (event: MatchVisualEvent, heroEntities: HeroEntity[], visualMode: VisualMode): Camera => {
-  if (visualMode === 'tactical-map') {
+  if (visualMode === 'field-scene') {
     return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
   }
 
@@ -220,7 +220,7 @@ const renderPitchFrame = (camera: Camera, visualMode: VisualMode, sceneKey: Matc
   const centerY = (left.y + right.y) / 2;
   const leftPenalty = toScenePoint(camera, { x: 12, y: 22 });
   const rightPenalty = toScenePoint(camera, { x: 88, y: 78 });
-  const showPenalty = visualMode === 'tactical-map' || ['shot', 'goalkeeper-save', 'goal', 'rebound', 'corner-kick', 'penalty-kick'].includes(sceneKey);
+  const showPenalty = visualMode === 'field-scene' || ['shot', 'goalkeeper-save', 'goal', 'rebound', 'corner-kick', 'penalty-kick'].includes(sceneKey);
 
   return `
     <rect x="${left.x}" y="${left.y}" width="${width}" height="${height}" rx="18" fill="${palette.pitch}" stroke="${palette.outline}" stroke-width="3" />
@@ -321,7 +321,7 @@ const renderPixelSprite = (entity: HeroEntity, point: Point, facing: Facing, sca
 };
 
 const renderNarrativePanel = (headline: string, narration: string, mode: VisualMode): string => {
-  const panelY = mode === 'tactical-map' ? 276 : 282;
+  const panelY = mode === 'field-scene' ? 276 : 282;
   return `
     <rect x="34" y="${panelY}" width="572" height="52" rx="18" fill="#ffffff" stroke="${palette.outline}" stroke-width="3" />
     <text x="56" y="${panelY + 18}" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="${palette.text}">${escapeXml(headline.toUpperCase())}</text>
@@ -332,7 +332,7 @@ const renderNarrativePanel = (headline: string, narration: string, mode: VisualM
 const renderHud = (context: SceneContext): string => {
   const minute = `${context.frame.minute}'`;
   const possession = context.focusSide === MatchPossessionSide.Home ? 'HOME' : 'AWAY';
-  const modeLabel = context.visualMode === 'tactical-map' ? 'MAPA TÁTICO' : 'CENA DECISIVA';
+  const modeLabel = context.visualMode === 'field-scene' ? 'FIELD-SCENE' : 'HERO-SCENE';
 
   return `
     <rect x="34" y="28" width="310" height="54" rx="18" fill="#ffffff" stroke="${palette.outline}" stroke-width="3" />
@@ -344,7 +344,7 @@ const renderHud = (context: SceneContext): string => {
   `;
 };
 
-const renderTacticalMap = (context: SceneContext): string => {
+const renderFieldScene = (context: SceneContext): string => {
   const camera = { minX: 0, maxX: 100, minY: 0, maxY: 100 };
   const points = new Map(context.frame.players.map((player) => [player.id, toScenePoint(camera, { x: player.x, y: player.y })]));
   const actorPoint = points.get(context.event.actor.lineupId) ?? toScenePoint(camera, context.ballStart);
@@ -352,7 +352,7 @@ const renderTacticalMap = (context: SceneContext): string => {
   const leftCorner = toScenePoint(camera, { x: 0, y: 100 });
 
   return `
-    ${renderPitchFrame(camera, 'tactical-map', context.event.sceneKey)}
+    ${renderPitchFrame(camera, 'field-scene', context.event.sceneKey)}
     ${context.frame.players.map((player) => renderTopDownPlayer(player, points.get(player.id) ?? actorPoint)).join('')}
     ${context.event.sceneKey === 'corner-kick' ? renderCornerFlag(leftCorner) : ''}
     ${['shot', 'goalkeeper-save', 'goal', 'rebound', 'penalty-kick', 'corner-kick'].includes(context.event.sceneKey) ? renderGoal(camera, 'right') : ''}
@@ -362,8 +362,8 @@ const renderTacticalMap = (context: SceneContext): string => {
   `;
 };
 
-const renderCinematicScene = (context: SceneContext): string => {
-  const camera = buildCamera(context.event, context.heroEntities, 'cinematic-duel');
+const renderHeroScene = (context: SceneContext): string => {
+  const camera = buildCamera(context.event, context.heroEntities, 'hero-scene');
   const heroAnchor = toScenePoint(camera, context.ballEnd);
   const actor = context.heroEntities.find((entity) => entity.kind === 'actor');
   const target = context.heroEntities.find((entity) => entity.kind === 'marker' || entity.kind === 'receiver' || entity.kind === 'goalkeeper');
@@ -373,7 +373,7 @@ const renderCinematicScene = (context: SceneContext): string => {
   const ballPoint = toScenePoint(camera, context.ballEnd);
 
   return `
-    ${renderPitchFrame(camera, 'cinematic-duel', context.event.sceneKey)}
+    ${renderPitchFrame(camera, 'hero-scene', context.event.sceneKey)}
     ${['shot', 'goalkeeper-save', 'goal', 'rebound', 'penalty-kick', 'corner-kick'].includes(context.event.sceneKey) ? renderGoal(camera, 'right') : ''}
     ${context.event.sceneKey === 'corner-kick' ? renderCornerFlag(toScenePoint(camera, { x: camera.minX + 2, y: camera.maxY - 3 })) : ''}
     ${support.map((entity, index) => renderPixelSprite(entity, { x: heroAnchor.x + 112 + index * 44, y: heroAnchor.y - 8 + index * 10 }, context.attackDirection, 0.82)).join('')}
@@ -408,14 +408,14 @@ export const renderMatchVisualSequenceSvg = (match: MatchSummary): string => {
     return `
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox.width} ${viewBox.height}" role="img">
         ${renderBackground()}
-        ${renderPitchFrame({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, 'tactical-map', 'fallback')}
-        ${renderNarrativePanel('Lance em andamento', 'Sequência visual indisponível para este turno.', 'tactical-map')}
+        ${renderPitchFrame({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, 'field-scene', 'fallback')}
+        ${renderNarrativePanel('Lance em andamento', 'Sequência visual indisponível para este turno.', 'field-scene')}
       </svg>
     `.trim();
   }
 
   const context = buildSceneContext(frame, event);
-  const body = context.visualMode === 'tactical-map' ? renderTacticalMap(context) : renderCinematicScene(context);
+  const body = context.visualMode === 'field-scene' ? renderFieldScene(context) : renderHeroScene(context);
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox.width} ${viewBox.height}" role="img">

@@ -647,13 +647,14 @@ test('fachada da partida expõe cena visual simples com svg e fallback textual',
   const reply = await facade.handleStartMatch('scene-1');
 
   assert.ok(reply.scene);
-  assert.match(reply.scene.svg, /CARD VISUAL DO LANCE/);
-  assert.match(reply.scene.svg, /MINI CAMPO/);
-  assert.match(reply.scene.svg, /AÇÕES PRINCIPAIS/);
+  assert.doesNotMatch(reply.scene.svg, /MATCH HUD PLACEHOLDER/);
+  assert.doesNotMatch(reply.scene.svg, /CARD VISUAL DO LANCE/);
+  assert.match(reply.scene.svg, /HERO-SCENE|FIELD-SCENE/);
   assert.match(reply.text, /⚽ 0x0/);
-  assert.match(reply.scene.fallbackText, /Arte preparada/);
-  assert.ok(reply.scene.assetKeys.includes('match-hud-placeholder'));
-  assert.ok(reply.scene.replacementSlots.includes('telegram.match.widget.play-card'));
+  assert.match(reply.scene.caption, /Porto Azul FC 0x0/);
+  assert.match(reply.scene.fallbackText, /Fallback técnico apenas/);
+  assert.ok(reply.scene.assetKeys.some((key) => key.startsWith('telegram-match-')));
+  assert.ok(reply.scene.replacementSlots.some((slot) => slot.startsWith('telegram.match.scene.')));
 });
 
 test('renderer placeholder consolida HUD, mini campo, cena e ícones com slots de substituição', async () => {

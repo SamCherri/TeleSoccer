@@ -1,39 +1,58 @@
 import { buildMatchVisualSequence } from '../domain/match/visual-sequence';
-import { MatchSummary } from '../domain/match/types';
+import { MatchSceneKey, MatchSummary } from '../domain/match/types';
 import { MatchSceneAsset } from '../assets/scenes/match-scene-art';
 import { getMatchSceneAsset } from './scene-registry';
 
+export type MatchVisualMode = 'hero-scene' | 'field-scene';
+
 export interface ResolvedMatchScene {
   asset: MatchSceneAsset;
+  mode: MatchVisualMode;
   shortPhrase: string;
   fallbackLine: string;
 }
 
+const matchVisualModeBySceneKey: Record<MatchSceneKey, MatchVisualMode> = {
+  'pass-received': 'field-scene',
+  'pass-intercepted': 'field-scene',
+  dribble: 'hero-scene',
+  'defensive-duel': 'hero-scene',
+  shot: 'hero-scene',
+  'goalkeeper-save': 'hero-scene',
+  goal: 'hero-scene',
+  rebound: 'hero-scene',
+  'corner-kick': 'hero-scene',
+  'penalty-kick': 'hero-scene',
+  fallback: 'field-scene'
+};
+
 const phraseByKey: Record<MatchSceneAsset['key'], string> = {
-  'pass-received': 'Passe limpo, receptor pronto e a jogada segue com leitura clara.',
-  'pass-intercepted': 'O defensor fecha a linha e transforma o passe em corte decisivo.',
-  dribble: 'O foco vai para o 1x1 entre quem conduz e quem tenta travar o lance.',
-  'defensive-duel': 'A cena destaca o choque direto entre pressão e contenção.',
-  shot: 'O enquadramento aproxima atacante, bola e meta para vender a finalização.',
-  'goalkeeper-save': 'A jogada fecha em goleiro, bola e gol para valorizar a defesa.',
-  goal: 'A conclusão mostra a bola vencendo o goleiro e entrando na rede.',
-  rebound: 'A sobra viva ganha enquadramento curto para evidenciar a segunda bola.',
-  'corner-kick': 'A cobrança aparece com bandeirinha, trajetória aérea e área ocupada.',
-  'penalty-kick': 'A cena concentra cobrador, goleiro e gol no duelo mais direto do turno.',
-  fallback: 'A composição mantém o lance legível mesmo quando o contexto é mais genérico.'
+  'pass-received': 'Recebe aberto e o campo se oferece para a sequência da jogada.',
+  'pass-intercepted': 'O passe sai e a marcação corta a linha antes da progressão.',
+  dribble: 'Parte para o drible e chama o duelo para o centro do lance.',
+  'defensive-duel': 'O choque é direto e a contenção define o ritmo da disputa.',
+  shot: 'Arma a finalização e leva o lance inteiro para a frente do gol.',
+  'goalkeeper-save': 'O goleiro explode no lance e segura o momento mais tenso da jogada.',
+  goal: 'A bola vence o goleiro e o lance termina com a rede balançando.',
+  rebound: 'A sobra fica viva na área e pede reação imediata de quem chegar primeiro.',
+  'corner-kick': 'A bola parada fecha na área para destacar a disputa pelo lance decisivo.',
+  'penalty-kick': 'Cobrador e goleiro entram no enquadramento mais direto do turno.',
+  fallback: 'A posse circula e o campo mostra com clareza por onde a jogada respira.'
 };
 
 export const resolveMatchScene = (match: MatchSummary): ResolvedMatchScene => {
   const sequence = match.visualSequence ?? buildMatchVisualSequence(match);
-  const asset = getMatchSceneAsset(sequence?.sceneKey ?? 'fallback');
+  const sceneKey = sequence?.sceneKey ?? 'fallback';
+  const asset = getMatchSceneAsset(sceneKey);
   const frameCount = sequence?.frames.length ?? 0;
 
   return {
     asset,
+    mode: matchVisualModeBySceneKey[sceneKey],
     shortPhrase: phraseByKey[asset.key],
     fallbackLine:
       frameCount > 1
-        ? `Arte preparada: cena visual com ${frameCount} momentos do lance e hero frame focado na ação principal.`
-        : 'Arte preparada: cena visual com foco direto no momento principal do lance.'
+        ? `Fallback técnico apenas: a cena oficial ${matchVisualModeBySceneKey[sceneKey]} já foi gerada com ${frameCount} momentos do lance.`
+        : `Fallback técnico apenas: a cena oficial ${matchVisualModeBySceneKey[sceneKey]} já foi gerada para o momento principal do lance.`
   };
 };

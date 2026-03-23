@@ -1,7 +1,6 @@
 import { MatchContextType, MatchPossessionSide, MatchStatus, MatchSummary } from '../../domain/match/types';
 import type { BotReplyScene } from '../../bot/phase1-bot';
 import { buildMatchCardViewModel } from '../../view-models/game-view-models';
-import { renderTelegramMatchPlaceholderCard } from '../../presentation/telegram-match-placeholder-renderer';
 
 export interface TelegramMatchPresentation {
   text: string;
@@ -42,15 +41,11 @@ const summarizePreviousOutcome = (value?: string): string => {
 
 const buildHudLine = (match: MatchSummary): string => {
   const contextLabel = match.activeTurn ? contextLabelMap[match.activeTurn.contextType] : 'encerrado';
-  const possessionLabel = match.activeTurn ? possessionLabelMap[match.activeTurn.possessionSide] : possessionLabelMap[match.scoreboard.homeScore >= match.scoreboard.awayScore ? MatchPossessionSide.Home : MatchPossessionSide.Away];
+  const possessionLabel = match.activeTurn
+    ? possessionLabelMap[match.activeTurn.possessionSide]
+    : possessionLabelMap[match.scoreboard.homeScore >= match.scoreboard.awayScore ? MatchPossessionSide.Home : MatchPossessionSide.Away];
 
-  return [
-    `⚽ ${match.scoreboard.homeScore}x${match.scoreboard.awayScore}`,
-    `⏱️ ${match.scoreboard.minute}'`,
-    `⚡ ${match.energy}`,
-    `🧭 ${possessionLabel}`,
-    `🎯 ${contextLabel}`
-  ].join(' • ');
+  return [`⚽ ${match.scoreboard.homeScore}x${match.scoreboard.awayScore}`, `⏱️ ${match.scoreboard.minute}'`, `⚡ ${match.energy}`, `🧭 ${possessionLabel}`, `🎯 ${contextLabel}`].join(' • ');
 };
 
 const buildSummaryText = (match: MatchSummary): string => {
@@ -68,10 +63,18 @@ const buildSummaryText = (match: MatchSummary): string => {
   return lines.join('\n');
 };
 
+const buildSceneCaption = (match: MatchSummary): string => {
+  const viewModel = buildMatchCardViewModel(match);
+  const scoreboard = `${match.scoreboard.homeClubName} ${match.scoreboard.homeScore}x${match.scoreboard.awayScore} ${match.scoreboard.awayClubName}`;
+  const minute = `${match.scoreboard.minute}'`;
+  const shortPhrase = truncate(stripTrailingPeriod(viewModel.scene.phrase), 88);
+
+  return `${scoreboard} • ${minute}\n${shortPhrase}`;
+};
+
 export const presentTelegramMatchVisual = (match: MatchSummary): TelegramMatchPresentation => {
   const viewModel = buildMatchCardViewModel(match);
   const text = buildSummaryText(match);
-  const placeholderCard = renderTelegramMatchPlaceholderCard(match);
 
   return {
     text,
@@ -80,11 +83,11 @@ export const presentTelegramMatchVisual = (match: MatchSummary): TelegramMatchPr
       title: viewModel.scene.title,
       hud: buildHudLine(match),
       phrase: truncate(stripTrailingPeriod(viewModel.scene.phrase), 84),
-      svg: placeholderCard.svg,
-      caption: `${buildHudLine(match)}\n${viewModel.scene.title} • ${truncate(stripTrailingPeriod(viewModel.scene.phrase), 84)}`,
+      svg: viewModel.scene.svg,
+      caption: buildSceneCaption(match),
       fallbackText: `Cena alternativa: ${viewModel.scene.fallback}`,
-      assetKeys: placeholderCard.assetKeys,
-      replacementSlots: placeholderCard.replacementSlots
+      assetKeys: [`telegram-match-${viewModel.scene.mode}`, `telegram-match-${viewModel.scene.asset.key}`],
+      replacementSlots: [`telegram.match.scene.${viewModel.scene.mode}`, `telegram.match.scene.${viewModel.scene.asset.key}`]
     }
   };
 };
