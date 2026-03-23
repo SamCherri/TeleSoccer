@@ -74,3 +74,10 @@ Mostra:
 - `src/presentation/game-card-renderer.ts`
 
 Essa separação deixa o projeto pronto para futuras interfaces leves adicionais sem mover regra de negócio para a camada visual.
+
+
+## 5. Direção visual das cenas de partida
+
+- lances de circulação, recepção e transição usam mapa tático com os 22 jogadores visíveis
+- lances críticos (drible, duelo, chute, defesa, gol, rebote, escanteio e pênalti) usam enquadramento cinematográfico em pixel art
+- o card enviado ao Telegram prioriza imagem dominante + texto narrativo grande, no estilo de mensagem ilustrada
