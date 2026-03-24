@@ -1,31 +1,13 @@
 {
   "name": "telesoccer",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "node scripts/build.cjs",
-    "start": "node scripts/start.cjs",
-    "dev": "tsx watch src/app/index.ts",
-    "test": "npm run build -- --pretty false && node --test --test-concurrency=1 tests/*.test.js",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "postinstall": "prisma generate",
-    "prisma:generate": "prisma generate",
-    "prisma:validate": "prisma validate",
-    "prisma:migrate:deploy": "prisma migrate deploy",
-    "start:dist": "node dist/app/index.js",
-    "verify:artifact": "node scripts/verify-artifact.cjs"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.6.0"
-  },
-  "devDependencies": {
-    "tsx": "^4.19.3",
-    "@types/node": "^22.13.10",
-    "prisma": "^6.6.0",
-    "typescript": "^5.8.2"
+    "start": "node src/app/index.js",
+    "test": "node --test tests/*.test.js"
   }
 }
