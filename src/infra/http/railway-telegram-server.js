@@ -13,7 +13,7 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
-export function createRailwayTelegramServer({ playerService, phase1Dispatcher }) {
+export function createRailwayTelegramServer({ playerService, phase1Dispatcher, authService }) {
   return createServer(async (req, res) => {
     try {
       if (req.method === "GET" && req.url === "/health") {
@@ -29,6 +29,24 @@ export function createRailwayTelegramServer({ playerService, phase1Dispatcher })
         const body = await readJson(req);
         const player = await playerService.createPlayer(body);
         return sendJson(res, 201, { player });
+      }
+
+      if (req.method === "POST" && req.url === "/auth/login") {
+        const body = await readJson(req);
+        const result = await authService.loginWithTelegramUserId(body.telegramUserId);
+        return sendJson(res, 200, result);
+      }
+
+      if (req.method === "POST" && req.url === "/auth/logout") {
+        const body = await readJson(req);
+        const result = await authService.logoutWithTelegramUserId(body.telegramUserId);
+        return sendJson(res, 200, result);
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/auth/session?telegramUserId=")) {
+        const telegramUserId = decodeURIComponent(req.url.split("=")[1] ?? "");
+        const session = await authService.getSessionByTelegramUserId(telegramUserId);
+        return sendJson(res, 200, { session });
       }
 
       if (req.method === "POST" && req.url === "/telegram/webhook") {
