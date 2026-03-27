@@ -92,10 +92,12 @@ Depois reconstrói `recentEvents` filtrando o `currentEvent` e mantendo os demai
 - `npm run prisma:generate -w @telesoccer/api`
 - `npm run prisma:migrate:dev -w @telesoccer/api`
 - `npm run prisma:deploy -w @telesoccer/api`
+- `npm run build -w @telesoccer/api` (gera Prisma Client antes do TypeScript build)
 
 ## Railway
 
 - `railway.json` com build Nixpacks e start via `npm run start`.
+- No pacote `@telesoccer/api`, `postinstall` e `build` executam `prisma generate` para garantir `@prisma/client` tipado antes do `tsc`.
 - Variáveis principais:
   - `PORT`
   - `DATABASE_URL` (ativa persistência Prisma/PostgreSQL)
