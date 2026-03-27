@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TeamSide {
+  HOME
+  AWAY
+}
+
+enum MatchStatus {
+  SCHEDULED
+  IN_PROGRESS
+  FINISHED
+}
+
+enum TurnResolutionMode {
+  AUTO
+  REQUIRES_PLAYER_ACTION
+}
+
+enum FrameType {
+  TACTICAL_MAP
+  DUEL_SCENE
+  SHOT_SCENE
+  SAVE_SCENE
+  GOAL_SCENE
+}
+
+enum MatchEventType {
+  PASS_RECEIVED
+  PASS_INTERCEPTED
+  DRIBBLE
+  DEFENSIVE_DUEL
+  SHOT
+  GOALKEEPER_SAVE
+  GOAL
+  REBOUND
+  CORNER_KICK
+  PENALTY_KICK
+  FALLBACK_MAP
+}
+
+enum MatchLineupRole {
+  STARTER
+  BENCH
+}
+
+enum ParticipantActionStatus {
+  PENDING
+  APPLIED
+  FAILED
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String?  @unique
+  displayName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teams Team[]
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  name      String
+  shortName String
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  players     Player[]
+  homeMatches Match[]         @relation("MatchHomeTeam")
+  awayMatches Match[]         @relation("MatchAwayTeam")
+  lineups     MatchLineup[]
+  events      MatchEvent[]
+}
+
+model Player {
+  id           String   @id @default(uuid())
+  teamId        String
+  name          String
+  shirtNumber   Int?
+  isGoalkeeper  Boolean  @default(false)
+  pass          Int
+  dribble       Int
+  finishing     Int
+  marking       Int
+  tackling      Int
+  positioning   Int
+  reflex        Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  primaryEvents      MatchEvent[]             @relation("MatchEventPrimaryPlayer")
+  secondaryEvents    MatchEvent[]             @relation("MatchEventSecondaryPlayer")
+  lineupAssignments  MatchLineup[]
+  participantActions MatchParticipantAction[]
+}
+
+model Match {
+  id                 String              @id @default(uuid())
+  homeTeamId         String
+  awayTeamId         String
+  status             MatchStatus         @default(IN_PROGRESS)
+  homeScore          Int                 @default(0)
+  awayScore          Int                 @default(0)
+  minute             Int                 @default(1)
+  possessionTeamSide TeamSide            @default(HOME)
+  turnNumber         Int                 @default(1)
+  turnResolutionMode TurnResolutionMode  @default(REQUIRES_PLAYER_ACTION)
+  attackingSide      TeamSide            @default(HOME)
+  defendingSide      TeamSide            @default(AWAY)
+  tacticalContext    Json
+  currentEventId     String?             @unique
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  homeTeam Team @relation("MatchHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeam Team @relation("MatchAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+
+  turns              MatchTurn[]
+  events             MatchEvent[]
+  lineups            MatchLineup[]
+  participantActions MatchParticipantAction[]
+  currentEvent       MatchEvent? @relation("MatchCurrentEvent", fields: [currentEventId], references: [id], onDelete: SetNull)
+}
+
+model MatchTurn {
+  id                 String             @id @default(uuid())
+  matchId            String
+  turnNumber         Int
+  minute             Int
+  possessionTeamSide TeamSide
+  turnResolutionMode TurnResolutionMode
+  eventId            String?
+  tacticalContext    Json
+  createdAt          DateTime           @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  event MatchEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([matchId, turnNumber])
+  @@index([matchId, minute])
+}
+
+model MatchEvent {
+  id                String         @id @default(uuid())
+  matchId           String
+  eventType         MatchEventType
+  turnNumber        Int
+  minute            Int
+  teamId            String
+  primaryPlayerId   String?
+  secondaryPlayerId String?
+  sceneKey          String
+  frameType         FrameType
+  narrativeText     String
+  visualPayload     Json
+  success           Boolean?
+  createdAt         DateTime       @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  primaryPlayer   Player?                   @relation("MatchEventPrimaryPlayer", fields: [primaryPlayerId], references: [id], onDelete: SetNull)
+  secondaryPlayer Player?                   @relation("MatchEventSecondaryPlayer", fields: [secondaryPlayerId], references: [id], onDelete: SetNull)
+  turns           MatchTurn[]
+  asCurrentOf     Match?                    @relation("MatchCurrentEvent")
+  participantActions MatchParticipantAction[]
+
+  @@index([matchId, turnNumber])
+  @@index([matchId, minute])
+}
+
+model MatchLineup {
+  id         String         @id @default(uuid())
+  matchId    String
+  teamId     String
+  playerId   String
+  role       MatchLineupRole @default(STARTER)
+  position   String
+  isCaptain  Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, teamId, playerId])
+}
+
+model MatchParticipantAction {
+  id            String                  @id @default(uuid())
+  matchId       String
+  turnNumber    Int
+  teamId        String
+  playerId      String?
+  eventId       String?
+  actionIntent  String
+  status        ParticipantActionStatus @default(PENDING)
+  metadata      Json?
+  createdAt     DateTime                @default(now())
+
+  match  Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team   Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player Player?     @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  event  MatchEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([matchId, turnNumber])
+}
