@@ -7,6 +7,7 @@ Web app mobile-first de futebol por turnos orientado por cenas visuais.
 - ETAPA 1: auditoria concluída.
 - ETAPA 2: fundação monorepo + API/WEB concluída.
 - ETAPA 3: modelagem Prisma + PostgreSQL e persistência orientada a repositório **em validação**.
+- ETAPA 5: publicação do frontend WEB em preparação operacional (deploy separado API/WEB).
 
 > Observação de escopo: skills internas foram entregues em trilha separada (`.codex/skills`) e não definem conclusão da ETAPA 3.
 
@@ -93,6 +94,15 @@ Depois reconstrói `recentEvents` filtrando o `currentEvent` e mantendo os demai
 - `npm run prisma:migrate:dev -w @telesoccer/api`
 - `npm run prisma:deploy -w @telesoccer/api`
 - `npm run build -w @telesoccer/api` (gera Prisma Client antes do TypeScript build)
+
+
+## ETAPA 4 — produção (próximo passo)
+
+- Checklist e estratégia de deploy WEB/API: `docs/ETAPA4_PRODUCAO_CHECKLIST.md`
+
+## ETAPA 5 — publicação do frontend WEB
+
+- Guia operacional completo: `docs/ETAPA5_DEPLOY_WEB.md`
 
 ## Railway
 
