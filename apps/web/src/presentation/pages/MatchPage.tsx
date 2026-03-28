@@ -2,13 +2,25 @@ import { useEffect } from "react";
 import { useMatchUiStore } from "../../state/match-ui-store";
 import { ActionPanel } from "../components/ActionPanel";
 import { EventFeed } from "../components/EventFeed";
+import { LineupPanel } from "../components/LineupPanel";
 import { MatchHeader } from "../components/MatchHeader";
 import { PossessionIndicator } from "../components/PossessionIndicator";
 import { SceneCard } from "../components/SceneCard";
 
 export function MatchPage() {
-  const { matchState, cycle, isLoading, errorMessage, bootstrapMatch, sendAction, advanceTurn } =
-    useMatchUiStore();
+  const {
+    matchState,
+    cycle,
+    isLoading,
+    errorMessage,
+    userId,
+    userDisplayName,
+    bootstrapMatch,
+    joinMatch,
+    claimSlot,
+    sendAction,
+    advanceTurn
+  } = useMatchUiStore();
 
   useEffect(() => {
     if (!matchState) {
@@ -52,6 +64,39 @@ export function MatchPage() {
       >
         <MatchHeader matchState={matchState} />
         <PossessionIndicator side={matchState.possessionTeamSide} />
+
+        <section style={{ display: "grid", gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Controle de vagas</h2>
+          <button
+            type="button"
+            onClick={() => {
+              void joinMatch();
+            }}
+            disabled={isLoading}
+            style={{
+              borderRadius: 10,
+              border: "1px solid #5aa3d6",
+              background: "#14517c",
+              color: "#fff",
+              padding: "10px 12px",
+              fontSize: 14,
+              cursor: isLoading ? "not-allowed" : "pointer",
+              opacity: isLoading ? 0.65 : 1
+            }}
+          >
+            {userId ? `Conectado como ${userDisplayName ?? "Jogador"}` : "Entrar na partida"}
+          </button>
+        </section>
+
+        <LineupPanel
+          lineup={matchState.lineup}
+          canClaim={Boolean(userId)}
+          isLoading={isLoading}
+          onClaim={(teamSide, slotNumber) => {
+            void claimSlot(teamSide, slotNumber);
+          }}
+        />
+
         <SceneCard event={matchState.currentEvent} />
         <ActionPanel
           actions={matchState.availableActions}

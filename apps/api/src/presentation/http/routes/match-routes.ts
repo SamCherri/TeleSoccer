@@ -14,6 +14,12 @@ const createMatchSchema = z.object({
   awayTeamName: z.string().min(2)
 });
 
+const claimSlotSchema = z.object({
+  teamSide: z.enum(["HOME", "AWAY"]),
+  slotNumber: z.number().int().min(1).max(11),
+  userId: z.string().min(1)
+});
+
 const response = <T>(data: T): ApiResponse<T> => ({
   data,
   meta: {
@@ -87,6 +93,55 @@ export const registerMatchRoutes = (
     const result = await matchService.advanceTurn(parse.data.matchId);
     if (!result) {
       return reply.status(404).send(response({ error: "match-not-found" }));
+    }
+
+    return response(result);
+  });
+
+  server.post("/matches/:matchId/join", async (request, reply) => {
+    const parse = paramsSchema.safeParse(request.params);
+    if (!parse.success) {
+      return reply.status(400).send(response({ error: parse.error.flatten() }));
+    }
+
+    const user = await matchService.joinMatch(parse.data.matchId);
+    if (!user) {
+      return reply.status(404).send(response({ error: "match-not-found" }));
+    }
+
+    return response({ user });
+  });
+
+  server.post("/matches/:matchId/claim-slot", async (request, reply) => {
+    const paramsParse = paramsSchema.safeParse(request.params);
+    const bodyParse = claimSlotSchema.safeParse(request.body);
+
+    if (!paramsParse.success || !bodyParse.success) {
+      return reply.status(400).send(
+        response({
+          error: {
+            params: paramsParse.success ? null : paramsParse.error.flatten(),
+            body: bodyParse.success ? null : bodyParse.error.flatten()
+          }
+        })
+      );
+    }
+
+    const result = await matchService.claimSlot({
+      matchId: paramsParse.data.matchId,
+      ...bodyParse.data
+    });
+
+    if ("error" in result) {
+      if (result.error === "match-not-found" || result.error === "slot-not-found") {
+        return reply.status(404).send(response({ error: result.error }));
+      }
+
+      if (result.error === "slot-already-claimed") {
+        return reply.status(409).send(response({ error: result.error }));
+      }
+
+      return reply.status(400).send(response({ error: result.error }));
     }
 
     return response(result);

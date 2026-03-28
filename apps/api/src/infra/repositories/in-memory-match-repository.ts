@@ -1,5 +1,12 @@
 import type { MatchRepository, PersistTurnInput } from "../../domain/repositories/match-repository.js";
-import type { MatchEventView, MatchStateView, SceneCatalogItem } from "../../shared/contracts/match-contracts.js";
+import type {
+  ClaimSlotFailureReason,
+  MatchEventView,
+  MatchLineupSlotView,
+  MatchStateView,
+  SceneCatalogItem,
+  TeamSide
+} from "../../shared/contracts/match-contracts.js";
 
 const baseEvent: MatchEventView = {
   id: "evt-1",
@@ -80,13 +87,17 @@ const sceneCatalog: SceneCatalogItem[] = [
 export class InMemoryMatchRepository implements MatchRepository {
   private state: MatchStateView | null = null;
   private eventHistory: MatchEventView[] = [];
+  private users = new Map<string, { userId: string; displayName: string }>();
 
   async createMatch(homeTeamName: string, awayTeamName: string, initialState: MatchStateView): Promise<MatchStateView> {
+    const lineup = this.buildStarterLineup();
+
     this.state = {
       ...initialState,
       matchId: crypto.randomUUID(),
       homeTeamName,
       awayTeamName,
+      lineup,
       currentEvent: { ...baseEvent, id: crypto.randomUUID() },
       recentEvents: []
     };
@@ -106,6 +117,57 @@ export class InMemoryMatchRepository implements MatchRepository {
         .slice(-5)
         .reverse()
     };
+  }
+
+  async joinMatch(matchId: string): Promise<{ userId: string; displayName: string } | null> {
+    if (!this.state || this.state.matchId !== matchId) {
+      return null;
+    }
+
+    const existing = this.users.get(matchId);
+    if (existing) {
+      return existing;
+    }
+
+    const bootstrapUser = {
+      userId: `bootstrap-${matchId}`,
+      displayName: "Jogador MVP"
+    };
+
+    this.users.set(matchId, bootstrapUser);
+    return bootstrapUser;
+  }
+
+  async claimLineupSlot(input: {
+    matchId: string;
+    teamSide: TeamSide;
+    slotNumber: number;
+    userId: string;
+  }): Promise<{ matchState: MatchStateView } | { error: ClaimSlotFailureReason }> {
+    if (!this.state || this.state.matchId !== input.matchId) {
+      return { error: "match-not-found" };
+    }
+
+    if (![...this.users.values()].some((user) => user.userId === input.userId)) {
+      return { error: "user-not-found" };
+    }
+
+    const slot = this.state.lineup.find(
+      (item) => item.teamSide === input.teamSide && item.slotNumber === input.slotNumber
+    );
+
+    if (!slot) {
+      return { error: "slot-not-found" };
+    }
+
+    if (slot.controlMode === "HUMAN" && slot.controllerUserId !== input.userId) {
+      return { error: "slot-already-claimed" };
+    }
+
+    slot.controlMode = "HUMAN";
+    slot.controllerUserId = input.userId;
+
+    return { matchState: this.state };
   }
 
   async persistTurn(input: PersistTurnInput): Promise<MatchStateView | null> {
@@ -134,5 +196,28 @@ export class InMemoryMatchRepository implements MatchRepository {
 
   async getSceneCatalog(): Promise<SceneCatalogItem[]> {
     return sceneCatalog;
+  }
+
+  private buildStarterLineup(): MatchLineupSlotView[] {
+    const positions = ["GK", "RB", "RCB", "LCB", "LB", "CDM", "RCM", "LCM", "RW", "ST", "LW"] as const;
+
+    const createTeamLineup = (teamSide: TeamSide) =>
+      positions.map((position, index) => ({
+        teamSide,
+        slotNumber: index + 1,
+        playerId: `${teamSide}-player-${index + 1}`,
+        playerName:
+          teamSide === "HOME" && index + 1 === 8
+            ? "Henrique"
+            : teamSide === "AWAY" && index + 1 === 5
+              ? "Eduardo"
+              : `${teamSide}-PLAYER-${index + 1}`,
+        position,
+        isCaptain: teamSide === "HOME" ? index + 1 === 8 : index + 1 === 5,
+        controlMode: "BOT" as const,
+        controllerUserId: null
+      }));
+
+    return [...createTeamLineup("HOME"), ...createTeamLineup("AWAY")];
   }
 }

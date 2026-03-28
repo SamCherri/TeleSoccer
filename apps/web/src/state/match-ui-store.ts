@@ -1,14 +1,18 @@
 import { create } from "zustand";
 import { matchApi } from "../infra/api/match-api";
-import type { MatchStateView, PlayerActionIntent, TurnCycle } from "../shared/types/match";
+import type { MatchStateView, PlayerActionIntent, TeamSide, TurnCycle } from "../shared/types/match";
 
 type MatchUiState = {
   matchState: MatchStateView | null;
   cycle: TurnCycle | null;
+  userId: string | null;
+  userDisplayName: string | null;
   isLoading: boolean;
   errorMessage: string | null;
   bootstrapMatch: () => Promise<void>;
   refreshMatchState: () => Promise<void>;
+  joinMatch: () => Promise<void>;
+  claimSlot: (teamSide: TeamSide, slotNumber: number) => Promise<void>;
   sendAction: (action: PlayerActionIntent) => Promise<void>;
   advanceTurn: () => Promise<void>;
 };
@@ -16,6 +20,8 @@ type MatchUiState = {
 export const useMatchUiStore = create<MatchUiState>((set, get) => ({
   matchState: null,
   cycle: null,
+  userId: null,
+  userDisplayName: null,
   isLoading: false,
   errorMessage: null,
 
@@ -44,6 +50,62 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
       set({
         isLoading: false,
         errorMessage: error instanceof Error ? error.message : "Falha ao atualizar estado"
+      });
+    }
+  },
+
+  async joinMatch() {
+    const matchId = get().matchState?.matchId;
+    if (!matchId) return;
+
+    try {
+      set({ isLoading: true, errorMessage: null });
+      const user = await matchApi.joinMatch(matchId);
+      set({
+        userId: user.userId,
+        userDisplayName: user.displayName,
+        isLoading: false
+      });
+    } catch (error) {
+      set({
+        isLoading: false,
+        errorMessage: error instanceof Error ? error.message : "Falha ao entrar na partida"
+      });
+    }
+  },
+
+  async claimSlot(teamSide: TeamSide, slotNumber: number) {
+    const state = get();
+    const matchId = state.matchState?.matchId;
+    if (!matchId || !state.userId) {
+      set({ errorMessage: "Entre na partida antes de assumir uma vaga." });
+      return;
+    }
+
+    try {
+      set({ isLoading: true, errorMessage: null });
+      const matchState = await matchApi.claimSlot({
+        matchId,
+        teamSide,
+        slotNumber,
+        userId: state.userId
+      });
+
+      set({ matchState, isLoading: false });
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "Falha ao assumir vaga";
+      const errorMessage =
+        raw === "slot-already-claimed"
+          ? "Esta vaga já foi assumida por outro usuário."
+          : raw === "slot-not-found"
+            ? "A vaga selecionada não existe."
+            : raw === "user-not-found"
+              ? "Usuário não encontrado. Entre novamente na partida."
+              : raw;
+
+      set({
+        isLoading: false,
+        errorMessage
       });
     }
   },

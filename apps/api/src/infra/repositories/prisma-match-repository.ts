@@ -1,7 +1,10 @@
 import { FrameType, MatchEventType, Prisma, TeamSide, TurnResolutionMode, type PrismaClient } from "@prisma/client";
 import type { MatchRepository, PersistTurnInput } from "../../domain/repositories/match-repository.js";
 import type {
+  ClaimSlotFailureReason,
   MatchEventKey,
+  MatchJoinView,
+  MatchLineupSlotView,
   MatchEventView,
   MatchStateView,
   SceneCatalogItem,
@@ -399,6 +402,17 @@ export class PrismaMatchRepository implements MatchRepository {
       include: {
         homeTeam: true,
         awayTeam: true,
+        lineups: {
+          include: {
+            player: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: [{ teamId: "asc" }, { slotNumber: "asc" }]
+        },
         currentEvent: true,
         events: {
           orderBy: [{ turnNumber: "desc" }, { createdAt: "desc" }],
@@ -415,6 +429,10 @@ export class PrismaMatchRepository implements MatchRepository {
     const recent = match.events
       .filter((event) => event.id !== match.currentEventId)
       .map((event) => this.mapEvent(event));
+    const lineup = this.mapLineupSlots({
+      homeTeamId: match.homeTeamId,
+      lineups: match.lineups
+    });
 
     return {
       matchId: match.id,
@@ -429,9 +447,113 @@ export class PrismaMatchRepository implements MatchRepository {
         match.turnResolutionMode === "REQUIRES_PLAYER_ACTION"
           ? ["PASS", "DRIBBLE", "SHOT", "PROTECT_BALL", "PASS_BACK", "SWITCH_PLAY"]
           : [],
+      lineup,
       currentEvent: current,
       recentEvents: recent
     };
+  }
+
+  async joinMatch(matchId: string): Promise<MatchJoinView | null> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      select: { id: true }
+    });
+    if (!match) {
+      return null;
+    }
+
+    const email = `bootstrap+${matchId}@telesoccer.local`;
+    const user = await this.prisma.user.upsert({
+      where: { email },
+      update: { displayName: "Jogador MVP" },
+      create: {
+        email,
+        displayName: "Jogador MVP"
+      }
+    });
+
+    return {
+      userId: user.id,
+      displayName: user.displayName
+    };
+  }
+
+  async claimLineupSlot(input: {
+    matchId: string;
+    teamSide: TeamSide;
+    slotNumber: number;
+    userId: string;
+  }): Promise<{ matchState: MatchStateView } | { error: ClaimSlotFailureReason }> {
+    const claimResult = await this.prisma.$transaction<
+      { status: "ok" } | { status: "error"; error: ClaimSlotFailureReason }
+    >(async (tx: Prisma.TransactionClient) => {
+      const match = await tx.match.findUnique({
+        where: { id: input.matchId },
+        select: {
+          id: true,
+          homeTeamId: true,
+          awayTeamId: true
+        }
+      });
+
+      if (!match) {
+        return { status: "error", error: "match-not-found" };
+      }
+
+      const user = await tx.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true }
+      });
+      if (!user) {
+        return { status: "error", error: "user-not-found" };
+      }
+
+      const teamId = input.teamSide === "HOME" ? match.homeTeamId : match.awayTeamId;
+
+      const slot = await tx.matchLineup.findUnique({
+        where: {
+          matchId_teamId_slotNumber: {
+            matchId: input.matchId,
+            teamId,
+            slotNumber: input.slotNumber
+          }
+        },
+        select: {
+          id: true,
+          controlMode: true,
+          controllerUserId: true
+        }
+      });
+
+      if (!slot) {
+        return { status: "error", error: "slot-not-found" };
+      }
+
+      if (slot.controlMode === "HUMAN" && slot.controllerUserId !== input.userId) {
+        return { status: "error", error: "slot-already-claimed" };
+      }
+
+      await tx.matchLineup.update({
+        where: { id: slot.id },
+        data: {
+          controlMode: "HUMAN",
+          controllerUserId: input.userId
+        }
+      });
+
+      return { status: "ok" };
+    });
+
+    if (claimResult.status === "error") {
+      return { error: claimResult.error };
+    }
+
+    const matchState = await this.getMatchState(input.matchId);
+    if (!matchState) {
+      return { error: "match-not-found" };
+    }
+
+    return { matchState };
   }
 
   async persistTurn(input: PersistTurnInput): Promise<MatchStateView | null> {
@@ -602,6 +724,33 @@ export class PrismaMatchRepository implements MatchRepository {
     }
 
     return null;
+  }
+
+  private mapLineupSlots({
+    homeTeamId,
+    lineups
+  }: {
+    homeTeamId: string;
+    lineups: Array<{
+      teamId: string;
+      slotNumber: number;
+      position: string;
+      isCaptain: boolean;
+      controlMode: "HUMAN" | "BOT";
+      controllerUserId: string | null;
+      player: { id: string; name: string };
+    }>;
+  }): MatchLineupSlotView[] {
+    return lineups.map((lineup) => ({
+      teamSide: lineup.teamId === homeTeamId ? "HOME" : "AWAY",
+      slotNumber: lineup.slotNumber,
+      playerId: lineup.player.id,
+      playerName: lineup.player.name,
+      position: lineup.position,
+      isCaptain: lineup.isCaptain,
+      controlMode: lineup.controlMode,
+      controllerUserId: lineup.controllerUserId
+    }));
   }
 
   private mapEvent(event: {
