@@ -78,8 +78,9 @@ model Team {
   players     Player[]
   homeMatches Match[]         @relation("MatchHomeTeam")
   awayMatches Match[]         @relation("MatchAwayTeam")
-  lineups     MatchLineup[]
-  events      MatchEvent[]
+  lineups            MatchLineup[]
+  events             MatchEvent[]
+  participantActions MatchParticipantAction[]
 }
 
 model Player {

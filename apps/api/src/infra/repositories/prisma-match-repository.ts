@@ -1,33 +1,97 @@
-import { FrameType, MatchEventType, Prisma, TeamSide, TurnResolutionMode, type PrismaClient } from "@prisma/client";
+import {
+  FrameType,
+  MatchEventType,
+  Prisma,
+  TeamSide,
+  TurnResolutionMode,
+  type PrismaClient
+} from "@prisma/client";
 import type { MatchRepository, PersistTurnInput } from "../../domain/repositories/match-repository.js";
-import type { MatchEventView, MatchStateView, SceneCatalogItem } from "../../shared/contracts/match-contracts.js";
+import type {
+  MatchEventKey,
+  MatchEventView,
+  MatchStateView,
+  SceneCatalogItem,
+  VisualParticipant
+} from "../../shared/contracts/match-contracts.js";
 
 const defaultTacticalContext = {
   zone: "MIDDLE_THIRD",
   notes: "Estado inicial em persistência real"
 };
 
-const mapEventKeyToPrisma = (key: MatchEventView["key"]): MatchEventType => {
-  const table: Record<MatchEventView["key"], MatchEventType> = {
-    "pass-received": MatchEventType.PASS_RECEIVED,
-    "pass-intercepted": MatchEventType.PASS_INTERCEPTED,
-    dribble: MatchEventType.DRIBBLE,
-    "defensive-duel": MatchEventType.DEFENSIVE_DUEL,
-    shot: MatchEventType.SHOT,
-    "goalkeeper-save": MatchEventType.GOALKEEPER_SAVE,
-    goal: MatchEventType.GOAL,
-    rebound: MatchEventType.REBOUND,
-    "corner-kick": MatchEventType.CORNER_KICK,
-    "penalty-kick": MatchEventType.PENALTY_KICK,
-    "fallback-map": MatchEventType.FALLBACK_MAP
-  };
-
-  return table[key];
+const mapEventKeyToPrisma = (key: MatchEventKey): MatchEventType => {
+  switch (key) {
+    case "pass-received":
+      return MatchEventType.PASS_RECEIVED;
+    case "pass-intercepted":
+      return MatchEventType.PASS_INTERCEPTED;
+    case "dribble":
+      return MatchEventType.DRIBBLE;
+    case "defensive-duel":
+      return MatchEventType.DEFENSIVE_DUEL;
+    case "shot":
+      return MatchEventType.SHOT;
+    case "goalkeeper-save":
+      return MatchEventType.GOALKEEPER_SAVE;
+    case "goal":
+      return MatchEventType.GOAL;
+    case "rebound":
+      return MatchEventType.REBOUND;
+    case "corner-kick":
+      return MatchEventType.CORNER_KICK;
+    case "penalty-kick":
+      return MatchEventType.PENALTY_KICK;
+    case "fallback-map":
+      return MatchEventType.FALLBACK_MAP;
+  }
 };
 
 const mapFrameType = (frameType: MatchEventView["visualPayload"]["frameType"]): FrameType => {
-  return FrameType[frameType];
+  switch (frameType) {
+    case "TACTICAL_MAP":
+      return FrameType.TACTICAL_MAP;
+    case "DUEL_SCENE":
+      return FrameType.DUEL_SCENE;
+    case "SHOT_SCENE":
+      return FrameType.SHOT_SCENE;
+    case "SAVE_SCENE":
+      return FrameType.SAVE_SCENE;
+    case "GOAL_SCENE":
+      return FrameType.GOAL_SCENE;
+  }
 };
+
+const buildMatchEventCreateData = ({
+  matchId,
+  teamId,
+  event,
+  turnNumber,
+  minute,
+  primaryPlayerId,
+  secondaryPlayerId
+}: {
+  matchId: string;
+  teamId: string;
+  event: MatchEventView;
+  turnNumber: number;
+  minute: number;
+  primaryPlayerId: string | null;
+  secondaryPlayerId: string | null;
+}): Prisma.MatchEventUncheckedCreateInput => ({
+  matchId,
+  teamId,
+  eventType: mapEventKeyToPrisma(event.key),
+  turnNumber,
+  minute,
+  primaryPlayerId,
+  secondaryPlayerId,
+  sceneKey: event.visualPayload.sceneKey,
+  frameType: mapFrameType(event.visualPayload.frameType),
+  narrativeText: event.narrativeText,
+  visualPayload: event.visualPayload,
+  ...(event.success !== undefined ? { success: event.success } : {})
+});
 
 const sceneCatalog: SceneCatalogItem[] = [
   {
@@ -66,7 +130,7 @@ export class PrismaMatchRepository implements MatchRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async createMatch(homeTeamName: string, awayTeamName: string, initialState: MatchStateView): Promise<MatchStateView> {
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const homeTeam = await tx.team.create({
         data: {
           name: homeTeamName,
@@ -116,7 +180,7 @@ export class PrismaMatchRepository implements MatchRepository {
         ...initialState.currentEvent,
         visualPayload: {
           ...initialState.currentEvent.visualPayload,
-          participants: initialState.currentEvent.visualPayload.participants.map((participant) => {
+          participants: initialState.currentEvent.visualPayload.participants.map((participant: VisualParticipant) => {
             if (participant.side === "HOME" && participant.displayName === "Henrique") {
               return { ...participant, playerId: homePrimary.id };
             }
@@ -145,20 +209,15 @@ export class PrismaMatchRepository implements MatchRepository {
       });
 
       const createdEvent = await tx.matchEvent.create({
-        data: {
+        data: buildMatchEventCreateData({
           matchId: match.id,
           teamId: homeTeam.id,
-          eventType: mapEventKeyToPrisma(normalizedInitialEvent.key),
+          event: normalizedInitialEvent,
           turnNumber: initialState.turnNumber,
           minute: initialState.minute,
           primaryPlayerId: homePrimary.id,
-          secondaryPlayerId: awayPrimary.id,
-          sceneKey: normalizedInitialEvent.visualPayload.sceneKey,
-          frameType: mapFrameType(normalizedInitialEvent.visualPayload.frameType),
-          narrativeText: normalizedInitialEvent.narrativeText,
-          visualPayload: normalizedInitialEvent.visualPayload,
-          success: normalizedInitialEvent.success
-        }
+          secondaryPlayerId: awayPrimary.id
+        })
       });
 
       await tx.match.update({
@@ -235,39 +294,39 @@ export class PrismaMatchRepository implements MatchRepository {
       return null;
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const possessionTeamId = input.possessionTeamSide === "HOME" ? existing.homeTeamId : existing.awayTeamId;
+
+      const primaryParticipant = input.event.visualPayload.participants.at(0);
+      const secondaryParticipant = input.event.visualPayload.participants.at(1);
 
       const primaryPlayerId = await this.resolvePersistedPlayerId({
         tx,
         teamId: possessionTeamId,
-        fallbackDisplayName: input.event.visualPayload.participants.at(0)?.displayName,
-        incomingId: input.event.visualPayload.participants.at(0)?.playerId
+        ...(primaryParticipant?.playerId !== undefined ? { incomingId: primaryParticipant.playerId } : {}),
+        ...(primaryParticipant?.displayName !== undefined ? { fallbackDisplayName: primaryParticipant.displayName } : {})
       });
 
       const opposingTeamId = possessionTeamId === existing.homeTeamId ? existing.awayTeamId : existing.homeTeamId;
       const secondaryPlayerId = await this.resolvePersistedPlayerId({
         tx,
         teamId: opposingTeamId,
-        fallbackDisplayName: input.event.visualPayload.participants.at(1)?.displayName,
-        incomingId: input.event.visualPayload.participants.at(1)?.playerId
+        ...(secondaryParticipant?.playerId !== undefined ? { incomingId: secondaryParticipant.playerId } : {}),
+        ...(secondaryParticipant?.displayName !== undefined
+          ? { fallbackDisplayName: secondaryParticipant.displayName }
+          : {})
       });
 
       const createdEvent = await tx.matchEvent.create({
-        data: {
+        data: buildMatchEventCreateData({
           matchId: input.matchId,
-          eventType: mapEventKeyToPrisma(input.event.key),
+          teamId: possessionTeamId,
+          event: input.event,
           turnNumber: input.turnNumber,
           minute: input.minute,
-          teamId: possessionTeamId,
           primaryPlayerId,
-          secondaryPlayerId,
-          sceneKey: input.event.visualPayload.sceneKey,
-          frameType: mapFrameType(input.event.visualPayload.frameType),
-          narrativeText: input.event.narrativeText,
-          visualPayload: input.event.visualPayload,
-          success: input.event.success
-        }
+          secondaryPlayerId
+        })
       });
 
       await tx.match.update({
@@ -355,52 +414,78 @@ export class PrismaMatchRepository implements MatchRepository {
     minute: number;
     narrativeText: string;
     success: boolean | null;
-    visualPayload: unknown;
+    visualPayload: Prisma.JsonValue;
   }): MatchEventView {
-    return {
+    const baseEvent: Omit<MatchEventView, "success"> = {
       id: event.id,
       key: this.mapEventTypeToKey(event.eventType),
       label: this.mapEventTypeToLabel(event.eventType),
       minute: event.minute,
       narrativeText: event.narrativeText,
-      success: event.success ?? undefined,
       visualPayload: event.visualPayload as MatchEventView["visualPayload"]
+    };
+
+    if (event.success === null) {
+      return baseEvent;
+    }
+
+    return {
+      ...baseEvent,
+      success: event.success
     };
   }
 
   private mapEventTypeToKey(eventType: MatchEventType): MatchEventView["key"] {
-    const table: Record<MatchEventType, MatchEventView["key"]> = {
-      PASS_RECEIVED: "pass-received",
-      PASS_INTERCEPTED: "pass-intercepted",
-      DRIBBLE: "dribble",
-      DEFENSIVE_DUEL: "defensive-duel",
-      SHOT: "shot",
-      GOALKEEPER_SAVE: "goalkeeper-save",
-      GOAL: "goal",
-      REBOUND: "rebound",
-      CORNER_KICK: "corner-kick",
-      PENALTY_KICK: "penalty-kick",
-      FALLBACK_MAP: "fallback-map"
-    };
-
-    return table[eventType];
+    switch (eventType) {
+      case MatchEventType.PASS_RECEIVED:
+        return "pass-received";
+      case MatchEventType.PASS_INTERCEPTED:
+        return "pass-intercepted";
+      case MatchEventType.DRIBBLE:
+        return "dribble";
+      case MatchEventType.DEFENSIVE_DUEL:
+        return "defensive-duel";
+      case MatchEventType.SHOT:
+        return "shot";
+      case MatchEventType.GOALKEEPER_SAVE:
+        return "goalkeeper-save";
+      case MatchEventType.GOAL:
+        return "goal";
+      case MatchEventType.REBOUND:
+        return "rebound";
+      case MatchEventType.CORNER_KICK:
+        return "corner-kick";
+      case MatchEventType.PENALTY_KICK:
+        return "penalty-kick";
+      case MatchEventType.FALLBACK_MAP:
+        return "fallback-map";
+    }
   }
 
   private mapEventTypeToLabel(eventType: MatchEventType): string {
-    const table: Record<MatchEventType, string> = {
-      PASS_RECEIVED: "Passe Recebido",
-      PASS_INTERCEPTED: "Passe Interceptado",
-      DRIBBLE: "Drible",
-      DEFENSIVE_DUEL: "Duelo Defensivo",
-      SHOT: "Finalização",
-      GOALKEEPER_SAVE: "Defesa do goleiro",
-      GOAL: "Gol",
-      REBOUND: "Rebote",
-      CORNER_KICK: "Escanteio",
-      PENALTY_KICK: "Pênalti",
-      FALLBACK_MAP: "Mapa Tático"
-    };
-
-    return table[eventType];
+    switch (eventType) {
+      case MatchEventType.PASS_RECEIVED:
+        return "Passe Recebido";
+      case MatchEventType.PASS_INTERCEPTED:
+        return "Passe Interceptado";
+      case MatchEventType.DRIBBLE:
+        return "Drible";
+      case MatchEventType.DEFENSIVE_DUEL:
+        return "Duelo Defensivo";
+      case MatchEventType.SHOT:
+        return "Finalização";
+      case MatchEventType.GOALKEEPER_SAVE:
+        return "Defesa do goleiro";
+      case MatchEventType.GOAL:
+        return "Gol";
+      case MatchEventType.REBOUND:
+        return "Rebote";
+      case MatchEventType.CORNER_KICK:
+        return "Escanteio";
+      case MatchEventType.PENALTY_KICK:
+        return "Pênalti";
+      case MatchEventType.FALLBACK_MAP:
+        return "Mapa Tático";
+    }
   }
 }
