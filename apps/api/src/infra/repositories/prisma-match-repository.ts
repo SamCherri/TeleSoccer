@@ -12,12 +12,93 @@ import type {
   MatchEventView,
   MatchStateView,
   SceneCatalogItem,
-  VisualParticipant
+  VisualParticipant,
+  VisualPayload
 } from "../../shared/contracts/match-contracts.js";
 
 const defaultTacticalContext = {
   zone: "MIDDLE_THIRD",
   notes: "Estado inicial em persistência real"
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const toPrismaInputJsonValue = (value: unknown): Prisma.InputJsonValue => {
+  if (value === null) {
+    return Prisma.JsonNull;
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => toPrismaInputJsonValue(item));
+  }
+
+  if (isPlainObject(value)) {
+    const jsonObject: Prisma.InputJsonObject = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (nestedValue === undefined) {
+        continue;
+      }
+      jsonObject[key] = toPrismaInputJsonValue(nestedValue);
+    }
+    return jsonObject;
+  }
+
+  throw new TypeError("Valor inválido para persistência JSON no Prisma.");
+};
+
+const toPrismaInputJsonObject = (value: unknown): Prisma.InputJsonObject => {
+  const jsonValue = toPrismaInputJsonValue(value);
+  if (Array.isArray(jsonValue) || typeof jsonValue !== "object" || jsonValue === null) {
+    throw new TypeError("visualPayload deve ser um objeto JSON.");
+  }
+  return jsonValue;
+};
+
+const isPrismaJsonValue = (value: unknown): value is Prisma.JsonValue => {
+  if (value === null) {
+    return true;
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => isPrismaJsonValue(item));
+  }
+
+  if (isPlainObject(value)) {
+    return Object.values(value).every((item) => isPrismaJsonValue(item));
+  }
+
+  return false;
+};
+
+const isVisualPayload = (value: Prisma.JsonValue): value is VisualPayload => {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.renderer === "string" &&
+    typeof value.frameType === "string" &&
+    typeof value.sceneKey === "string" &&
+    typeof value.zone === "string" &&
+    typeof value.attackingSide === "string" &&
+    typeof value.assetPath === "string" &&
+    isPlainObject(value.ball) &&
+    typeof value.ball.x === "number" &&
+    typeof value.ball.y === "number" &&
+    typeof value.ball.possessionTeamSide === "string" &&
+    Array.isArray(value.participants) &&
+    isPlainObject(value.metadata) &&
+    Array.isArray(value.metadata.tags)
+  );
 };
 
 const mapEventKeyToPrisma = (key: MatchEventKey): MatchEventType => {
@@ -89,7 +170,7 @@ const buildMatchEventCreateData = ({
   sceneKey: event.visualPayload.sceneKey,
   frameType: mapFrameType(event.visualPayload.frameType),
   narrativeText: event.narrativeText,
-  visualPayload: event.visualPayload,
+  visualPayload: toPrismaInputJsonObject(event.visualPayload),
   ...(event.success !== undefined ? { success: event.success } : {})
 });
 
@@ -422,7 +503,7 @@ export class PrismaMatchRepository implements MatchRepository {
       label: this.mapEventTypeToLabel(event.eventType),
       minute: event.minute,
       narrativeText: event.narrativeText,
-      visualPayload: event.visualPayload as MatchEventView["visualPayload"]
+      visualPayload: this.mapVisualPayload(event.visualPayload)
     };
 
     if (event.success === null) {
@@ -487,5 +568,13 @@ export class PrismaMatchRepository implements MatchRepository {
       case MatchEventType.FALLBACK_MAP:
         return "Mapa Tático";
     }
+  }
+
+  private mapVisualPayload(visualPayload: Prisma.JsonValue): VisualPayload {
+    if (!isPrismaJsonValue(visualPayload) || !isVisualPayload(visualPayload)) {
+      throw new TypeError("visualPayload persistido está inválido para o contrato de MatchEventView.");
+    }
+
+    return visualPayload;
   }
 }
