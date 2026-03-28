@@ -38,14 +38,14 @@ const toPrismaInputJsonValue = (value: unknown): Prisma.InputJsonValue => {
   }
 
   if (isPlainObject(value)) {
-    const jsonObject: Prisma.InputJsonObject = {};
+    const jsonObject: Record<string, Prisma.InputJsonValue> = {};
     for (const [key, nestedValue] of Object.entries(value)) {
       if (nestedValue === undefined) {
         continue;
       }
       jsonObject[key] = toPrismaInputJsonValue(nestedValue);
     }
-    return jsonObject;
+    return jsonObject as Prisma.InputJsonObject;
   }
 
   throw new TypeError("Valor inválido para persistência JSON no Prisma.");
@@ -56,7 +56,7 @@ const toPrismaInputJsonObject = (value: unknown): Prisma.InputJsonObject => {
   if (Array.isArray(jsonValue) || typeof jsonValue !== "object" || jsonValue === null) {
     throw new TypeError("visualPayload deve ser um objeto JSON.");
   }
-  return jsonValue;
+  return jsonValue as Prisma.InputJsonObject;
 };
 
 const isPrismaJsonValue = (value: unknown): value is Prisma.JsonValue => {
@@ -79,7 +79,7 @@ const isPrismaJsonValue = (value: unknown): value is Prisma.JsonValue => {
   return false;
 };
 
-const isVisualPayload = (value: Prisma.JsonValue): value is VisualPayload => {
+const isVisualPayload = (value: unknown): value is VisualPayload => {
   if (!isPlainObject(value)) {
     return false;
   }
@@ -128,7 +128,7 @@ const mapEventKeyToPrisma = (key: MatchEventKey): MatchEventType => {
   }
 };
 
-const mapFrameType = (frameType: MatchEventView["visualPayload"]["frameType"]): FrameType => {
+const mapFrameType = (frameType: VisualPayload["frameType"]): FrameType => {
   switch (frameType) {
     case "TACTICAL_MAP":
       return FrameType.TACTICAL_MAP;
