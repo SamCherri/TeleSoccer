@@ -11,6 +11,18 @@ Web app mobile-first de futebol por turnos orientado por cenas visuais.
 
 > Observação de escopo: skills internas foram entregues em trilha separada (`.codex/skills`) e não definem conclusão da ETAPA 3.
 
+
+## Definição oficial do produto (modelo principal)
+
+O TeleSoccer Web adota oficialmente a seguinte premissa central:
+
+- **1 partida suporta 22 jogadores em campo (11 por time)**;
+- **cada jogador em campo pode ser controlado por um usuário real**;
+- **vagas sem usuário devem ser preenchidas por bot**;
+- **o backend continua resolvendo turnos/eventos** (sem lógica de resultado no frontend).
+
+Documento oficial detalhado: `docs/OFICIAL_MODELO_22_JOGADORES.md`.
+
 ## Monorepo
 
 - `apps/api` → backend Node.js + TypeScript + Fastify
