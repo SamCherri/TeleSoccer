@@ -24,9 +24,9 @@ const defaultTacticalContext = {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const toPrismaInputJsonValue = (value: unknown): Prisma.InputJsonValue => {
+const toPrismaNullableInputJsonValue = (value: unknown): Prisma.InputJsonValue | null => {
   if (value === null) {
-    return Prisma.JsonNull;
+    return null;
   }
 
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -34,29 +34,40 @@ const toPrismaInputJsonValue = (value: unknown): Prisma.InputJsonValue => {
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => toPrismaInputJsonValue(item));
+    return value.map((item) => toPrismaNullableInputJsonValue(item));
   }
 
   if (isPlainObject(value)) {
-    const jsonObject: Record<string, Prisma.InputJsonValue> = {};
+    const jsonObject: { [key: string]: Prisma.InputJsonValue | null } = {};
     for (const [key, nestedValue] of Object.entries(value)) {
       if (nestedValue === undefined) {
         continue;
       }
-      jsonObject[key] = toPrismaInputJsonValue(nestedValue);
+      jsonObject[key] = toPrismaNullableInputJsonValue(nestedValue);
     }
-    return jsonObject as Prisma.InputJsonObject;
+    return jsonObject;
   }
 
   throw new TypeError("Valor inválido para persistência JSON no Prisma.");
 };
 
+const toPrismaInputJsonValue = (value: unknown): Prisma.InputJsonValue => {
+  const jsonValue = toPrismaNullableInputJsonValue(value);
+  if (jsonValue === null) {
+    throw new TypeError("JSON no topo não pode ser null para Prisma.InputJsonValue.");
+  }
+  return jsonValue;
+};
+
+const isPrismaInputJsonObject = (value: Prisma.InputJsonValue): value is Prisma.InputJsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value) && !("toJSON" in value);
+
 const toPrismaInputJsonObject = (value: unknown): Prisma.InputJsonObject => {
   const jsonValue = toPrismaInputJsonValue(value);
-  if (Array.isArray(jsonValue) || typeof jsonValue !== "object" || jsonValue === null) {
+  if (!isPrismaInputJsonObject(jsonValue)) {
     throw new TypeError("visualPayload deve ser um objeto JSON.");
   }
-  return jsonValue as Prisma.InputJsonObject;
+  return jsonValue;
 };
 
 const isPrismaJsonValue = (value: unknown): value is Prisma.JsonValue => {
@@ -84,19 +95,53 @@ const isVisualPayload = (value: unknown): value is VisualPayload => {
     return false;
   }
 
+  const isTeamSide = (side: unknown): side is TeamSide => side === "HOME" || side === "AWAY";
+  const isFrameType = (frameType: unknown): frameType is VisualPayload["frameType"] =>
+    frameType === "TACTICAL_MAP" ||
+    frameType === "DUEL_SCENE" ||
+    frameType === "SHOT_SCENE" ||
+    frameType === "SAVE_SCENE" ||
+    frameType === "GOAL_SCENE";
+  const isZone = (zone: unknown): zone is VisualPayload["zone"] =>
+    zone === "DEFENSIVE_THIRD" ||
+    zone === "MIDDLE_THIRD" ||
+    zone === "ATTACKING_THIRD" ||
+    zone === "PENALTY_BOX" ||
+    zone === "WING_LEFT" ||
+    zone === "WING_RIGHT" ||
+    zone === "CENTER_CHANNEL";
+  const isRenderer = (renderer: unknown): renderer is VisualPayload["renderer"] =>
+    renderer === "asset" || renderer === "composed";
+
   return (
-    typeof value.renderer === "string" &&
-    typeof value.frameType === "string" &&
+    isRenderer(value.renderer) &&
+    isFrameType(value.frameType) &&
     typeof value.sceneKey === "string" &&
-    typeof value.zone === "string" &&
-    typeof value.attackingSide === "string" &&
+    isZone(value.zone) &&
+    isTeamSide(value.attackingSide) &&
     typeof value.assetPath === "string" &&
     isPlainObject(value.ball) &&
     typeof value.ball.x === "number" &&
     typeof value.ball.y === "number" &&
-    typeof value.ball.possessionTeamSide === "string" &&
+    isTeamSide(value.ball.possessionTeamSide) &&
     Array.isArray(value.participants) &&
+    value.participants.every(
+      (participant) =>
+        isPlainObject(participant) &&
+        typeof participant.playerId === "string" &&
+        typeof participant.displayName === "string" &&
+        isTeamSide(participant.side) &&
+        (participant.role === "PRIMARY" ||
+          participant.role === "SECONDARY" ||
+          participant.role === "GOALKEEPER" ||
+          participant.role === "SUPPORT") &&
+        typeof participant.relativeX === "number" &&
+        typeof participant.relativeY === "number" &&
+        typeof participant.hasBall === "boolean"
+    ) &&
     isPlainObject(value.metadata) &&
+    (value.metadata.camera === "top" || value.metadata.camera === "close") &&
+    (value.metadata.intensity === "low" || value.metadata.intensity === "medium" || value.metadata.intensity === "high") &&
     Array.isArray(value.metadata.tags)
   );
 };
