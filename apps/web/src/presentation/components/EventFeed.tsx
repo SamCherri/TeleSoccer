@@ -4,7 +4,7 @@ type EventFeedProps = {
   events: MatchEventView[];
 };
 
-export function EventFeed({ events }: EventFeedProps): JSX.Element {
+export function EventFeed({ events }: EventFeedProps) {
   const lastEvents = events.slice(-5).reverse();
 
   return (
