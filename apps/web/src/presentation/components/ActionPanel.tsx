@@ -15,7 +15,7 @@ const labels: Record<PlayerActionIntent, string> = {
   SWITCH_PLAY: "Inverter jogada"
 };
 
-export function ActionPanel({ actions, disabled = false, onAction }: ActionPanelProps): JSX.Element {
+export function ActionPanel({ actions, disabled = false, onAction }: ActionPanelProps) {
   return (
     <section style={{ display: "grid", gap: 8 }}>
       <h2 style={{ margin: 0, fontSize: 16 }}>Ações disponíveis</h2>

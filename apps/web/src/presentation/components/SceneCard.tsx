@@ -4,7 +4,7 @@ type SceneCardProps = {
   event: MatchEventView;
 };
 
-export function SceneCard({ event }: SceneCardProps): JSX.Element {
+export function SceneCard({ event }: SceneCardProps) {
   return (
     <article
       style={{

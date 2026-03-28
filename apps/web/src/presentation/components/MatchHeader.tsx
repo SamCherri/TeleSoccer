@@ -4,7 +4,7 @@ type MatchHeaderProps = {
   matchState: MatchStateView;
 };
 
-export function MatchHeader({ matchState }: MatchHeaderProps): JSX.Element {
+export function MatchHeader({ matchState }: MatchHeaderProps) {
   return (
     <header style={{ display: "grid", gap: 4 }}>
       <p style={{ margin: 0, fontSize: 12, opacity: 0.85 }}>

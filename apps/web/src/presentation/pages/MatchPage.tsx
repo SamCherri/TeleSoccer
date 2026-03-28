@@ -6,7 +6,7 @@ import { MatchHeader } from "../components/MatchHeader";
 import { PossessionIndicator } from "../components/PossessionIndicator";
 import { SceneCard } from "../components/SceneCard";
 
-export function MatchPage(): JSX.Element {
+export function MatchPage() {
   const { matchState, cycle, isLoading, errorMessage, bootstrapMatch, sendAction, advanceTurn } =
     useMatchUiStore();
 

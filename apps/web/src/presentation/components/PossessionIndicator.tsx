@@ -4,7 +4,7 @@ type PossessionIndicatorProps = {
   side: TeamSide;
 };
 
-export function PossessionIndicator({ side }: PossessionIndicatorProps): JSX.Element {
+export function PossessionIndicator({ side }: PossessionIndicatorProps) {
   return (
     <div
       style={{

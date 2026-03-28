@@ -48,7 +48,7 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
     }
   },
 
-  async sendAction(action) {
+  async sendAction(action: PlayerActionIntent) {
     const matchId = get().matchState?.matchId;
     if (!matchId) return;
 
