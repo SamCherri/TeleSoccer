@@ -1,11 +1,12 @@
 import type { MatchEventView } from "../../shared/types/match";
 
 type EventFeedProps = {
-  events: MatchEventView[];
+  events?: MatchEventView[];
 };
 
-export function EventFeed({ events }: EventFeedProps) {
-  const lastEvents = events.slice(-5).reverse();
+export function EventFeed({ events = [] }: EventFeedProps) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  const lastEvents = safeEvents.slice(-5).reverse();
 
   return (
     <section style={{ display: "grid", gap: 8 }}>

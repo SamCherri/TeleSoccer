@@ -1,10 +1,25 @@
 import type { MatchEventView } from "../../shared/types/match";
 
 type SceneCardProps = {
-  event: MatchEventView;
+  event?: MatchEventView | null;
+};
+
+const fallbackEvent: MatchEventView = {
+  id: "fallback-event",
+  label: "Lance em preparação",
+  minute: 0,
+  narrativeText: "Sem narrativa disponível.",
+  visualPayload: {
+    frameType: "TACTICAL_MAP",
+    sceneKey: "fallback-scene",
+    zone: "MIDFIELD",
+    assetPath: ""
+  }
 };
 
 export function SceneCard({ event }: SceneCardProps) {
+  const safeEvent = event ?? fallbackEvent;
+
   return (
     <article
       style={{
@@ -26,10 +41,10 @@ export function SceneCard({ event }: SceneCardProps) {
           placeItems: "center"
         }}
       >
-        <span style={{ opacity: 0.9 }}>Cena: {event.visualPayload.sceneKey}</span>
+        <span style={{ opacity: 0.9 }}>Cena: {safeEvent.visualPayload.sceneKey}</span>
       </div>
-      <strong>{event.label}</strong>
-      <p style={{ margin: 0 }}>{event.narrativeText}</p>
+      <strong>{safeEvent.label}</strong>
+      <p style={{ margin: 0 }}>{safeEvent.narrativeText}</p>
     </article>
   );
 }

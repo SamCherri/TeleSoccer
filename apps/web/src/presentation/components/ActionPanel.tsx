@@ -1,7 +1,7 @@
 import type { PlayerActionIntent } from "../../shared/types/match";
 
 type ActionPanelProps = {
-  actions: PlayerActionIntent[];
+  actions?: PlayerActionIntent[];
   disabled?: boolean;
   onAction: (action: PlayerActionIntent) => void;
 };
@@ -15,14 +15,16 @@ const labels: Record<PlayerActionIntent, string> = {
   SWITCH_PLAY: "Inverter jogada"
 };
 
-export function ActionPanel({ actions, disabled = false, onAction }: ActionPanelProps) {
+export function ActionPanel({ actions = [], disabled = false, onAction }: ActionPanelProps) {
+  const safeActions = Array.isArray(actions) ? actions : [];
+
   return (
     <section style={{ display: "grid", gap: 8 }}>
       <h2 style={{ margin: 0, fontSize: 16 }}>Ações disponíveis</h2>
-      {actions.length === 0 ? (
+      {safeActions.length === 0 ? (
         <p style={{ margin: 0, opacity: 0.85 }}>Sem ação manual neste turno.</p>
       ) : (
-        actions.map((action) => (
+        safeActions.map((action) => (
           <button
             key={action}
             type="button"

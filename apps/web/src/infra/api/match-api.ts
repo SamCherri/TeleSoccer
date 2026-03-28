@@ -1,3 +1,4 @@
+import { normalizeMatchState } from "./normalize-match-state";
 import type {
   ApiResponse,
   MatchJoinView,
@@ -37,6 +38,23 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+
+const extractMatchState = (payload: unknown): MatchStateView => {
+  const data = asRecord(asRecord(payload).data);
+  return normalizeMatchState(data.matchState);
+};
+
+const normalizeCycle = (value: unknown): TurnCycle => {
+  const raw = asRecord(value);
+
+  return {
+    mode: raw.mode === "REQUIRES_PLAYER_ACTION" ? "REQUIRES_PLAYER_ACTION" : "AUTO",
+    nextExpectedAction: raw.nextExpectedAction === "SUBMIT_ACTION" ? "SUBMIT_ACTION" : "ADVANCE_TURN"
+  };
+};
+
 export const matchApi = {
   async createMatch(homeTeamName: string, awayTeamName: string): Promise<MatchStateView> {
     const payload = await request<ApiResponse<{ matchState: MatchStateView }>>("/matches", {
@@ -44,7 +62,7 @@ export const matchApi = {
       body: JSON.stringify({ homeTeamName, awayTeamName })
     });
 
-    return payload.data.matchState;
+    return extractMatchState(payload);
   },
 
   async getMatchState(matchId: string, userId?: string): Promise<MatchStateView> {
@@ -53,7 +71,7 @@ export const matchApi = {
       `/matches/${matchId}/state${search}`
     );
 
-    return payload.data.matchState;
+    return extractMatchState(payload);
   },
 
   async submitAction(
@@ -68,7 +86,12 @@ export const matchApi = {
       }
     );
 
-    return payload.data;
+    const data = asRecord(asRecord(payload).data);
+
+    return {
+      matchState: normalizeMatchState(data.matchState),
+      cycle: normalizeCycle(data.cycle)
+    };
   },
 
   async advanceTurn(matchId: string): Promise<{ matchState: MatchStateView; cycle: TurnCycle }> {
@@ -79,7 +102,12 @@ export const matchApi = {
       }
     );
 
-    return payload.data;
+    const data = asRecord(asRecord(payload).data);
+
+    return {
+      matchState: normalizeMatchState(data.matchState),
+      cycle: normalizeCycle(data.cycle)
+    };
   },
 
   async joinMatch(matchId: string): Promise<MatchJoinView> {
@@ -87,7 +115,13 @@ export const matchApi = {
       method: "POST"
     });
 
-    return payload.data.user;
+    const user = asRecord(asRecord(payload).data).user;
+    const parsedUser = asRecord(user);
+
+    return {
+      userId: typeof parsedUser.userId === "string" ? parsedUser.userId : "",
+      displayName: typeof parsedUser.displayName === "string" ? parsedUser.displayName : "Jogador"
+    };
   },
 
   async claimSlot(input: {
@@ -108,6 +142,6 @@ export const matchApi = {
       }
     );
 
-    return payload.data.matchState;
+    return extractMatchState(payload);
   }
 };
