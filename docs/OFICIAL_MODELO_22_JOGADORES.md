@@ -16,6 +16,8 @@ Isso implica suporte obrigatório para composição híbrida:
 
 > Esta é a premissa principal do produto. O modelo “1 usuário controla um time inteiro” deixa de ser a premissa central.
 
+> Observação de escopo desta definição: as 22 vagas representam os **11 titulares de cada lado em campo**. Banco/reservas e substituições ficam como expansão futura do produto.
+
 ---
 
 ## 2) Diagnóstico do estado atual do repositório
@@ -161,6 +163,15 @@ Com isso, cada ação aplicada no turno informa exatamente **quem decidiu**.
    - apenas renderiza “quem está controlando cada vaga” e estado de disponibilidade;
    - não decide resultado de jogada;
    - não implementa fallback de domínio fora da API.
+
+## 5.1 Orquestração de entrada na partida (visão oficial)
+
+Fluxo objetivo para composição de partida híbrida:
+
+1. **Criação da partida**: backend cria `Match` e define as 22 vagas de titulares em `MatchLineup` (11 HOME + 11 AWAY), inicialmente aptas a controle por bot.
+2. **Entrada de usuários**: usuários reais entram na partida e ficam elegíveis para assumir vaga específica.
+3. **Claim de vaga**: usuário associa-se a uma vaga/jogador da escalação, tornando o controle daquela vaga humano quando ativo.
+4. **Composição híbrida humano/bot**: vagas sem usuário (ou com fallback por ausência/inatividade) seguem sob controle bot, preservando continuidade da partida.
 
 ---
 

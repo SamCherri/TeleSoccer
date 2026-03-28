@@ -23,6 +23,8 @@ O TeleSoccer Web adota oficialmente a seguinte premissa central:
 
 Documento oficial detalhado: `docs/OFICIAL_MODELO_22_JOGADORES.md`.
 
+> Esta definição oficializa a visão de produto, mas **não afirma que o multiplayer híbrido completo já está implementado**.
+
 ## Monorepo
 
 - `apps/api` → backend Node.js + TypeScript + Fastify
