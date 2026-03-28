@@ -1,14 +1,10 @@
-import {
-  FrameType,
-  MatchEventType,
-  Prisma,
-  TeamSide,
-  TurnResolutionMode,
-  type PrismaClient
-} from "@prisma/client";
+import { FrameType, MatchEventType, Prisma, TeamSide, TurnResolutionMode, type PrismaClient } from "@prisma/client";
 import type { MatchRepository, PersistTurnInput } from "../../domain/repositories/match-repository.js";
 import type {
+  ClaimSlotFailureReason,
   MatchEventKey,
+  MatchJoinView,
+  MatchLineupSlotView,
   MatchEventView,
   MatchStateView,
   SceneCatalogItem,
@@ -20,6 +16,20 @@ const defaultTacticalContext = {
   zone: "MIDDLE_THIRD",
   notes: "Estado inicial em persistência real"
 };
+
+const starterBlueprint: Array<{ slotNumber: number; position: string; isGoalkeeper?: boolean }> = [
+  { slotNumber: 1, position: "GK", isGoalkeeper: true },
+  { slotNumber: 2, position: "RB" },
+  { slotNumber: 3, position: "RCB" },
+  { slotNumber: 4, position: "LCB" },
+  { slotNumber: 5, position: "LB" },
+  { slotNumber: 6, position: "CDM" },
+  { slotNumber: 7, position: "RCM" },
+  { slotNumber: 8, position: "LCM" },
+  { slotNumber: 9, position: "RW" },
+  { slotNumber: 10, position: "ST" },
+  { slotNumber: 11, position: "LW" }
+];
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -271,36 +281,26 @@ export class PrismaMatchRepository implements MatchRepository {
         }
       });
 
-      const [homePrimary, awayPrimary] = await Promise.all([
-        tx.player.create({
-          data: {
-            teamId: homeTeam.id,
-            name: "Henrique",
-            shirtNumber: 8,
-            pass: 72,
-            dribble: 68,
-            finishing: 61,
-            marking: 55,
-            tackling: 54,
-            positioning: 66,
-            reflex: 28
-          }
+      const [homePlayers, awayPlayers] = await Promise.all([
+        this.createStarterPlayersWithLineup({
+          tx,
+          teamId: homeTeam.id,
+          teamPrefix: "HOME",
+          captainSlotNumber: 8
         }),
-        tx.player.create({
-          data: {
-            teamId: awayTeam.id,
-            name: "Eduardo",
-            shirtNumber: 5,
-            pass: 63,
-            dribble: 58,
-            finishing: 45,
-            marking: 71,
-            tackling: 73,
-            positioning: 69,
-            reflex: 24
-          }
+        this.createStarterPlayersWithLineup({
+          tx,
+          teamId: awayTeam.id,
+          teamPrefix: "AWAY",
+          captainSlotNumber: 5
         })
       ]);
+
+      const homePrimary = homePlayers.find((player) => player.slotNumber === 8) ?? homePlayers[0];
+      const awayPrimary = awayPlayers.find((player) => player.slotNumber === 5) ?? awayPlayers[0];
+      if (!homePrimary || !awayPrimary) {
+        throw new Error("Falha ao montar titulares iniciais da partida.");
+      }
 
       const normalizedInitialEvent: MatchEventView = {
         ...initialState.currentEvent,
@@ -308,11 +308,11 @@ export class PrismaMatchRepository implements MatchRepository {
           ...initialState.currentEvent.visualPayload,
           participants: initialState.currentEvent.visualPayload.participants.map((participant: VisualParticipant) => {
             if (participant.side === "HOME" && participant.displayName === "Henrique") {
-              return { ...participant, playerId: homePrimary.id };
+              return { ...participant, playerId: homePrimary.playerId };
             }
 
             if (participant.side === "AWAY" && participant.displayName === "Eduardo") {
-              return { ...participant, playerId: awayPrimary.id };
+              return { ...participant, playerId: awayPrimary.playerId };
             }
 
             return participant;
@@ -334,6 +334,33 @@ export class PrismaMatchRepository implements MatchRepository {
         }
       });
 
+      await Promise.all([
+        tx.matchLineup.createMany({
+          data: homePlayers.map((player) => ({
+            matchId: match.id,
+            teamId: homeTeam.id,
+            playerId: player.playerId,
+            slotNumber: player.slotNumber,
+            role: "STARTER",
+            position: player.position,
+            isCaptain: player.isCaptain,
+            controlMode: "BOT"
+          }))
+        }),
+        tx.matchLineup.createMany({
+          data: awayPlayers.map((player) => ({
+            matchId: match.id,
+            teamId: awayTeam.id,
+            playerId: player.playerId,
+            slotNumber: player.slotNumber,
+            role: "STARTER",
+            position: player.position,
+            isCaptain: player.isCaptain,
+            controlMode: "BOT"
+          }))
+        })
+      ]);
+
       const createdEvent = await tx.matchEvent.create({
         data: buildMatchEventCreateData({
           matchId: match.id,
@@ -341,8 +368,8 @@ export class PrismaMatchRepository implements MatchRepository {
           event: normalizedInitialEvent,
           turnNumber: initialState.turnNumber,
           minute: initialState.minute,
-          primaryPlayerId: homePrimary.id,
-          secondaryPlayerId: awayPrimary.id
+          primaryPlayerId: homePrimary.playerId,
+          secondaryPlayerId: awayPrimary.playerId
         })
       });
 
@@ -369,12 +396,23 @@ export class PrismaMatchRepository implements MatchRepository {
     return (await this.getMatchState(result.matchId)) as MatchStateView;
   }
 
-  async getMatchState(matchId: string): Promise<MatchStateView | null> {
+  async getMatchState(matchId: string, currentUserId?: string): Promise<MatchStateView | null> {
     const match = await this.prisma.match.findUnique({
       where: { id: matchId },
       include: {
         homeTeam: true,
         awayTeam: true,
+        lineups: {
+          include: {
+            player: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: [{ teamId: "asc" }, { slotNumber: "asc" }]
+        },
         currentEvent: true,
         events: {
           orderBy: [{ turnNumber: "desc" }, { createdAt: "desc" }],
@@ -391,6 +429,16 @@ export class PrismaMatchRepository implements MatchRepository {
     const recent = match.events
       .filter((event) => event.id !== match.currentEventId)
       .map((event) => this.mapEvent(event));
+    const lineup = this.mapLineupSlots({
+      homeTeamId: match.homeTeamId,
+      lineups: match.lineups
+    });
+    const currentUserControl = this.buildCurrentUserControl({
+      currentUserId: currentUserId ?? null,
+      lineup,
+      currentEvent: current,
+      turnResolutionMode: match.turnResolutionMode
+    });
 
     return {
       matchId: match.id,
@@ -405,9 +453,130 @@ export class PrismaMatchRepository implements MatchRepository {
         match.turnResolutionMode === "REQUIRES_PLAYER_ACTION"
           ? ["PASS", "DRIBBLE", "SHOT", "PROTECT_BALL", "PASS_BACK", "SWITCH_PLAY"]
           : [],
+      lineup,
+      currentUserControl,
       currentEvent: current,
       recentEvents: recent
     };
+  }
+
+  async joinMatch(matchId: string): Promise<MatchJoinView | null> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      select: { id: true }
+    });
+    if (!match) {
+      return null;
+    }
+
+    const email = `bootstrap+${matchId}@telesoccer.local`;
+    const user = await this.prisma.user.upsert({
+      where: { email },
+      update: { displayName: "Jogador MVP" },
+      create: {
+        email,
+        displayName: "Jogador MVP"
+      }
+    });
+
+    return {
+      userId: user.id,
+      displayName: user.displayName
+    };
+  }
+
+  async claimLineupSlot(input: {
+    matchId: string;
+    teamSide: TeamSide;
+    slotNumber: number;
+    userId: string;
+  }): Promise<{ matchState: MatchStateView } | { error: ClaimSlotFailureReason }> {
+    const claimResult = await this.prisma.$transaction<
+      { status: "ok" } | { status: "error"; error: ClaimSlotFailureReason }
+    >(async (tx: Prisma.TransactionClient) => {
+      const match = await tx.match.findUnique({
+        where: { id: input.matchId },
+        select: {
+          id: true,
+          homeTeamId: true,
+          awayTeamId: true
+        }
+      });
+
+      if (!match) {
+        return { status: "error", error: "match-not-found" };
+      }
+
+      const user = await tx.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true }
+      });
+      if (!user) {
+        return { status: "error", error: "user-not-found" };
+      }
+
+      const teamId = input.teamSide === "HOME" ? match.homeTeamId : match.awayTeamId;
+
+      const slot = await tx.matchLineup.findUnique({
+        where: {
+          matchId_teamId_slotNumber: {
+            matchId: input.matchId,
+            teamId,
+            slotNumber: input.slotNumber
+          }
+        },
+        select: {
+          id: true,
+          controlMode: true,
+          controllerUserId: true
+        }
+      });
+
+      if (!slot) {
+        return { status: "error", error: "slot-not-found" };
+      }
+
+      if (slot.controlMode === "HUMAN" && slot.controllerUserId !== input.userId) {
+        return { status: "error", error: "slot-already-claimed" };
+      }
+
+      const userAlreadyControlsAnotherSlot = await tx.matchLineup.findFirst({
+        where: {
+          matchId: input.matchId,
+          controllerUserId: input.userId,
+          controlMode: "HUMAN",
+          NOT: {
+            id: slot.id
+          }
+        },
+        select: { id: true }
+      });
+
+      if (userAlreadyControlsAnotherSlot) {
+        return { status: "error", error: "user-already-controls-slot" };
+      }
+
+      await tx.matchLineup.update({
+        where: { id: slot.id },
+        data: {
+          controlMode: "HUMAN",
+          controllerUserId: input.userId
+        }
+      });
+
+      return { status: "ok" };
+    });
+
+    if (claimResult.status === "error") {
+      return { error: claimResult.error };
+    }
+
+    const matchState = await this.getMatchState(input.matchId, input.userId);
+    if (!matchState) {
+      return { error: "match-not-found" };
+    }
+
+    return { matchState };
   }
 
   async persistTurn(input: PersistTurnInput): Promise<MatchStateView | null> {
@@ -501,6 +670,52 @@ export class PrismaMatchRepository implements MatchRepository {
     return sceneCatalog;
   }
 
+  private async createStarterPlayersWithLineup({
+    tx,
+    teamId,
+    teamPrefix,
+    captainSlotNumber
+  }: {
+    tx: Prisma.TransactionClient;
+    teamId: string;
+    teamPrefix: "HOME" | "AWAY";
+    captainSlotNumber: number;
+  }): Promise<Array<{ slotNumber: number; playerId: string; position: string; isCaptain: boolean }>> {
+    const createdPlayers = await Promise.all(
+      starterBlueprint.map(async ({ slotNumber, position, isGoalkeeper }) => {
+        const player = await tx.player.create({
+          data: {
+            teamId,
+            name:
+              teamPrefix === "HOME" && slotNumber === 8
+                ? "Henrique"
+                : teamPrefix === "AWAY" && slotNumber === 5
+                  ? "Eduardo"
+                  : `${teamPrefix}-PLAYER-${slotNumber}`,
+            shirtNumber: slotNumber,
+            isGoalkeeper: isGoalkeeper ?? false,
+            pass: 60,
+            dribble: 60,
+            finishing: 60,
+            marking: 60,
+            tackling: 60,
+            positioning: 60,
+            reflex: isGoalkeeper ? 70 : 35
+          }
+        });
+
+        return {
+          slotNumber,
+          playerId: player.id,
+          position,
+          isCaptain: slotNumber === captainSlotNumber
+        };
+      })
+    );
+
+    return createdPlayers;
+  }
+
   private async resolvePersistedPlayerId({
     tx,
     teamId,
@@ -532,6 +747,79 @@ export class PrismaMatchRepository implements MatchRepository {
     }
 
     return null;
+  }
+
+  private mapLineupSlots({
+    homeTeamId,
+    lineups
+  }: {
+    homeTeamId: string;
+    lineups: Array<{
+      teamId: string;
+      slotNumber: number;
+      position: string;
+      isCaptain: boolean;
+      controlMode: "HUMAN" | "BOT";
+      controllerUserId: string | null;
+      player: { id: string; name: string };
+    }>;
+  }): MatchLineupSlotView[] {
+    return lineups.map((lineup) => ({
+      teamSide: lineup.teamId === homeTeamId ? "HOME" : "AWAY",
+      slotNumber: lineup.slotNumber,
+      playerId: lineup.player.id,
+      playerName: lineup.player.name,
+      position: lineup.position,
+      isCaptain: lineup.isCaptain,
+      controlMode: lineup.controlMode,
+      controllerUserId: lineup.controllerUserId
+    }));
+  }
+
+  private buildCurrentUserControl({
+    currentUserId,
+    lineup,
+    currentEvent,
+    turnResolutionMode
+  }: {
+    currentUserId: string | null;
+    lineup: MatchLineupSlotView[];
+    currentEvent: MatchEventView;
+    turnResolutionMode: MatchStateView["turnResolutionMode"];
+  }): MatchStateView["currentUserControl"] {
+    if (!currentUserId) {
+      return {
+        currentUserId: null,
+        controlledSlots: [],
+        controlledPlayerIds: [],
+        currentEventParticipantControlledByUser: false,
+        currentUserCanAct: false
+      };
+    }
+
+    const controlledSlots = lineup
+      .filter((slot) => slot.controllerUserId === currentUserId && slot.controlMode === "HUMAN")
+      .map((slot) => ({
+        teamSide: slot.teamSide,
+        slotNumber: slot.slotNumber,
+        playerId: slot.playerId,
+        playerName: slot.playerName
+      }));
+
+    const controlledPlayerIds = controlledSlots.map((slot) => slot.playerId);
+    const currentEventParticipantControlledByUser = currentEvent.visualPayload.participants.some((participant) =>
+      controlledPlayerIds.includes(participant.playerId)
+    );
+    const currentUserCanAct =
+      turnResolutionMode === "REQUIRES_PLAYER_ACTION" && currentEventParticipantControlledByUser;
+
+    return {
+      currentUserId,
+      controlledSlots,
+      controlledPlayerIds,
+      currentEventParticipantControlledByUser,
+      currentUserCanAct
+    };
   }
 
   private mapEvent(event: {

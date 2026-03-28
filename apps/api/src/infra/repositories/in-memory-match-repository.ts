@@ -1,5 +1,12 @@
 import type { MatchRepository, PersistTurnInput } from "../../domain/repositories/match-repository.js";
-import type { MatchEventView, MatchStateView, SceneCatalogItem } from "../../shared/contracts/match-contracts.js";
+import type {
+  ClaimSlotFailureReason,
+  MatchEventView,
+  MatchLineupSlotView,
+  MatchStateView,
+  SceneCatalogItem,
+  TeamSide
+} from "../../shared/contracts/match-contracts.js";
 
 const baseEvent: MatchEventView = {
   id: "evt-1",
@@ -80,13 +87,18 @@ const sceneCatalog: SceneCatalogItem[] = [
 export class InMemoryMatchRepository implements MatchRepository {
   private state: MatchStateView | null = null;
   private eventHistory: MatchEventView[] = [];
+  private users = new Map<string, { userId: string; displayName: string }>();
 
   async createMatch(homeTeamName: string, awayTeamName: string, initialState: MatchStateView): Promise<MatchStateView> {
+    const lineup = this.buildStarterLineup();
+
     this.state = {
       ...initialState,
       matchId: crypto.randomUUID(),
       homeTeamName,
       awayTeamName,
+      lineup,
+      currentUserControl: initialState.currentUserControl,
       currentEvent: { ...baseEvent, id: crypto.randomUUID() },
       recentEvents: []
     };
@@ -94,17 +106,85 @@ export class InMemoryMatchRepository implements MatchRepository {
     return this.state;
   }
 
-  async getMatchState(matchId: string): Promise<MatchStateView | null> {
+  async getMatchState(matchId: string, currentUserId?: string): Promise<MatchStateView | null> {
     if (!this.state || this.state.matchId !== matchId) {
       return null;
     }
 
+    const currentUserControl = this.buildCurrentUserControl(currentUserId ?? null, this.state);
+
     return {
       ...this.state,
+      currentUserControl,
       recentEvents: this.eventHistory
         .filter((event) => event.id !== this.state?.currentEvent.id)
         .slice(-5)
         .reverse()
+    };
+  }
+
+  async joinMatch(matchId: string): Promise<{ userId: string; displayName: string } | null> {
+    if (!this.state || this.state.matchId !== matchId) {
+      return null;
+    }
+
+    const existing = this.users.get(matchId);
+    if (existing) {
+      return existing;
+    }
+
+    const bootstrapUser = {
+      userId: `bootstrap-${matchId}`,
+      displayName: "Jogador MVP"
+    };
+
+    this.users.set(matchId, bootstrapUser);
+    return bootstrapUser;
+  }
+
+  async claimLineupSlot(input: {
+    matchId: string;
+    teamSide: TeamSide;
+    slotNumber: number;
+    userId: string;
+  }): Promise<{ matchState: MatchStateView } | { error: ClaimSlotFailureReason }> {
+    if (!this.state || this.state.matchId !== input.matchId) {
+      return { error: "match-not-found" };
+    }
+
+    if (![...this.users.values()].some((user) => user.userId === input.userId)) {
+      return { error: "user-not-found" };
+    }
+
+    const slot = this.state.lineup.find(
+      (item) => item.teamSide === input.teamSide && item.slotNumber === input.slotNumber
+    );
+
+    if (!slot) {
+      return { error: "slot-not-found" };
+    }
+
+    if (slot.controlMode === "HUMAN" && slot.controllerUserId !== input.userId) {
+      return { error: "slot-already-claimed" };
+    }
+    const alreadyControlsOtherSlot = this.state.lineup.some(
+      (lineupSlot) =>
+        lineupSlot.controllerUserId === input.userId &&
+        lineupSlot.controlMode === "HUMAN" &&
+        !(lineupSlot.teamSide === input.teamSide && lineupSlot.slotNumber === input.slotNumber)
+    );
+    if (alreadyControlsOtherSlot) {
+      return { error: "user-already-controls-slot" };
+    }
+
+    slot.controlMode = "HUMAN";
+    slot.controllerUserId = input.userId;
+
+    return {
+      matchState: {
+        ...this.state,
+        currentUserControl: this.buildCurrentUserControl(input.userId, this.state)
+      }
     };
   }
 
@@ -134,5 +214,64 @@ export class InMemoryMatchRepository implements MatchRepository {
 
   async getSceneCatalog(): Promise<SceneCatalogItem[]> {
     return sceneCatalog;
+  }
+
+  private buildStarterLineup(): MatchLineupSlotView[] {
+    const positions = ["GK", "RB", "RCB", "LCB", "LB", "CDM", "RCM", "LCM", "RW", "ST", "LW"] as const;
+
+    const createTeamLineup = (teamSide: TeamSide) =>
+      positions.map((position, index) => ({
+        teamSide,
+        slotNumber: index + 1,
+        playerId: `${teamSide}-player-${index + 1}`,
+        playerName:
+          teamSide === "HOME" && index + 1 === 8
+            ? "Henrique"
+            : teamSide === "AWAY" && index + 1 === 5
+              ? "Eduardo"
+              : `${teamSide}-PLAYER-${index + 1}`,
+        position,
+        isCaptain: teamSide === "HOME" ? index + 1 === 8 : index + 1 === 5,
+        controlMode: "BOT" as const,
+        controllerUserId: null
+      }));
+
+    return [...createTeamLineup("HOME"), ...createTeamLineup("AWAY")];
+  }
+
+  private buildCurrentUserControl(currentUserId: string | null, state: MatchStateView): MatchStateView["currentUserControl"] {
+    if (!currentUserId) {
+      return {
+        currentUserId: null,
+        controlledSlots: [],
+        controlledPlayerIds: [],
+        currentEventParticipantControlledByUser: false,
+        currentUserCanAct: false
+      };
+    }
+
+    const controlledSlots = state.lineup
+      .filter((slot) => slot.controllerUserId === currentUserId && slot.controlMode === "HUMAN")
+      .map((slot) => ({
+        teamSide: slot.teamSide,
+        slotNumber: slot.slotNumber,
+        playerId: slot.playerId,
+        playerName: slot.playerName
+      }));
+
+    const controlledPlayerIds = controlledSlots.map((slot) => slot.playerId);
+    const currentEventParticipantControlledByUser = state.currentEvent.visualPayload.participants.some((participant) =>
+      controlledPlayerIds.includes(participant.playerId)
+    );
+    const currentUserCanAct =
+      state.turnResolutionMode === "REQUIRES_PLAYER_ACTION" && currentEventParticipantControlledByUser;
+
+    return {
+      currentUserId,
+      controlledSlots,
+      controlledPlayerIds,
+      currentEventParticipantControlledByUser,
+      currentUserCanAct
+    };
   }
 }

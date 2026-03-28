@@ -5,8 +5,11 @@ import {
 } from "../../domain/entities/match-aggregate.js";
 import type { MatchRepository } from "../../domain/repositories/match-repository.js";
 import type {
+  ClaimSlotFailureReason,
+  MatchJoinView,
   MatchStateView,
   PlayerActionIntent,
+  TeamSide,
   TurnAdvanceResponse
 } from "../../shared/contracts/match-contracts.js";
 
@@ -20,6 +23,14 @@ const buildBaseState = (): MatchStateView => ({
   turnNumber: 1,
   turnResolutionMode: "REQUIRES_PLAYER_ACTION",
   availableActions: ["PASS", "DRIBBLE", "PASS_BACK", "SWITCH_PLAY"],
+  lineup: [],
+  currentUserControl: {
+    currentUserId: null,
+    controlledSlots: [],
+    controlledPlayerIds: [],
+    currentEventParticipantControlledByUser: false,
+    currentUserCanAct: false
+  },
   currentEvent: {
     id: "evt-bootstrap",
     key: "pass-received",
@@ -76,8 +87,21 @@ export class MatchApplicationService {
     return this.repository.createMatch(homeTeamName, awayTeamName, buildBaseState());
   }
 
-  getMatchState(matchId: string) {
-    return this.repository.getMatchState(matchId);
+  getMatchState(matchId: string, currentUserId?: string) {
+    return this.repository.getMatchState(matchId, currentUserId);
+  }
+
+  joinMatch(matchId: string): Promise<MatchJoinView | null> {
+    return this.repository.joinMatch(matchId);
+  }
+
+  claimSlot(input: {
+    matchId: string;
+    teamSide: TeamSide;
+    slotNumber: number;
+    userId: string;
+  }): Promise<{ matchState: MatchStateView } | { error: ClaimSlotFailureReason }> {
+    return this.repository.claimLineupSlot(input);
   }
 
   async submitAction(matchId: string, action: PlayerActionIntent): Promise<TurnAdvanceResponse | null> {

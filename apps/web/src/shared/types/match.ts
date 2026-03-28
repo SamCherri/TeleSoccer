@@ -9,6 +9,7 @@ export type PlayerActionIntent =
   | "SWITCH_PLAY";
 
 export type TurnResolutionMode = "AUTO" | "REQUIRES_PLAYER_ACTION";
+export type LineupControlMode = "HUMAN" | "BOT";
 
 export interface VisualPayload {
   frameType: "TACTICAL_MAP" | "DUEL_SCENE" | "SHOT_SCENE" | "SAVE_SCENE" | "GOAL_SCENE";
@@ -25,6 +26,30 @@ export interface MatchEventView {
   visualPayload: VisualPayload;
 }
 
+export interface MatchLineupSlotView {
+  teamSide: TeamSide;
+  slotNumber: number;
+  playerId: string;
+  playerName: string;
+  position: string;
+  isCaptain: boolean;
+  controlMode: LineupControlMode;
+  controllerUserId: string | null;
+}
+
+export interface CurrentUserControlView {
+  currentUserId: string | null;
+  controlledSlots: Array<{
+    teamSide: TeamSide;
+    slotNumber: number;
+    playerId: string;
+    playerName: string;
+  }>;
+  controlledPlayerIds: string[];
+  currentEventParticipantControlledByUser: boolean;
+  currentUserCanAct: boolean;
+}
+
 export interface MatchStateView {
   matchId: string;
   minute: number;
@@ -38,6 +63,8 @@ export interface MatchStateView {
   turnNumber: number;
   turnResolutionMode: TurnResolutionMode;
   availableActions: PlayerActionIntent[];
+  lineup: MatchLineupSlotView[];
+  currentUserControl: CurrentUserControlView;
   currentEvent: MatchEventView;
   recentEvents: MatchEventView[];
 }
@@ -49,4 +76,9 @@ export interface TurnCycle {
 
 export interface ApiResponse<T> {
   data: T;
+}
+
+export interface MatchJoinView {
+  userId: string;
+  displayName: string;
 }

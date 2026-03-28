@@ -38,6 +38,7 @@ export type PlayerActionIntent =
   | "SWITCH_PLAY";
 
 export type TurnResolutionMode = "AUTO" | "REQUIRES_PLAYER_ACTION";
+export type LineupControlMode = "HUMAN" | "BOT";
 
 export interface VisualParticipant {
   playerId: string;
@@ -86,6 +87,30 @@ export interface MatchScore {
   away: number;
 }
 
+export interface MatchLineupSlotView {
+  teamSide: TeamSide;
+  slotNumber: number;
+  playerId: string;
+  playerName: string;
+  position: string;
+  isCaptain: boolean;
+  controlMode: LineupControlMode;
+  controllerUserId: string | null;
+}
+
+export interface CurrentUserControlView {
+  currentUserId: string | null;
+  controlledSlots: Array<{
+    teamSide: TeamSide;
+    slotNumber: number;
+    playerId: string;
+    playerName: string;
+  }>;
+  controlledPlayerIds: string[];
+  currentEventParticipantControlledByUser: boolean;
+  currentUserCanAct: boolean;
+}
+
 export interface MatchStateView {
   matchId: string;
   minute: number;
@@ -96,6 +121,8 @@ export interface MatchStateView {
   turnNumber: number;
   turnResolutionMode: TurnResolutionMode;
   availableActions: PlayerActionIntent[];
+  lineup: MatchLineupSlotView[];
+  currentUserControl: CurrentUserControlView;
   currentEvent: MatchEventView;
   recentEvents: MatchEventView[];
 }
@@ -135,3 +162,15 @@ export interface TurnAdvanceResponse {
     nextExpectedAction: "ADVANCE_TURN" | "SUBMIT_ACTION";
   };
 }
+
+export interface MatchJoinView {
+  userId: string;
+  displayName: string;
+}
+
+export type ClaimSlotFailureReason =
+  | "match-not-found"
+  | "slot-not-found"
+  | "slot-already-claimed"
+  | "user-already-controls-slot"
+  | "user-not-found";

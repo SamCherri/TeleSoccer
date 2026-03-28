@@ -50,6 +50,11 @@ enum MatchLineupRole {
   BENCH
 }
 
+enum LineupControlMode {
+  HUMAN
+  BOT
+}
+
 enum ParticipantActionStatus {
   PENDING
   APPLIED
@@ -64,6 +69,7 @@ model User {
   updatedAt   DateTime @updatedAt
 
   teams Team[]
+  controlledLineups MatchLineup[] @relation("MatchLineupControllerUser")
 }
 
 model Team {
@@ -183,20 +189,27 @@ model MatchEvent {
 }
 
 model MatchLineup {
-  id         String         @id @default(uuid())
-  matchId    String
-  teamId     String
-  playerId   String
-  role       MatchLineupRole @default(STARTER)
-  position   String
-  isCaptain  Boolean          @default(false)
-  createdAt  DateTime         @default(now())
+  id               String            @id @default(uuid())
+  matchId          String
+  teamId           String
+  playerId         String
+  slotNumber       Int
+  role             MatchLineupRole   @default(STARTER)
+  position         String
+  isCaptain        Boolean           @default(false)
+  controlMode      LineupControlMode @default(BOT)
+  controllerUserId String?
+  createdAt        DateTime          @default(now())
 
   match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
   team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  controllerUser User? @relation("MatchLineupControllerUser", fields: [controllerUserId], references: [id], onDelete: SetNull)
 
+  @@unique([matchId, teamId, slotNumber])
   @@unique([matchId, teamId, playerId])
+  @@index([matchId, teamId, controlMode])
+  @@index([matchId, controllerUserId])
 }
 
 model MatchParticipantAction {

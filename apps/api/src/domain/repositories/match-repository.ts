@@ -1,5 +1,7 @@
 import type {
+  ClaimSlotFailureReason,
   MatchEventView,
+  MatchJoinView,
   MatchStateView,
   PlayerActionIntent,
   SceneCatalogItem,
@@ -18,7 +20,14 @@ export type PersistTurnInput = {
 
 export interface MatchRepository {
   createMatch(homeTeamName: string, awayTeamName: string, initialState: MatchStateView): Promise<MatchStateView>;
-  getMatchState(matchId: string): Promise<MatchStateView | null>;
+  getMatchState(matchId: string, currentUserId?: string): Promise<MatchStateView | null>;
+  joinMatch(matchId: string): Promise<MatchJoinView | null>;
+  claimLineupSlot(input: {
+    matchId: string;
+    teamSide: TeamSide;
+    slotNumber: number;
+    userId: string;
+  }): Promise<{ matchState: MatchStateView } | { error: ClaimSlotFailureReason }>;
   persistTurn(input: PersistTurnInput): Promise<MatchStateView | null>;
   getSceneCatalog(): Promise<SceneCatalogItem[]>;
 }
