@@ -121,6 +121,17 @@ Ao criar o serviço do frontend no Railway, usar os parâmetros abaixo:
 
 > Essa configuração mantém o deploy do WEB separado da API e evita acoplamento indevido.
 
+### Campos exatos para preencher no Railway (mobile)
+
+- **Root Directory**
+  - `apps/web`
+- **Build Command**
+  - `npm run build`
+- **Start Command**
+  - `npm run preview -- --host 0.0.0.0 --port $PORT`
+- **Variable**
+  - `VITE_API_URL=https://SEU-DOMINIO-DA-API`
+
 ---
 
 ## 5) Checklist de publicação (ETAPA 5)
