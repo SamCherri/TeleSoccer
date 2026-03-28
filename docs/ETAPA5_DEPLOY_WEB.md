@@ -105,6 +105,8 @@ npm run build -w @telesoccer/web
 npm run preview -w @telesoccer/web
 ```
 
+> Observação: para a fase atual de validação operacional, usar `vite preview` no deploy é aceitável; para longo prazo, avalie hosting estático dedicado como solução final.
+
 ---
 
 
