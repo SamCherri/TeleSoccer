@@ -107,6 +107,20 @@ npm run preview -w @telesoccer/web
 
 ---
 
+
+## 4.1) Configuração prática do serviço WEB no Railway
+
+Ao criar o serviço do frontend no Railway, usar os parâmetros abaixo:
+
+- **Root Directory:** `apps/web`
+- **Build Command:** `npm run build`
+- **Start Command:** `npm run preview -- --host 0.0.0.0 --port $PORT`
+- **Variável obrigatória:** `VITE_API_URL=https://<dominio-da-api>`
+
+> Essa configuração mantém o deploy do WEB separado da API e evita acoplamento indevido.
+
+---
+
 ## 5) Checklist de publicação (ETAPA 5)
 
 1. Criar serviço WEB separado.
