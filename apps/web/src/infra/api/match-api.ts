@@ -47,9 +47,10 @@ export const matchApi = {
     return payload.data.matchState;
   },
 
-  async getMatchState(matchId: string): Promise<MatchStateView> {
+  async getMatchState(matchId: string, userId?: string): Promise<MatchStateView> {
+    const search = userId ? `?userId=${encodeURIComponent(userId)}` : "";
     const payload = await request<ApiResponse<{ matchState: MatchStateView }>>(
-      `/matches/${matchId}/state`
+      `/matches/${matchId}/state${search}`
     );
 
     return payload.data.matchState;

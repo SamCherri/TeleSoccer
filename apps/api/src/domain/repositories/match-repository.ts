@@ -20,7 +20,7 @@ export type PersistTurnInput = {
 
 export interface MatchRepository {
   createMatch(homeTeamName: string, awayTeamName: string, initialState: MatchStateView): Promise<MatchStateView>;
-  getMatchState(matchId: string): Promise<MatchStateView | null>;
+  getMatchState(matchId: string, currentUserId?: string): Promise<MatchStateView | null>;
   joinMatch(matchId: string): Promise<MatchJoinView | null>;
   claimLineupSlot(input: {
     matchId: string;

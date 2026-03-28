@@ -22,6 +22,9 @@ export function MatchPage() {
     advanceTurn
   } = useMatchUiStore();
 
+  const hasUser = Boolean(userId);
+  const userCanAct = matchState?.currentUserControl.currentUserCanAct ?? false;
+
   useEffect(() => {
     if (!matchState) {
       void bootstrapMatch();
@@ -90,17 +93,38 @@ export function MatchPage() {
 
         <LineupPanel
           lineup={matchState.lineup}
-          canClaim={Boolean(userId)}
+          canClaim={hasUser}
           isLoading={isLoading}
           onClaim={(teamSide, slotNumber) => {
             void claimSlot(teamSide, slotNumber);
           }}
         />
 
+        <section style={{ display: "grid", gap: 4 }}>
+          <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
+            Usuário conectado: {hasUser ? userDisplayName ?? userId : "nenhum"}
+          </p>
+          <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
+            Slot controlado:{" "}
+            {matchState.currentUserControl.controlledSlots.length > 0
+              ? matchState.currentUserControl.controlledSlots
+                  .map((slot) => `${slot.teamSide} #${slot.slotNumber} (${slot.playerName})`)
+                  .join(", ")
+              : "nenhum"}
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: userCanAct ? "#baf7c8" : "#f2f6fa", opacity: 0.95 }}>
+            {hasUser
+              ? userCanAct
+                ? "Seu jogador está no lance atual."
+                : "Aguardando lance do seu jogador."
+              : "Entre na partida para controlar uma vaga."}
+          </p>
+        </section>
+
         <SceneCard event={matchState.currentEvent} />
         <ActionPanel
           actions={matchState.availableActions}
-          disabled={isLoading || matchState.turnResolutionMode !== "REQUIRES_PLAYER_ACTION"}
+          disabled={isLoading || !hasUser || !userCanAct || matchState.turnResolutionMode !== "REQUIRES_PLAYER_ACTION"}
           onAction={(action) => {
             void sendAction(action);
           }}

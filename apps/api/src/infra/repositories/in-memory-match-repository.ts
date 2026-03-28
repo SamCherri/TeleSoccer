@@ -98,6 +98,7 @@ export class InMemoryMatchRepository implements MatchRepository {
       homeTeamName,
       awayTeamName,
       lineup,
+      currentUserControl: initialState.currentUserControl,
       currentEvent: { ...baseEvent, id: crypto.randomUUID() },
       recentEvents: []
     };
@@ -105,13 +106,16 @@ export class InMemoryMatchRepository implements MatchRepository {
     return this.state;
   }
 
-  async getMatchState(matchId: string): Promise<MatchStateView | null> {
+  async getMatchState(matchId: string, currentUserId?: string): Promise<MatchStateView | null> {
     if (!this.state || this.state.matchId !== matchId) {
       return null;
     }
 
+    const currentUserControl = this.buildCurrentUserControl(currentUserId ?? null, this.state);
+
     return {
       ...this.state,
+      currentUserControl,
       recentEvents: this.eventHistory
         .filter((event) => event.id !== this.state?.currentEvent.id)
         .slice(-5)
@@ -163,11 +167,25 @@ export class InMemoryMatchRepository implements MatchRepository {
     if (slot.controlMode === "HUMAN" && slot.controllerUserId !== input.userId) {
       return { error: "slot-already-claimed" };
     }
+    const alreadyControlsOtherSlot = this.state.lineup.some(
+      (lineupSlot) =>
+        lineupSlot.controllerUserId === input.userId &&
+        lineupSlot.controlMode === "HUMAN" &&
+        !(lineupSlot.teamSide === input.teamSide && lineupSlot.slotNumber === input.slotNumber)
+    );
+    if (alreadyControlsOtherSlot) {
+      return { error: "user-already-controls-slot" };
+    }
 
     slot.controlMode = "HUMAN";
     slot.controllerUserId = input.userId;
 
-    return { matchState: this.state };
+    return {
+      matchState: {
+        ...this.state,
+        currentUserControl: this.buildCurrentUserControl(input.userId, this.state)
+      }
+    };
   }
 
   async persistTurn(input: PersistTurnInput): Promise<MatchStateView | null> {
@@ -219,5 +237,41 @@ export class InMemoryMatchRepository implements MatchRepository {
       }));
 
     return [...createTeamLineup("HOME"), ...createTeamLineup("AWAY")];
+  }
+
+  private buildCurrentUserControl(currentUserId: string | null, state: MatchStateView): MatchStateView["currentUserControl"] {
+    if (!currentUserId) {
+      return {
+        currentUserId: null,
+        controlledSlots: [],
+        controlledPlayerIds: [],
+        currentEventParticipantControlledByUser: false,
+        currentUserCanAct: false
+      };
+    }
+
+    const controlledSlots = state.lineup
+      .filter((slot) => slot.controllerUserId === currentUserId && slot.controlMode === "HUMAN")
+      .map((slot) => ({
+        teamSide: slot.teamSide,
+        slotNumber: slot.slotNumber,
+        playerId: slot.playerId,
+        playerName: slot.playerName
+      }));
+
+    const controlledPlayerIds = controlledSlots.map((slot) => slot.playerId);
+    const currentEventParticipantControlledByUser = state.currentEvent.visualPayload.participants.some((participant) =>
+      controlledPlayerIds.includes(participant.playerId)
+    );
+    const currentUserCanAct =
+      state.turnResolutionMode === "REQUIRES_PLAYER_ACTION" && currentEventParticipantControlledByUser;
+
+    return {
+      currentUserId,
+      controlledSlots,
+      controlledPlayerIds,
+      currentEventParticipantControlledByUser,
+      currentUserCanAct
+    };
   }
 }

@@ -4,6 +4,7 @@ import { MatchApplicationService } from "../../../application/services/match-app
 import type { ApiResponse } from "../../../shared/contracts/match-contracts.js";
 
 const paramsSchema = z.object({ matchId: z.string().min(1) });
+const stateQuerySchema = z.object({ userId: z.string().min(1).optional() });
 
 const actionSchema = z.object({
   action: z.enum(["PASS", "DRIBBLE", "SHOT", "PROTECT_BALL", "PASS_BACK", "SWITCH_PLAY"])
@@ -49,11 +50,15 @@ export const registerMatchRoutes = (
 
   server.get("/matches/:matchId/state", async (request, reply) => {
     const parse = paramsSchema.safeParse(request.params);
+    const queryParse = stateQuerySchema.safeParse(request.query);
     if (!parse.success) {
       return reply.status(400).send(response({ error: parse.error.flatten() }));
     }
+    if (!queryParse.success) {
+      return reply.status(400).send(response({ error: queryParse.error.flatten() }));
+    }
 
-    const matchState = await matchService.getMatchState(parse.data.matchId);
+    const matchState = await matchService.getMatchState(parse.data.matchId, queryParse.data.userId);
     if (!matchState) {
       return reply.status(404).send(response({ error: "match-not-found" }));
     }
@@ -138,6 +143,9 @@ export const registerMatchRoutes = (
       }
 
       if (result.error === "slot-already-claimed") {
+        return reply.status(409).send(response({ error: result.error }));
+      }
+      if (result.error === "user-already-controls-slot") {
         return reply.status(409).send(response({ error: result.error }));
       }
 

@@ -396,7 +396,7 @@ export class PrismaMatchRepository implements MatchRepository {
     return (await this.getMatchState(result.matchId)) as MatchStateView;
   }
 
-  async getMatchState(matchId: string): Promise<MatchStateView | null> {
+  async getMatchState(matchId: string, currentUserId?: string): Promise<MatchStateView | null> {
     const match = await this.prisma.match.findUnique({
       where: { id: matchId },
       include: {
@@ -433,6 +433,12 @@ export class PrismaMatchRepository implements MatchRepository {
       homeTeamId: match.homeTeamId,
       lineups: match.lineups
     });
+    const currentUserControl = this.buildCurrentUserControl({
+      currentUserId: currentUserId ?? null,
+      lineup,
+      currentEvent: current,
+      turnResolutionMode: match.turnResolutionMode
+    });
 
     return {
       matchId: match.id,
@@ -448,6 +454,7 @@ export class PrismaMatchRepository implements MatchRepository {
           ? ["PASS", "DRIBBLE", "SHOT", "PROTECT_BALL", "PASS_BACK", "SWITCH_PLAY"]
           : [],
       lineup,
+      currentUserControl,
       currentEvent: current,
       recentEvents: recent
     };
@@ -533,6 +540,22 @@ export class PrismaMatchRepository implements MatchRepository {
         return { status: "error", error: "slot-already-claimed" };
       }
 
+      const userAlreadyControlsAnotherSlot = await tx.matchLineup.findFirst({
+        where: {
+          matchId: input.matchId,
+          controllerUserId: input.userId,
+          controlMode: "HUMAN",
+          NOT: {
+            id: slot.id
+          }
+        },
+        select: { id: true }
+      });
+
+      if (userAlreadyControlsAnotherSlot) {
+        return { status: "error", error: "user-already-controls-slot" };
+      }
+
       await tx.matchLineup.update({
         where: { id: slot.id },
         data: {
@@ -548,7 +571,7 @@ export class PrismaMatchRepository implements MatchRepository {
       return { error: claimResult.error };
     }
 
-    const matchState = await this.getMatchState(input.matchId);
+    const matchState = await this.getMatchState(input.matchId, input.userId);
     if (!matchState) {
       return { error: "match-not-found" };
     }
@@ -751,6 +774,52 @@ export class PrismaMatchRepository implements MatchRepository {
       controlMode: lineup.controlMode,
       controllerUserId: lineup.controllerUserId
     }));
+  }
+
+  private buildCurrentUserControl({
+    currentUserId,
+    lineup,
+    currentEvent,
+    turnResolutionMode
+  }: {
+    currentUserId: string | null;
+    lineup: MatchLineupSlotView[];
+    currentEvent: MatchEventView;
+    turnResolutionMode: MatchStateView["turnResolutionMode"];
+  }): MatchStateView["currentUserControl"] {
+    if (!currentUserId) {
+      return {
+        currentUserId: null,
+        controlledSlots: [],
+        controlledPlayerIds: [],
+        currentEventParticipantControlledByUser: false,
+        currentUserCanAct: false
+      };
+    }
+
+    const controlledSlots = lineup
+      .filter((slot) => slot.controllerUserId === currentUserId && slot.controlMode === "HUMAN")
+      .map((slot) => ({
+        teamSide: slot.teamSide,
+        slotNumber: slot.slotNumber,
+        playerId: slot.playerId,
+        playerName: slot.playerName
+      }));
+
+    const controlledPlayerIds = controlledSlots.map((slot) => slot.playerId);
+    const currentEventParticipantControlledByUser = currentEvent.visualPayload.participants.some((participant) =>
+      controlledPlayerIds.includes(participant.playerId)
+    );
+    const currentUserCanAct =
+      turnResolutionMode === "REQUIRES_PLAYER_ACTION" && currentEventParticipantControlledByUser;
+
+    return {
+      currentUserId,
+      controlledSlots,
+      controlledPlayerIds,
+      currentEventParticipantControlledByUser,
+      currentUserCanAct
+    };
   }
 
   private mapEvent(event: {

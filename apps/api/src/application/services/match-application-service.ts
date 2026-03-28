@@ -24,6 +24,13 @@ const buildBaseState = (): MatchStateView => ({
   turnResolutionMode: "REQUIRES_PLAYER_ACTION",
   availableActions: ["PASS", "DRIBBLE", "PASS_BACK", "SWITCH_PLAY"],
   lineup: [],
+  currentUserControl: {
+    currentUserId: null,
+    controlledSlots: [],
+    controlledPlayerIds: [],
+    currentEventParticipantControlledByUser: false,
+    currentUserCanAct: false
+  },
   currentEvent: {
     id: "evt-bootstrap",
     key: "pass-received",
@@ -80,8 +87,8 @@ export class MatchApplicationService {
     return this.repository.createMatch(homeTeamName, awayTeamName, buildBaseState());
   }
 
-  getMatchState(matchId: string) {
-    return this.repository.getMatchState(matchId);
+  getMatchState(matchId: string, currentUserId?: string) {
+    return this.repository.getMatchState(matchId, currentUserId);
   }
 
   joinMatch(matchId: string): Promise<MatchJoinView | null> {

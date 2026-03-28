@@ -39,13 +39,14 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
   },
 
   async refreshMatchState() {
-    const matchId = get().matchState?.matchId;
+    const { matchState, userId } = get();
+    const matchId = matchState?.matchId;
     if (!matchId) return;
 
     try {
       set({ isLoading: true, errorMessage: null });
-      const matchState = await matchApi.getMatchState(matchId);
-      set({ matchState, isLoading: false });
+      const refreshed = await matchApi.getMatchState(matchId, userId ?? undefined);
+      set({ matchState: refreshed, isLoading: false });
     } catch (error) {
       set({
         isLoading: false,
@@ -61,7 +62,9 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
     try {
       set({ isLoading: true, errorMessage: null });
       const user = await matchApi.joinMatch(matchId);
+      const refreshed = await matchApi.getMatchState(matchId, user.userId);
       set({
+        matchState: refreshed,
         userId: user.userId,
         userDisplayName: user.displayName,
         isLoading: false
@@ -97,6 +100,8 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
       const errorMessage =
         raw === "slot-already-claimed"
           ? "Esta vaga já foi assumida por outro usuário."
+          : raw === "user-already-controls-slot"
+            ? "Você já controla uma vaga nesta partida."
           : raw === "slot-not-found"
             ? "A vaga selecionada não existe."
             : raw === "user-not-found"
@@ -117,7 +122,8 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
     try {
       set({ isLoading: true, errorMessage: null });
       const { matchState, cycle } = await matchApi.submitAction(matchId, action);
-      set({ matchState, cycle, isLoading: false });
+      const refreshed = await matchApi.getMatchState(matchId, get().userId ?? undefined);
+      set({ matchState: refreshed ?? matchState, cycle, isLoading: false });
     } catch (error) {
       set({
         isLoading: false,
@@ -133,7 +139,8 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
     try {
       set({ isLoading: true, errorMessage: null });
       const { matchState, cycle } = await matchApi.advanceTurn(matchId);
-      set({ matchState, cycle, isLoading: false });
+      const refreshed = await matchApi.getMatchState(matchId, get().userId ?? undefined);
+      set({ matchState: refreshed ?? matchState, cycle, isLoading: false });
     } catch (error) {
       set({
         isLoading: false,

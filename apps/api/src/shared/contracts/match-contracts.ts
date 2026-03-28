@@ -98,6 +98,19 @@ export interface MatchLineupSlotView {
   controllerUserId: string | null;
 }
 
+export interface CurrentUserControlView {
+  currentUserId: string | null;
+  controlledSlots: Array<{
+    teamSide: TeamSide;
+    slotNumber: number;
+    playerId: string;
+    playerName: string;
+  }>;
+  controlledPlayerIds: string[];
+  currentEventParticipantControlledByUser: boolean;
+  currentUserCanAct: boolean;
+}
+
 export interface MatchStateView {
   matchId: string;
   minute: number;
@@ -109,6 +122,7 @@ export interface MatchStateView {
   turnResolutionMode: TurnResolutionMode;
   availableActions: PlayerActionIntent[];
   lineup: MatchLineupSlotView[];
+  currentUserControl: CurrentUserControlView;
   currentEvent: MatchEventView;
   recentEvents: MatchEventView[];
 }
@@ -158,4 +172,5 @@ export type ClaimSlotFailureReason =
   | "match-not-found"
   | "slot-not-found"
   | "slot-already-claimed"
+  | "user-already-controls-slot"
   | "user-not-found";
