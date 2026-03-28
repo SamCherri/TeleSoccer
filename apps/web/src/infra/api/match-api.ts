@@ -1,21 +1,59 @@
 import type { ApiResponse, MatchStateView, PlayerActionIntent, TurnCycle } from "../../shared/types/match";
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status?: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      "Content-Type": "application/json"
-    },
-    ...init
-  });
+const apiBaseUrl = (import.meta.env.VITE_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API ${response.status}: ${errorText}`);
+const resolveErrorMessage = async (response: Response): Promise<string> => {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const payload = (await response.json()) as { data?: { error?: string | { message?: string } } };
+    const error = payload?.data?.error;
+
+    if (typeof error === "string") {
+      return error;
+    }
+
+    if (typeof error === "object" && error?.message) {
+      return error.message;
+    }
   }
 
-  return response.json() as Promise<T>;
+  const fallbackText = await response.text();
+  return fallbackText || response.statusText || "erro-desconhecido";
+};
+
+const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      headers: {
+        "Content-Type": "application/json"
+      },
+      ...init
+    });
+
+    if (!response.ok) {
+      const errorMessage = await resolveErrorMessage(response);
+      throw new ApiRequestError(`API ${response.status}: ${errorMessage}`, response.status);
+    }
+
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      throw error;
+    }
+
+    throw new ApiRequestError(
+      "Não foi possível conectar à API. Verifique a publicação do backend e o CORS.",
+      undefined
+    );
+  }
 };
 
 export const matchApi = {

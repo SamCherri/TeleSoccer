@@ -6,9 +6,27 @@ import { MatchHeader } from "../components/MatchHeader";
 import { PossessionIndicator } from "../components/PossessionIndicator";
 import { SceneCard } from "../components/SceneCard";
 
+const secondaryButtonStyle = {
+  borderRadius: 10,
+  border: "1px solid #3a678f",
+  background: "#0b2f4b",
+  color: "#fff",
+  padding: "10px 12px",
+  fontSize: 14,
+  cursor: "pointer"
+} as const;
+
 export function MatchPage() {
-  const { matchState, cycle, isLoading, errorMessage, bootstrapMatch, sendAction, advanceTurn } =
-    useMatchUiStore();
+  const {
+    matchState,
+    cycle,
+    isLoading,
+    errorMessage,
+    bootstrapMatch,
+    refreshMatchState,
+    sendAction,
+    advanceTurn
+  } = useMatchUiStore();
 
   useEffect(() => {
     if (!matchState) {
@@ -18,9 +36,20 @@ export function MatchPage() {
 
   if (!matchState) {
     return (
-      <main style={{ color: "#fff", padding: 16 }}>
-        <p>{isLoading ? "Criando partida..." : "Inicializando partida."}</p>
-        {errorMessage ? <p>Erro: {errorMessage}</p> : null}
+      <main style={{ color: "#fff", padding: 16, display: "grid", gap: 12 }}>
+        <p style={{ margin: 0 }}>{isLoading ? "Conectando com a partida..." : "Inicializando partida."}</p>
+        {errorMessage ? <p style={{ margin: 0, color: "#ffd6d6" }}>Erro: {errorMessage}</p> : null}
+        {!isLoading ? (
+          <button
+            type="button"
+            onClick={() => {
+              void bootstrapMatch();
+            }}
+            style={{ ...secondaryButtonStyle, maxWidth: 220 }}
+          >
+            Tentar novamente
+          </button>
+        ) : null}
       </main>
     );
   }
@@ -79,6 +108,21 @@ export function MatchPage() {
           }}
         >
           Avançar turno
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            void refreshMatchState();
+          }}
+          disabled={isLoading}
+          style={{
+            ...secondaryButtonStyle,
+            cursor: isLoading ? "not-allowed" : "pointer",
+            opacity: isLoading ? 0.65 : 1
+          }}
+        >
+          Atualizar estado
         </button>
 
         <EventFeed events={matchState.recentEvents} />

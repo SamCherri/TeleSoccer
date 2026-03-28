@@ -5,13 +5,24 @@ import { createMatchRepository } from "../../infra/repositories/create-match-rep
 import { registerHealthRoutes } from "./routes/health-routes.js";
 import { registerMatchRoutes } from "./routes/match-routes.js";
 
+const defaultCorsOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
+
+const resolveCorsOrigins = (): string[] => {
+  const configuredOrigins = process.env.CORS_ORIGIN
+    ?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return configuredOrigins && configuredOrigins.length > 0 ? configuredOrigins : defaultCorsOrigins;
+};
+
 export const createServer = async (): Promise<FastifyInstance> => {
   const server = Fastify({ logger: true });
   const matchRepository = createMatchRepository();
   const matchService = new MatchApplicationService(matchRepository);
 
   await server.register(cors, {
-    origin: process.env.CORS_ORIGIN?.split(",") ?? ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: resolveCorsOrigins(),
     methods: ["GET", "POST", "OPTIONS"]
   });
 
