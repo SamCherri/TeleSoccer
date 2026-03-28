@@ -23,7 +23,12 @@ export function MatchPage() {
   } = useMatchUiStore();
 
   const hasUser = Boolean(userId);
-  const userCanAct = matchState?.currentUserControl.currentUserCanAct ?? false;
+  const currentUserControl = matchState?.currentUserControl;
+  const userCanAct = currentUserControl?.currentUserCanAct ?? false;
+  const lineup = matchState?.lineup ?? [];
+  const availableActions = matchState?.availableActions ?? [];
+  const recentEvents = matchState?.recentEvents ?? [];
+  const controlledSlots = currentUserControl?.controlledSlots ?? [];
 
   useEffect(() => {
     if (!matchState) {
@@ -92,7 +97,7 @@ export function MatchPage() {
         </section>
 
         <LineupPanel
-          lineup={matchState.lineup}
+          lineup={lineup}
           canClaim={hasUser}
           isLoading={isLoading}
           onClaim={(teamSide, slotNumber) => {
@@ -106,8 +111,8 @@ export function MatchPage() {
           </p>
           <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
             Slot controlado:{" "}
-            {matchState.currentUserControl.controlledSlots.length > 0
-              ? matchState.currentUserControl.controlledSlots
+            {controlledSlots.length > 0
+              ? controlledSlots
                   .map((slot) => `${slot.teamSide} #${slot.slotNumber} (${slot.playerName})`)
                   .join(", ")
               : "nenhum"}
@@ -123,7 +128,7 @@ export function MatchPage() {
 
         <SceneCard event={matchState.currentEvent} />
         <ActionPanel
-          actions={matchState.availableActions}
+          actions={availableActions}
           disabled={isLoading || !hasUser || !userCanAct || matchState.turnResolutionMode !== "REQUIRES_PLAYER_ACTION"}
           onAction={(action) => {
             void sendAction(action);
@@ -150,7 +155,7 @@ export function MatchPage() {
           Avançar turno
         </button>
 
-        <EventFeed events={matchState.recentEvents} />
+        <EventFeed events={recentEvents} />
         {errorMessage ? <p style={{ margin: 0, color: "#ffd6d6" }}>Erro: {errorMessage}</p> : null}
       </section>
     </main>

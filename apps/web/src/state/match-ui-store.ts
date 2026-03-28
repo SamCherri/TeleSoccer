@@ -62,6 +62,10 @@ export const useMatchUiStore = create<MatchUiState>((set, get) => ({
     try {
       set({ isLoading: true, errorMessage: null });
       const user = await matchApi.joinMatch(matchId);
+      if (!user.userId) {
+        throw new Error("Não foi possível identificar o usuário para entrar na partida");
+      }
+
       const refreshed = await matchApi.getMatchState(matchId, user.userId);
       set({
         matchState: refreshed,
