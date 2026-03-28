@@ -118,6 +118,13 @@ Depois reconstrói `recentEvents` filtrando o `currentEvent` e mantendo os demai
 
 - Guia operacional completo: `docs/ETAPA5_DEPLOY_WEB.md`
 
+
+## ETAPA 6 — MVP vertical slice jogável
+
+- Definição oficial do MVP: `docs/ETAPA6_MVP.md`
+- Escopo: provar no navegador/mobile o loop principal com 22 vagas titulares, controle híbrido humano/bot por vaga e fallback simples para bot.
+- Este MVP **não** representa a versão final completa do produto.
+
 ## Railway
 
 - `railway.json` com build Nixpacks e start via `npm run start`.
