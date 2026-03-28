@@ -1,11 +1,4 @@
-import {
-  FrameType,
-  MatchEventType,
-  Prisma,
-  TeamSide,
-  TurnResolutionMode,
-  type PrismaClient
-} from "@prisma/client";
+import { FrameType, MatchEventType, Prisma, TeamSide, TurnResolutionMode, type PrismaClient } from "@prisma/client";
 import type { MatchRepository, PersistTurnInput } from "../../domain/repositories/match-repository.js";
 import type {
   MatchEventKey,
@@ -20,6 +13,20 @@ const defaultTacticalContext = {
   zone: "MIDDLE_THIRD",
   notes: "Estado inicial em persistência real"
 };
+
+const starterBlueprint: Array<{ slotNumber: number; position: string; isGoalkeeper?: boolean }> = [
+  { slotNumber: 1, position: "GK", isGoalkeeper: true },
+  { slotNumber: 2, position: "RB" },
+  { slotNumber: 3, position: "RCB" },
+  { slotNumber: 4, position: "LCB" },
+  { slotNumber: 5, position: "LB" },
+  { slotNumber: 6, position: "CDM" },
+  { slotNumber: 7, position: "RCM" },
+  { slotNumber: 8, position: "LCM" },
+  { slotNumber: 9, position: "RW" },
+  { slotNumber: 10, position: "ST" },
+  { slotNumber: 11, position: "LW" }
+];
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -271,36 +278,26 @@ export class PrismaMatchRepository implements MatchRepository {
         }
       });
 
-      const [homePrimary, awayPrimary] = await Promise.all([
-        tx.player.create({
-          data: {
-            teamId: homeTeam.id,
-            name: "Henrique",
-            shirtNumber: 8,
-            pass: 72,
-            dribble: 68,
-            finishing: 61,
-            marking: 55,
-            tackling: 54,
-            positioning: 66,
-            reflex: 28
-          }
+      const [homePlayers, awayPlayers] = await Promise.all([
+        this.createStarterPlayersWithLineup({
+          tx,
+          teamId: homeTeam.id,
+          teamPrefix: "HOME",
+          captainSlotNumber: 8
         }),
-        tx.player.create({
-          data: {
-            teamId: awayTeam.id,
-            name: "Eduardo",
-            shirtNumber: 5,
-            pass: 63,
-            dribble: 58,
-            finishing: 45,
-            marking: 71,
-            tackling: 73,
-            positioning: 69,
-            reflex: 24
-          }
+        this.createStarterPlayersWithLineup({
+          tx,
+          teamId: awayTeam.id,
+          teamPrefix: "AWAY",
+          captainSlotNumber: 5
         })
       ]);
+
+      const homePrimary = homePlayers.find((player) => player.slotNumber === 8) ?? homePlayers[0];
+      const awayPrimary = awayPlayers.find((player) => player.slotNumber === 5) ?? awayPlayers[0];
+      if (!homePrimary || !awayPrimary) {
+        throw new Error("Falha ao montar titulares iniciais da partida.");
+      }
 
       const normalizedInitialEvent: MatchEventView = {
         ...initialState.currentEvent,
@@ -308,11 +305,11 @@ export class PrismaMatchRepository implements MatchRepository {
           ...initialState.currentEvent.visualPayload,
           participants: initialState.currentEvent.visualPayload.participants.map((participant: VisualParticipant) => {
             if (participant.side === "HOME" && participant.displayName === "Henrique") {
-              return { ...participant, playerId: homePrimary.id };
+              return { ...participant, playerId: homePrimary.playerId };
             }
 
             if (participant.side === "AWAY" && participant.displayName === "Eduardo") {
-              return { ...participant, playerId: awayPrimary.id };
+              return { ...participant, playerId: awayPrimary.playerId };
             }
 
             return participant;
@@ -334,6 +331,33 @@ export class PrismaMatchRepository implements MatchRepository {
         }
       });
 
+      await Promise.all([
+        tx.matchLineup.createMany({
+          data: homePlayers.map((player) => ({
+            matchId: match.id,
+            teamId: homeTeam.id,
+            playerId: player.playerId,
+            slotNumber: player.slotNumber,
+            role: "STARTER",
+            position: player.position,
+            isCaptain: player.isCaptain,
+            controlMode: "BOT"
+          }))
+        }),
+        tx.matchLineup.createMany({
+          data: awayPlayers.map((player) => ({
+            matchId: match.id,
+            teamId: awayTeam.id,
+            playerId: player.playerId,
+            slotNumber: player.slotNumber,
+            role: "STARTER",
+            position: player.position,
+            isCaptain: player.isCaptain,
+            controlMode: "BOT"
+          }))
+        })
+      ]);
+
       const createdEvent = await tx.matchEvent.create({
         data: buildMatchEventCreateData({
           matchId: match.id,
@@ -341,8 +365,8 @@ export class PrismaMatchRepository implements MatchRepository {
           event: normalizedInitialEvent,
           turnNumber: initialState.turnNumber,
           minute: initialState.minute,
-          primaryPlayerId: homePrimary.id,
-          secondaryPlayerId: awayPrimary.id
+          primaryPlayerId: homePrimary.playerId,
+          secondaryPlayerId: awayPrimary.playerId
         })
       });
 
@@ -499,6 +523,52 @@ export class PrismaMatchRepository implements MatchRepository {
 
   async getSceneCatalog(): Promise<SceneCatalogItem[]> {
     return sceneCatalog;
+  }
+
+  private async createStarterPlayersWithLineup({
+    tx,
+    teamId,
+    teamPrefix,
+    captainSlotNumber
+  }: {
+    tx: Prisma.TransactionClient;
+    teamId: string;
+    teamPrefix: "HOME" | "AWAY";
+    captainSlotNumber: number;
+  }): Promise<Array<{ slotNumber: number; playerId: string; position: string; isCaptain: boolean }>> {
+    const createdPlayers = await Promise.all(
+      starterBlueprint.map(async ({ slotNumber, position, isGoalkeeper }) => {
+        const player = await tx.player.create({
+          data: {
+            teamId,
+            name:
+              teamPrefix === "HOME" && slotNumber === 8
+                ? "Henrique"
+                : teamPrefix === "AWAY" && slotNumber === 5
+                  ? "Eduardo"
+                  : `${teamPrefix}-PLAYER-${slotNumber}`,
+            shirtNumber: slotNumber,
+            isGoalkeeper: isGoalkeeper ?? false,
+            pass: 60,
+            dribble: 60,
+            finishing: 60,
+            marking: 60,
+            tackling: 60,
+            positioning: 60,
+            reflex: isGoalkeeper ? 70 : 35
+          }
+        });
+
+        return {
+          slotNumber,
+          playerId: player.id,
+          position,
+          isCaptain: slotNumber === captainSlotNumber
+        };
+      })
+    );
+
+    return createdPlayers;
   }
 
   private async resolvePersistedPlayerId({
