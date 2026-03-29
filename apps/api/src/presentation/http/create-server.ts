@@ -2,8 +2,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { MatchApplicationService } from "../../application/services/match-application-service.js";
 import { createMatchRepository } from "../../infra/repositories/create-match-repository.js";
+import { createAuthUserRepository } from "../../infra/repositories/create-auth-user-repository.js";
+import { AuthApplicationService } from "../../application/services/auth-application-service.js";
 import { registerHealthRoutes } from "./routes/health-routes.js";
 import { registerMatchRoutes } from "./routes/match-routes.js";
+import { registerAuthRoutes } from "./routes/auth-routes.js";
 
 const LOCAL_WEB_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
@@ -37,8 +40,10 @@ export const createServer = async (): Promise<FastifyInstance> => {
   );
 
   const matchRepository = createMatchRepository();
+  const authUserRepository = createAuthUserRepository();
+
   const matchService = new MatchApplicationService(matchRepository);
-  const allowedOrigins = resolveAllowedOrigins();
+  const authService = new AuthApplicationService(authUserRepository);
 
   await server.register(cors, {
     origin: (origin, callback) => {
@@ -58,6 +63,7 @@ export const createServer = async (): Promise<FastifyInstance> => {
   });
 
   registerHealthRoutes(server);
+  registerAuthRoutes(server, { authService });
   registerMatchRoutes(server, { matchService });
 
   return server;

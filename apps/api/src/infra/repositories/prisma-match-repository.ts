@@ -460,13 +460,27 @@ export class PrismaMatchRepository implements MatchRepository {
     };
   }
 
-  async joinMatch(matchId: string): Promise<MatchJoinView | null> {
+  async joinMatch(matchId: string, preferredUser?: { userId: string; displayName?: string }): Promise<MatchJoinView | null> {
     const match = await this.prisma.match.findUnique({
       where: { id: matchId },
       select: { id: true }
     });
     if (!match) {
       return null;
+    }
+
+    if (preferredUser) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: preferredUser.userId },
+        select: { id: true, displayName: true }
+      });
+
+      if (user) {
+        return {
+          userId: user.id,
+          displayName: user.displayName
+        };
+      }
     }
 
     const email = `bootstrap+${matchId}@telesoccer.local`;
