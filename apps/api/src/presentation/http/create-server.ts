@@ -5,7 +5,6 @@ import { createMatchRepository } from "../../infra/repositories/create-match-rep
 import { registerHealthRoutes } from "./routes/health-routes.js";
 import { registerMatchRoutes } from "./routes/match-routes.js";
 
-const DEFAULT_PRODUCTION_WEB_ORIGIN = "https://telesoccer-web-production.up.railway.app";
 const LOCAL_WEB_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
 const resolveAllowedOrigins = (): string[] => {
@@ -18,19 +17,32 @@ const resolveAllowedOrigins = (): string[] => {
   }
 
   if (process.env.NODE_ENV === "production") {
-    return [DEFAULT_PRODUCTION_WEB_ORIGIN];
+    throw new Error("CORS_ORIGIN não configurado em produção.");
   }
 
-  return [...LOCAL_WEB_ORIGINS, DEFAULT_PRODUCTION_WEB_ORIGIN];
+  return LOCAL_WEB_ORIGINS;
 };
 
 export const createServer = async (): Promise<FastifyInstance> => {
   const server = Fastify({ logger: true });
   const matchRepository = createMatchRepository();
   const matchService = new MatchApplicationService(matchRepository);
+  const allowedOrigins = resolveAllowedOrigins();
 
   await server.register(cors, {
-    origin: resolveAllowedOrigins(),
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin não permitida: ${origin}`), false);
+    },
     methods: ["GET", "POST", "OPTIONS"]
   });
 
