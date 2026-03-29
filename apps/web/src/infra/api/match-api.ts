@@ -9,14 +9,31 @@ import type {
 } from "../../shared/types/match";
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+const REQUEST_TIMEOUT_MS = 12_000;
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      "Content-Type": "application/json"
-    },
-    ...init
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      headers: {
+        "Content-Type": "application/json"
+      },
+      ...init,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Tempo limite excedido ao conectar com a API.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -35,7 +52,11 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     throw new Error(`API ${response.status}: ${errorText}`);
   }
 
-  return response.json() as Promise<T>;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new Error("Resposta inválida da API (JSON malformado ou inesperado).");
+  }
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
