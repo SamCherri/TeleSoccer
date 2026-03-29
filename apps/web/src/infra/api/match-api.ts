@@ -8,8 +8,23 @@ import type {
   TurnCycle
 } from "../../shared/types/match";
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 const REQUEST_TIMEOUT_MS = 12_000;
+
+const resolveApiBaseUrl = (): string => {
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim();
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+
+  if (import.meta.env.DEV) {
+    return "http://localhost:3000";
+  }
+
+  throw new Error("Falha de conexão com a API. Verifique VITE_API_URL e CORS_ORIGIN.");
+};
+
+const apiBaseUrl = resolveApiBaseUrl();
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const controller = new AbortController();
@@ -28,6 +43,10 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("Tempo limite excedido ao conectar com a API.");
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error("Falha de conexão com a API. Verifique VITE_API_URL e CORS_ORIGIN.");
     }
 
     throw error;
