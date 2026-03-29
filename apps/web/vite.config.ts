@@ -1,9 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const railwayPublicHost = process.env.RAILWAY_PUBLIC_DOMAIN;
-const allowedHosts = [".up.railway.app", "proud-joy-production-5f79.up.railway.app", railwayPublicHost]
-  .filter((host): host is string => Boolean(host));
+const allowedHosts = [".up.railway.app", "telesoccer-web-production.up.railway.app"];
 
 export default defineConfig({
   plugins: [react()],
