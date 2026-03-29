@@ -31,6 +31,7 @@ Exemplo:
 3. `prisma-modeling`
 4. `scene-ui-mobile`
 5. `pr-review-telesoccer`
+6. `railway-integration-debug`
 
 ## Como acionar no fluxo
 
