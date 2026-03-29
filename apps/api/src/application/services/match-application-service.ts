@@ -91,8 +91,8 @@ export class MatchApplicationService {
     return this.repository.getMatchState(matchId, currentUserId);
   }
 
-  joinMatch(matchId: string): Promise<MatchJoinView | null> {
-    return this.repository.joinMatch(matchId);
+  joinMatch(matchId: string, preferredUser?: { userId: string; displayName?: string }): Promise<MatchJoinView | null> {
+    return this.repository.joinMatch(matchId, preferredUser);
   }
 
   claimSlot(input: {

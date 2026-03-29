@@ -15,6 +15,11 @@ const createMatchSchema = z.object({
   awayTeamName: z.string().min(2)
 });
 
+const joinMatchSchema = z.object({
+  userId: z.string().min(1),
+  displayName: z.string().min(1).optional()
+});
+
 const claimSlotSchema = z.object({
   teamSide: z.enum(["HOME", "AWAY"]),
   slotNumber: z.number().int().min(1).max(11),
@@ -105,11 +110,25 @@ export const registerMatchRoutes = (
 
   server.post("/matches/:matchId/join", async (request, reply) => {
     const parse = paramsSchema.safeParse(request.params);
+    const body = request.body === null || request.body === undefined ? undefined : request.body;
+    const bodyParse = body ? joinMatchSchema.safeParse(body) : null;
+
     if (!parse.success) {
       return reply.status(400).send(response({ error: parse.error.flatten() }));
     }
 
-    const user = await matchService.joinMatch(parse.data.matchId);
+    if (bodyParse && !bodyParse.success) {
+      return reply.status(400).send(response({ error: bodyParse.error.flatten() }));
+    }
+
+    const preferredUser = bodyParse?.success
+      ? {
+          userId: bodyParse.data.userId,
+          ...(bodyParse.data.displayName ? { displayName: bodyParse.data.displayName } : {})
+        }
+      : undefined;
+
+    const user = await matchService.joinMatch(parse.data.matchId, preferredUser);
     if (!user) {
       return reply.status(404).send(response({ error: "match-not-found" }));
     }

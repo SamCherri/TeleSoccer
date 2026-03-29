@@ -123,9 +123,19 @@ export class InMemoryMatchRepository implements MatchRepository {
     };
   }
 
-  async joinMatch(matchId: string): Promise<{ userId: string; displayName: string } | null> {
+  async joinMatch(matchId: string, preferredUser?: { userId: string; displayName?: string }): Promise<{ userId: string; displayName: string } | null> {
     if (!this.state || this.state.matchId !== matchId) {
       return null;
+    }
+
+    if (preferredUser) {
+      const authUser = {
+        userId: preferredUser.userId,
+        displayName: preferredUser.displayName?.trim() || "Jogador"
+      };
+
+      this.users.set(matchId, authUser);
+      return authUser;
     }
 
     const existing = this.users.get(matchId);

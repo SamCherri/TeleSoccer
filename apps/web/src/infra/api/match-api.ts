@@ -152,9 +152,10 @@ export const matchApi = {
     };
   },
 
-  async joinMatch(matchId: string): Promise<MatchJoinView> {
+  async joinMatch(matchId: string, preferredUser?: { userId: string; displayName?: string }): Promise<MatchJoinView> {
     const payload = await request<ApiResponse<{ user: MatchJoinView }>>(`/matches/${matchId}/join`, {
-      method: "POST"
+      method: "POST",
+      ...(preferredUser ? { body: JSON.stringify(preferredUser) } : {})
     });
 
     const user = asRecord(asRecord(payload).data).user;

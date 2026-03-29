@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMatchUiStore } from "../../state/match-ui-store";
 import { ActionPanel } from "../components/ActionPanel";
 import { EventFeed } from "../components/EventFeed";
@@ -15,12 +15,19 @@ export function MatchPage() {
     errorMessage,
     userId,
     userDisplayName,
+    authUser,
     bootstrapMatch,
     joinMatch,
+    registerAndJoin,
+    loginAndJoin,
     claimSlot,
     sendAction,
     advanceTurn
   } = useMatchUiStore();
+
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
 
   const hasUser = Boolean(userId);
   const currentUserControl = matchState?.currentUserControl;
@@ -105,7 +112,67 @@ export function MatchPage() {
         <PossessionIndicator side={matchState.possessionTeamSide} />
 
         <section style={{ display: "grid", gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Controle de vagas</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Login do jogador</h2>
+          <input
+            placeholder="E-mail"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            style={{ borderRadius: 10, border: "1px solid #5aa3d6", background: "#0d2f4a", color: "#fff", padding: 10 }}
+          />
+          <input
+            placeholder="Nome exibido"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            style={{ borderRadius: 10, border: "1px solid #5aa3d6", background: "#0d2f4a", color: "#fff", padding: 10 }}
+          />
+          <input
+            placeholder="Senha (mínimo 8)"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            style={{ borderRadius: 10, border: "1px solid #5aa3d6", background: "#0d2f4a", color: "#fff", padding: 10 }}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                void registerAndJoin({ email, displayName: displayName || "Jogador", password });
+              }}
+              disabled={isLoading}
+              style={{
+                borderRadius: 10,
+                border: "1px solid #5aa3d6",
+                background: "#14517c",
+                color: "#fff",
+                padding: "10px 12px",
+                fontSize: 14,
+                cursor: isLoading ? "not-allowed" : "pointer",
+                opacity: isLoading ? 0.65 : 1
+              }}
+            >
+              Cadastrar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void loginAndJoin({ email, password });
+              }}
+              disabled={isLoading}
+              style={{
+                borderRadius: 10,
+                border: "1px solid #5aa3d6",
+                background: "#14517c",
+                color: "#fff",
+                padding: "10px 12px",
+                fontSize: 14,
+                cursor: isLoading ? "not-allowed" : "pointer",
+                opacity: isLoading ? 0.65 : 1
+              }}
+            >
+              Entrar
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => {
@@ -123,7 +190,7 @@ export function MatchPage() {
               opacity: isLoading ? 0.65 : 1
             }}
           >
-            {userId ? `Conectado como ${userDisplayName ?? "Jogador"}` : "Entrar na partida"}
+            {hasUser ? `Conectado como ${userDisplayName ?? "Jogador"}` : "Entrar modo convidado"}
           </button>
         </section>
 
@@ -138,7 +205,10 @@ export function MatchPage() {
 
         <section style={{ display: "grid", gap: 4 }}>
           <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
-            Usuário conectado: {hasUser ? userDisplayName ?? userId : "nenhum"}
+            Usuário autenticado: {authUser ? `${authUser.displayName} (${authUser.email})` : "nenhum"}
+          </p>
+          <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
+            Usuário na partida: {hasUser ? userDisplayName ?? userId : "nenhum"}
           </p>
           <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
             Slot controlado:{" "}
@@ -153,7 +223,7 @@ export function MatchPage() {
               ? userCanAct
                 ? "Seu jogador está no lance atual."
                 : "Aguardando lance do seu jogador."
-              : "Entre na partida para controlar uma vaga."}
+              : "Faça login e entre na partida para controlar uma vaga."}
           </p>
         </section>
 

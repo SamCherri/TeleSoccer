@@ -62,11 +62,12 @@ enum ParticipantActionStatus {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  email       String?  @unique
-  displayName String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String?  @unique
+  passwordHash String?
+  displayName  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   teams Team[]
   controlledLineups MatchLineup[] @relation("MatchLineupControllerUser")
