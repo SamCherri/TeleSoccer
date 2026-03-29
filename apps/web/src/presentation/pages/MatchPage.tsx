@@ -38,9 +38,40 @@ export function MatchPage() {
 
   if (!matchState) {
     return (
-      <main style={{ color: "#fff", padding: 16 }}>
-        <p>{isLoading ? "Criando partida..." : "Inicializando partida."}</p>
-        {errorMessage ? <p>Erro: {errorMessage}</p> : null}
+      <main
+        style={{
+          minHeight: "100vh",
+          margin: 0,
+          padding: 16,
+          display: "grid",
+          placeItems: "center",
+          background: "linear-gradient(180deg, #041423 0%, #0a2740 100%)",
+          color: "#f2f6fa",
+          fontFamily: "Inter, system-ui, sans-serif"
+        }}
+      >
+        <section
+          style={{
+            width: "100%",
+            maxWidth: 460,
+            borderRadius: 16,
+            border: "1px solid #2f5c83",
+            background: "#0f3555",
+            padding: 16,
+            display: "grid",
+            gap: 10
+          }}
+        >
+          <p style={{ margin: 0 }}>{isLoading ? "Criando partida..." : "Inicializando partida."}</p>
+          {errorMessage ? (
+            <>
+              <p style={{ margin: 0, color: "#ffd6d6" }}>Erro: {errorMessage}</p>
+              <p style={{ margin: 0, fontSize: 13, opacity: 0.9 }}>
+                Verifique VITE_API_URL do serviço WEB e CORS_ORIGIN do serviço API no Railway.
+              </p>
+            </>
+          ) : null}
+        </section>
       </main>
     );
   }
