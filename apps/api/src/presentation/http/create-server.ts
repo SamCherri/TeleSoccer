@@ -25,6 +25,17 @@ const resolveAllowedOrigins = (): string[] => {
 
 export const createServer = async (): Promise<FastifyInstance> => {
   const server = Fastify({ logger: true });
+  const allowedOrigins = resolveAllowedOrigins();
+
+  server.log.info(
+    {
+      nodeEnv: process.env.NODE_ENV ?? "undefined",
+      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+      allowedOrigins
+    },
+    "[teleSoccer-api] startup-config"
+  );
+
   const matchRepository = createMatchRepository();
   const matchService = new MatchApplicationService(matchRepository);
   const allowedOrigins = resolveAllowedOrigins();
