@@ -52,6 +52,24 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
             <p style={{ margin: 0, opacity: 0.9 }}>
               Não foi possível renderizar a partida agora. Atualize a página para tentar novamente.
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.reload();
+              }}
+              style={{
+                marginTop: 4,
+                borderRadius: 10,
+                border: "1px solid #5aa3d6",
+                background: "#14517c",
+                color: "#fff",
+                padding: "10px 12px",
+                fontSize: 14,
+                cursor: "pointer"
+              }}
+            >
+              Recarregar página
+            </button>
           </section>
         </main>
       );
