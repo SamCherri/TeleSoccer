@@ -5,6 +5,8 @@ const bootstrap = async (): Promise<void> => {
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? "0.0.0.0";
 
+  server.log.info({ host, port }, "[teleSoccer-api] listen-config");
+
   await server.listen({ port, host });
 };
 
