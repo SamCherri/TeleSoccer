@@ -1,26 +1,16 @@
 {
-  "name": "telesoccer-web-monorepo",
-  "version": "0.2.0",
+  "name": "telesoccer",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "npm@10.8.2",
-  "engines": {
-    "node": ">=20"
-  },
   "workspaces": [
     "apps/api",
     "apps/web"
   ],
   "scripts": {
-    "dev": "concurrently -k -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
-    "dev:api": "npm run dev -w @telesoccer/api",
-    "dev:web": "npm run dev -w @telesoccer/web",
-    "build": "npm run build -w @telesoccer/api && npm run build -w @telesoccer/web",
-    "build:api": "npm run build -w @telesoccer/api",
-    "build:web": "npm run build -w @telesoccer/web",
+    "dev": "npm run dev -w @telesoccer/api",
+    "build": "npm run build -w @telesoccer/api",
     "start": "npm run start -w @telesoccer/api",
     "typecheck": "npm run typecheck -w @telesoccer/api && npm run typecheck -w @telesoccer/web"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.2"
   }
 }
