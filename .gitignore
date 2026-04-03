@@ -1,6 +1,7 @@
 node_modules
-coverage
 dist
-*.log
+build
+coverage
 .DS_Store
-.env
+*.log
+apps/api/generated

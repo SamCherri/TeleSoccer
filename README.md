@@ -1,135 +1,22 @@
-# TeleSoccer Web
+# TeleSoccer
 
-Web app mobile-first de futebol por turnos orientado por cenas visuais.
+Reinicialização completa do projeto para evolução limpa do produto: web app mobile-first de futebol por turnos orientado por cenas visuais.
 
-## Status atual
+## Princípios de arquitetura
 
-- ETAPA 1: auditoria concluída.
-- ETAPA 2: fundação monorepo + API/WEB concluída.
-- ETAPA 3: modelagem Prisma + PostgreSQL e persistência orientada a repositório **em validação**.
-- ETAPA 5: publicação do frontend WEB em preparação operacional (deploy separado API/WEB).
+- Backend como única fonte de verdade para regras de jogo.
+- Separação rígida de camadas: domínio, aplicação, infraestrutura e apresentação.
+- Frontend sem regra de negócio.
+- Preparado para PostgreSQL + Prisma + Railway.
+- Base pronta para evolução multiplayer por vagas (humano/bot).
 
-> Observação de escopo: skills internas foram entregues em trilha separada (`.codex/skills`) e não definem conclusão da ETAPA 3.
+## Estrutura
 
+- `apps/api`: API Fastify + Prisma + casos de uso.
+- `apps/web`: cliente React mobile-first por cenas.
 
-## Definição oficial do produto (modelo principal)
+## Próximas etapas
 
-O TeleSoccer Web adota oficialmente a seguinte premissa central:
-
-- **1 partida suporta 22 jogadores em campo (11 por time)**;
-- **cada jogador em campo pode ser controlado por um usuário real**;
-- **vagas sem usuário devem ser preenchidas por bot**;
-- **o backend continua resolvendo turnos/eventos** (sem lógica de resultado no frontend).
-
-Documento oficial detalhado: `docs/OFICIAL_MODELO_22_JOGADORES.md`.
-
-> Esta definição oficializa a visão de produto, mas **não afirma que o multiplayer híbrido completo já está implementado**.
-
-## Monorepo
-
-- `apps/api` → backend Node.js + TypeScript + Fastify
-- `apps/web` → frontend React + TypeScript + Vite
-
-## ETAPA 3 — estado da persistência
-
-### 1) Prisma + PostgreSQL
-
-- Arquivo: `apps/api/prisma/schema.prisma`
-- Entidades modeladas:
-  - `User`
-  - `Team`
-  - `Player`
-  - `Match`
-  - `MatchTurn`
-  - `MatchEvent`
-  - `MatchLineup`
-  - `MatchParticipantAction`
-
-### 2) Arquitetura por camadas (backend)
-
-- `src/domain`
-  - `entities/match-aggregate.ts`
-  - `repositories/match-repository.ts`
-- `src/application`
-  - `services/match-application-service.ts`
-- `src/infra`
-  - `prisma/prisma-client.ts`
-  - `repositories/prisma-match-repository.ts`
-  - `repositories/in-memory-match-repository.ts`
-  - `repositories/create-match-repository.ts`
-- `src/presentation`
-  - rotas Fastify e bootstrap HTTP
-
-### 3) Persistência orientada a repositório com fallback
-
-- Com `DATABASE_URL`: usa `PrismaMatchRepository` (PostgreSQL).
-- Sem `DATABASE_URL`: usa `InMemoryMatchRepository` temporário.
-- Objetivo: transição gradual sem quebrar integração atual.
-
-### 4) Correção de bloqueio de FK (players participantes)
-
-No fluxo Prisma:
-
-- `createMatch` agora cria Team **e Player mínimos coerentes** para participantes iniciais.
-- O evento inicial é persistido com `primaryPlayerId` e `secondaryPlayerId` válidos.
-- `persistTurn` resolve IDs de participantes por:
-  1. `incomingId` válido dentro do time;
-  2. fallback por `displayName + teamId`;
-  3. `null` quando não houver jogador persistido compatível.
-
-Isso evita falha de foreign key com placeholders (`p-home-8`, `p-away-5`) em ambiente PostgreSQL real.
-
-### 5) Como `recentEvents` é reconstruído no Prisma
-
-`getMatchState` busca:
-
-- `currentEvent` da partida via `currentEventId`;
-- últimos eventos da partida ordenados por turno/data.
-
-Depois reconstrói `recentEvents` filtrando o `currentEvent` e mantendo os demais como histórico de feed.
-
-### 6) Migrations
-
-- Nesta revisão, **migrations reais não foram geradas/aplicadas ainda**.
-- Foi entregue `schema.prisma` + scripts Prisma para geração e execução de migrações.
-
-## Scripts úteis
-
-### Raiz
-
-- `npm run dev`
-- `npm run build`
-- `npm run start`
-- `npm run typecheck`
-
-### API / Prisma
-
-- `npm run prisma:generate -w @telesoccer/api`
-- `npm run prisma:migrate:dev -w @telesoccer/api`
-- `npm run prisma:deploy -w @telesoccer/api`
-- `npm run build -w @telesoccer/api` (gera Prisma Client antes do TypeScript build)
-
-
-## ETAPA 4 — produção (próximo passo)
-
-- Checklist e estratégia de deploy WEB/API: `docs/ETAPA4_PRODUCAO_CHECKLIST.md`
-
-## ETAPA 5 — publicação do frontend WEB
-
-- Guia operacional completo: `docs/ETAPA5_DEPLOY_WEB.md`
-
-
-## ETAPA 6 — MVP vertical slice jogável
-
-- Definição oficial do MVP: `docs/ETAPA6_MVP.md`
-- Escopo: provar no navegador/mobile o loop principal com 22 vagas titulares, controle híbrido humano/bot por vaga e fallback simples para bot.
-- Este MVP **não** representa a versão final completa do produto.
-
-## Railway
-
-- `railway.json` com build Nixpacks e start via `npm run start`.
-- No pacote `@telesoccer/api`, `postinstall` e `build` executam `prisma generate` para garantir `@prisma/client` tipado antes do `tsc`.
-- Variáveis principais:
-  - `PORT`
-  - `DATABASE_URL` (ativa persistência Prisma/PostgreSQL)
-  - `CORS_ORIGIN` (opcional)
+1. Implementar pipeline canônico de turno no backend.
+2. Evoluir contratos de cena e ação entre API e WEB.
+3. Conectar persistência real via PostgreSQL no Railway.
